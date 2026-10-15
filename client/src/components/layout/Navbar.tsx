@@ -20,6 +20,12 @@ export const Navbar: React.FC = () => {
     enabled: isSuperAdmin,
   });
 
+  React.useEffect(() => {
+    if (isSuperAdmin && franchises && franchises.length > 0 && !selectedFranchiseId) {
+      setSelectedFranchise(franchises[0].id);
+    }
+  }, [isSuperAdmin, franchises, selectedFranchiseId, setSelectedFranchise]);
+
   const activeFranchiseName = isSuperAdmin
     ? franchises?.find((f) => f.id === selectedFranchiseId)?.name || "All Franchises (Global)"
     : user?.franchise?.name || "My Franchise";

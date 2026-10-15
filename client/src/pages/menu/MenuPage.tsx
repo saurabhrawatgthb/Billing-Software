@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Edit2, Trash2, CheckCircle2, XCircle, Tag, ChefHat } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Plus, Search, Edit2, Trash2, CheckCircle2, XCircle, Tag, ChefHat, Building2 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
-import type { Category, MenuItem, PreparationStation } from "../../types/index.js";
+import type { Category, MenuItem, PreparationStation, Franchise } from "../../types/index.js";
 import { Card } from "../../components/common/Card.js";
 import { Button } from "../../components/common/Button.js";
 import { Input } from "../../components/common/Input.js";
@@ -45,10 +46,24 @@ export const MenuPage: React.FC = () => {
   });
 
   const [formError, setFormError] = useState<string | null>(null);
+  const [targetFranchiseId, setTargetFranchiseId] = useState<string>("");
+
+  // Fetch Franchises for Brand Owner
+  const { data: franchises = [] } = useQuery<Franchise[]>({
+    queryKey: ["menu-franchises"],
+    queryFn: async () => {
+      const res = await api.get("/franchises");
+      return res.data.data;
+    },
+    enabled: isBrandOwner,
+  });
+
+  // Effective franchise context: selected in navbar, or chosen in modal, or sole franchise
+  const effectiveFranchiseId = selectedFranchiseId || targetFranchiseId || franchises[0]?.id || "";
 
   // Fetch Categories
   const { data: categories = [] } = useQuery<Category[]>({
-    queryKey: ["categories", selectedFranchiseId],
+    queryKey: ["categories", effectiveFranchiseId],
     queryFn: async () => {
       const res = await api.get("/menu/categories");
       return res.data.data;
@@ -57,7 +72,7 @@ export const MenuPage: React.FC = () => {
 
   // Fetch Preparation Stations
   const { data: stations = [] } = useQuery<PreparationStation[]>({
-    queryKey: ["stations", selectedFranchiseId],
+    queryKey: ["stations", effectiveFranchiseId],
     queryFn: async () => {
       const res = await api.get("/menu/stations");
       return res.data.data;
@@ -66,7 +81,7 @@ export const MenuPage: React.FC = () => {
 
   // Fetch Menu Items
   const { data: menuItems = [], isLoading } = useQuery<MenuItem[]>({
-    queryKey: ["menu-items", selectedFranchiseId, selectedCategoryFilter],
+    queryKey: ["menu-items", effectiveFranchiseId, selectedCategoryFilter],
     queryFn: async () => {
       const url = selectedCategoryFilter
         ? `/menu/items?categoryId=${selectedCategoryFilter}`
@@ -79,6 +94,7 @@ export const MenuPage: React.FC = () => {
   // Item Mutation
   const saveItemMutation = useMutation({
     mutationFn: async (data: typeof itemFormData) => {
+      const franchiseToUse = targetFranchiseId || selectedFranchiseId || franchises[0]?.id;
       const payload = {
         categoryId: data.categoryId,
         stationId: data.stationId || null,
@@ -87,6 +103,7 @@ export const MenuPage: React.FC = () => {
         description: data.description || null,
         price: Number(data.price),
         isAvailable: data.isAvailable,
+        franchiseId: franchiseToUse,
       };
       if (editingItem) {
         return api.put(`/menu/items/${editingItem.id}`, payload);
@@ -113,10 +130,15 @@ export const MenuPage: React.FC = () => {
   // Category Mutation
   const saveCategoryMutation = useMutation({
     mutationFn: async (data: typeof categoryFormData) => {
+      const franchiseToUse = targetFranchiseId || selectedFranchiseId || franchises[0]?.id;
+      const payload = {
+        ...data,
+        franchiseId: franchiseToUse,
+      };
       if (editingCategory) {
-        return api.put(`/menu/categories/${editingCategory.id}`, data);
+        return api.put(`/menu/categories/${editingCategory.id}`, payload);
       }
-      return api.post("/menu/categories", data);
+      return api.post("/menu/categories", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
@@ -138,6 +160,7 @@ export const MenuPage: React.FC = () => {
 
   const handleOpenCreateItem = () => {
     setEditingItem(null);
+    setTargetFranchiseId(selectedFranchiseId || franchises[0]?.id || "");
     setItemFormData({
       categoryId: categories[0]?.id || "",
       stationId: stations[0]?.id || "",
@@ -153,6 +176,7 @@ export const MenuPage: React.FC = () => {
 
   const handleOpenEditItem = (item: MenuItem) => {
     setEditingItem(item);
+    setTargetFranchiseId(item.franchiseId || selectedFranchiseId || franchises[0]?.id || "");
     setItemFormData({
       categoryId: item.categoryId,
       stationId: item.stationId || "",
@@ -168,6 +192,7 @@ export const MenuPage: React.FC = () => {
 
   const handleOpenCreateCategory = () => {
     setEditingCategory(null);
+    setTargetFranchiseId(selectedFranchiseId || franchises[0]?.id || "");
     setCategoryFormData({ name: "", description: "", isActive: true });
     setFormError(null);
     setIsCategoryModalOpen(true);
@@ -175,6 +200,7 @@ export const MenuPage: React.FC = () => {
 
   const handleOpenEditCategory = (cat: Category) => {
     setEditingCategory(cat);
+    setTargetFranchiseId(cat.franchiseId || selectedFranchiseId || franchises[0]?.id || "");
     setCategoryFormData({
       name: cat.name,
       description: cat.description || "",
@@ -208,6 +234,7 @@ export const MenuPage: React.FC = () => {
               variant="outline"
               onClick={handleOpenCreateCategory}
               icon={<Tag className="w-4 h-4" />}
+              disabled={franchises.length === 0}
             >
               Add Category
             </Button>
@@ -215,6 +242,7 @@ export const MenuPage: React.FC = () => {
               variant="primary"
               onClick={handleOpenCreateItem}
               icon={<Plus className="w-4 h-4" />}
+              disabled={franchises.length === 0}
             >
               Add Menu Item
             </Button>
@@ -226,6 +254,28 @@ export const MenuPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Zero Franchises Alert */}
+      {isBrandOwner && franchises.length === 0 && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-amber-900 shadow-xs">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-amber-100 rounded-lg text-amber-700 mt-0.5 shrink-0">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-sm text-amber-950">No Franchise Outlets Found</h4>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Every category, dish price, and kitchen station belongs to a franchise branch. Please create your first Franchise Branch (e.g. "Main Outlet" or "Flagship Store") first before adding categories or menu items.
+              </p>
+            </div>
+          </div>
+          <Link to="/franchises">
+            <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />}>
+              Create Franchise Outlet
+            </Button>
+          </Link>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200">
@@ -431,6 +481,16 @@ export const MenuPage: React.FC = () => {
             </div>
           )}
 
+          {isBrandOwner && franchises.length > 0 && (
+            <Select
+              label="Franchise Outlet *"
+              required
+              options={franchises.map((f) => ({ value: f.id, label: `🏬 ${f.name} (${f.code})` }))}
+              value={targetFranchiseId}
+              onChange={(e) => setTargetFranchiseId(e.target.value)}
+            />
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="Dish Name *"
@@ -522,6 +582,16 @@ export const MenuPage: React.FC = () => {
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs font-medium">
               {formError}
             </div>
+          )}
+
+          {isBrandOwner && franchises.length > 0 && (
+            <Select
+              label="Franchise Outlet *"
+              required
+              options={franchises.map((f) => ({ value: f.id, label: `🏬 ${f.name} (${f.code})` }))}
+              value={targetFranchiseId}
+              onChange={(e) => setTargetFranchiseId(e.target.value)}
+            />
           )}
 
           <Input
