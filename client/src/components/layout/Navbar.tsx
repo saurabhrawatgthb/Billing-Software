@@ -1,12 +1,15 @@
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Building, Globe, Wifi } from "lucide-react";
+import { useQuery, useQueryClient, useIsFetching } from "@tanstack/react-query";
+import { Building, Globe, Wifi, RefreshCw } from "lucide-react";
 import { useAuthStore } from "../../store/authStore.js";
 import { api } from "../../services/api.js";
 import type { Franchise } from "../../types/index.js";
 import { Badge } from "../common/Badge.js";
 
 export const Navbar: React.FC = () => {
+  const queryClient = useQueryClient();
+  const isFetchingCount = useIsFetching();
+  const isSyncing = isFetchingCount > 0;
   const { user, selectedFranchiseId, setSelectedFranchise } = useAuthStore();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
 
@@ -69,11 +72,24 @@ export const Navbar: React.FC = () => {
       </div>
 
       {/* Right: Status, Role & Profile */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        {/* Global Instant Refresh & Sync Button */}
+        <button
+          onClick={() => {
+            queryClient.invalidateQueries();
+          }}
+          disabled={isSyncing}
+          title="Force refresh & sync all data across modules"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-2xs hover:border-indigo-300 transition-all cursor-pointer disabled:opacity-60"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 ${isSyncing ? "animate-spin" : ""}`} />
+          <span className="hidden sm:inline">{isSyncing ? "Syncing..." : "Refresh"}</span>
+        </button>
+
         {/* Real-time sync badge */}
         <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 rounded-full border border-emerald-200 text-[11px] font-semibold text-emerald-700">
           <Wifi className="w-3.5 h-3.5" />
-          <span>Real-time Live</span>
+          <span className="hidden md:inline">Real-time Live</span>
         </div>
 
         {/* User Role Badge */}

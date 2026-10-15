@@ -405,19 +405,19 @@ export const BrandSettingsPage: React.FC = () => {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <Input
-                    label="GSTIN / Corporate Tax ID"
-                    placeholder="e.g. 22AAAAA0000A1Z5"
+                    label="GSTIN / Corporate Tax ID (Optional)"
+                    placeholder="e.g. 22AAAAA0000A1Z5 (Optional)"
                     value={form.taxNumber}
                     onChange={(e) => setForm({ ...form, taxNumber: e.target.value })}
-                    helperText="15-character GSTIN identifier"
+                    helperText="Optional. Leave blank if not GST registered or operating under non-GST threshold."
                   />
 
                   <Input
-                    label="FSSAI License No."
-                    placeholder="e.g. 10019022000000"
+                    label="FSSAI License No. (Optional)"
+                    placeholder="e.g. 10019022000000 (Optional)"
                     value={form.fssaiNumber}
                     onChange={(e) => setForm({ ...form, fssaiNumber: e.target.value })}
-                    helperText="14-digit food safety license"
+                    helperText="Optional. 14-digit food safety license. Leave blank if pending."
                   />
 
                   <div>
@@ -442,7 +442,7 @@ export const BrandSettingsPage: React.FC = () => {
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 flex items-start gap-2">
                   <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
                   <span>
-                    Tax compliance laws mandate that restaurant GSTIN and FSSAI license numbers appear on all printed thermal bills and digital receipts.
+                    GSTIN and FSSAI are <strong>strictly optional</strong>. When provided, they will appear on your customer receipts and tax reports. If left empty, receipts print cleanly without compliance headers.
                   </span>
                 </div>
               </div>
@@ -701,10 +701,16 @@ export const BrandSettingsPage: React.FC = () => {
                 </p>
 
                 {/* Compliance Numbers */}
-                <div className="pt-1 text-[10px] text-slate-700 font-semibold space-y-0.5">
-                  <div>GSTIN: {form.taxNumber || "22AAAAA0000A1Z5"}</div>
-                  <div>FSSAI Lic No: {form.fssaiNumber || "10019022000000"}</div>
-                </div>
+                {(form.taxNumber?.trim() || form.fssaiNumber?.trim()) ? (
+                  <div className="pt-1 text-[10px] text-slate-700 font-semibold space-y-0.5">
+                    {form.taxNumber?.trim() && <div>GSTIN: {form.taxNumber.trim()}</div>}
+                    {form.fssaiNumber?.trim() && <div>FSSAI Lic No: {form.fssaiNumber.trim()}</div>}
+                  </div>
+                ) : (
+                  <div className="pt-1 text-[10px] text-slate-400 italic">
+                    (Non-GST / FSSAI unregistered business)
+                  </div>
+                )}
               </div>
 
               {/* Bill Metadata */}

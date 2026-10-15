@@ -28,7 +28,7 @@ export const TablesPage: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null);
 
   // Fetch Tables
-  const { data: tables = [], isLoading, refetch } = useQuery<RestaurantTable[]>({
+  const { data: tables = [], isLoading, isFetching, refetch } = useQuery<RestaurantTable[]>({
     queryKey: ["tables", selectedFranchiseId],
     queryFn: async () => {
       const res = await api.get("/tables");
@@ -121,8 +121,17 @@ export const TablesPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => refetch()} icon={<RefreshCw className="w-3.5 h-3.5" />}>
-            Refresh
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isFetching}
+            onClick={async () => {
+              await queryClient.invalidateQueries({ queryKey: ["tables"] });
+              refetch();
+            }}
+            icon={<RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin text-indigo-600" : ""}`} />}
+          >
+            {isFetching ? "Refreshing..." : "Refresh"}
           </Button>
           {canManage && (
             <Button

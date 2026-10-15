@@ -385,6 +385,8 @@ export interface OrderItem {
   quantity: number;
   unitPrice: number | string;
   totalPrice: number | string;
+  price?: number | string;
+  subtotal?: number | string;
   notes?: string | null;
   inventoryDeducted?: boolean;
   menuItem: MenuItem;
@@ -400,6 +402,15 @@ export interface Order {
   kotDecision?: string | null;
   paymentConfirmedAt?: string | null;
   kotSentAt?: string | null;
+  orderSource?: "POS" | "SWIGGY" | "ZOMATO" | string | null;
+  aggregatorOrderId?: string | null;
+  aggregatorStatus?: "PENDING_ACCEPTANCE" | "ACCEPTED" | "REJECTED" | string | null;
+  aggregatorRejectReason?: string | null;
+  customerDeliveryName?: string | null;
+  customerDeliveryPhone?: string | null;
+  deliveryAddress?: string | null;
+  riderName?: string | null;
+  riderPhone?: string | null;
   status: OrderStatus;
   subtotal: number | string;
   discount: number | string;
@@ -463,12 +474,60 @@ export interface Invoice {
   tax: number | string;
   total: number | string;
   createdAt: string;
+
+  // Statutory Tax & GST Audit Breakdown
+  taxableAmount?: number | null;
+  cgstRate?: number | null;
+  cgstAmount?: number | null;
+  sgstRate?: number | null;
+  sgstAmount?: number | null;
+  igstRate?: number | null;
+  igstAmount?: number | null;
+  gstin?: string | null;
+
+  // Anti-fraud dormant status & Manager void protection
+  isDormant?: boolean;
+  dormantReason?: string | null;
+  dormantBy?: string | null;
+  dormantById?: string | null;
+  dormantAt?: string | null;
+  dormantStatus?: "ACTIVE" | "PENDING_AUDIT" | "VERIFIED_VOID" | "REINSTATED" | string;
+  verifiedBy?: string | null;
+  verifiedAt?: string | null;
+  adminAuditNotes?: string | null;
+
   order: Order;
   payments: Payment[];
   franchise?: Franchise;
   totalPaid?: number;
   remainingBalance?: number;
   isFullyPaid?: boolean;
+}
+
+export interface AggregatorIntegration {
+  id: string;
+  franchiseId: string;
+  platform: "SWIGGY" | "ZOMATO";
+  isEnabled: boolean;
+  restaurantId?: string | null;
+  apiKey?: string | null;
+  autoAccept: boolean;
+  prepTimeMinutes: number;
+  webhookUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GstAuditSummary {
+  totalInvoicesCount: number;
+  grossTotal: number;
+  taxableTotal: number;
+  cgstTotal: number;
+  sgstTotal: number;
+  igstTotal: number;
+  totalTaxCollected: number;
+  dormantCount: number;
+  dormantTotal: number;
 }
 
 export interface Printer {

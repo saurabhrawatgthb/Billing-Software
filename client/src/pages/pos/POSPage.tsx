@@ -33,6 +33,9 @@ import { Button } from "../../components/common/Button.js";
 import { Input } from "../../components/common/Input.js";
 import { Select } from "../../components/common/Select.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
+import { AggregatorOrderModal } from "../../components/pos/AggregatorOrderModal.js";
+import { AggregatorSettingsModal } from "../../components/pos/AggregatorSettingsModal.js";
+import { Globe, Bell } from "lucide-react";
 
 export const POSPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -103,6 +106,60 @@ export const POSPage: React.FC = () => {
     queryFn: async () => {
       const res = await api.get("/crm/campaigns");
       return res.data.data;
+    },
+  });
+
+  // Aggregator Online Orders (Swiggy / Zomato) State
+  const [isAggregatorModalOpen, setIsAggregatorModalOpen] = useState(false);
+  const [isAggregatorSettingsOpen, setIsAggregatorSettingsOpen] = useState(false);
+
+  // Fetch Pending Aggregator Orders
+  const { data: pendingAggregatorOrders = [] } = useQuery<any[]>({
+    queryKey: ["aggregator-pending", selectedFranchiseId],
+    queryFn: async () => {
+      if (!selectedFranchiseId) return [];
+      const res = await api.get(`/aggregators/pending?franchiseId=${selectedFranchiseId}`);
+      return res.data.data;
+    },
+    enabled: !!selectedFranchiseId,
+    refetchInterval: 5000,
+  });
+
+  // Fetch Aggregator Settings
+  const { data: aggregatorSettings = [] } = useQuery<any[]>({
+    queryKey: ["aggregator-settings", selectedFranchiseId],
+    queryFn: async () => {
+      if (!selectedFranchiseId) return [];
+      const res = await api.get(`/aggregators/settings?franchiseId=${selectedFranchiseId}`);
+      return res.data.data;
+    },
+    enabled: !!selectedFranchiseId,
+  });
+
+  const isSwiggyEnabled = aggregatorSettings.find((i: any) => i.platform === "SWIGGY")?.isEnabled ?? true;
+  const isZomatoEnabled = aggregatorSettings.find((i: any) => i.platform === "ZOMATO")?.isEnabled ?? true;
+
+  // Auto-open modal on new pending online order
+  const prevPendingCountRef = React.useRef(0);
+  React.useEffect(() => {
+    if (pendingAggregatorOrders.length > prevPendingCountRef.current && pendingAggregatorOrders.length > 0) {
+      setIsAggregatorModalOpen(true);
+    }
+    prevPendingCountRef.current = pendingAggregatorOrders.length;
+  }, [pendingAggregatorOrders.length]);
+
+  // Simulate Order Mutation
+  const simulateOrderMutation = useMutation({
+    mutationFn: async (platform: "SWIGGY" | "ZOMATO") => {
+      const res = await api.post("/aggregators/simulate", {
+        franchiseId: selectedFranchiseId,
+        platform,
+      });
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["aggregator-pending"] });
+      setIsAggregatorModalOpen(true);
     },
   });
 
@@ -362,6 +419,100 @@ export const POSPage: React.FC = () => {
     <div className="h-[calc(100vh-6.5rem)] flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto overflow-hidden">
       {/* LEFT COLUMN: Catalog & Item Selection */}
       <div className="flex-1 flex flex-col min-w-0 bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
+        {/* Aggregator Status & Incoming Order Alert Ribbon */}
+        <div className="bg-slate-900 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="font-bold uppercase tracking-wider text-[11px] text-slate-400 flex items-center gap-1.5">
+              <Globe className="w-3.5 h-3.5 text-indigo-400" />
+              Aggregators:
+            </span>
+
+            {/* Swiggy status */}
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[11px] ${
+                isSwiggyEnabled
+                  ? "bg-[#FC8019]/20 text-[#FC8019] border border-[#FC8019]/40"
+                  : "bg-slate-800 text-slate-500 border border-slate-700"
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isSwiggyEnabled ? "bg-[#FC8019] animate-pulse" : "bg-slate-500"
+                }`}
+              />
+              Swiggy {isSwiggyEnabled ? "Live" : "Offline"}
+            </span>
+
+            {/* Zomato status */}
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[11px] ${
+                isZomatoEnabled
+                  ? "bg-[#E23744]/20 text-[#E23744] border border-[#E23744]/40"
+                  : "bg-slate-800 text-slate-500 border border-slate-700"
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isZomatoEnabled ? "bg-[#E23744] animate-pulse" : "bg-slate-500"
+                }`}
+              />
+              Zomato {isZomatoEnabled ? "Live" : "Offline"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Pending Incoming Orders Alert Button */}
+            {pendingAggregatorOrders.length > 0 ? (
+              <button
+                onClick={() => setIsAggregatorModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black animate-bounce shadow-md cursor-pointer transition-all"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                <span>{pendingAggregatorOrders.length} New Online Order{pendingAggregatorOrders.length > 1 ? "s" : ""}!</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsAggregatorModalOpen(true)}
+                className="text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer flex items-center gap-1"
+              >
+                <Bell className="w-3 h-3 text-slate-500" />
+                <span>Online Orders</span>
+              </button>
+            )}
+
+            {/* Test Simulation Buttons */}
+            <div className="flex items-center gap-1 pl-1 border-l border-slate-700">
+              <button
+                type="button"
+                onClick={() => simulateOrderMutation.mutate("SWIGGY")}
+                disabled={simulateOrderMutation.isPending}
+                className="px-2 py-1 rounded-md bg-slate-800 hover:bg-[#FC8019] text-slate-200 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors cursor-pointer"
+                title="Simulate incoming test order from Swiggy"
+              >
+                + Test Swiggy
+              </button>
+              <button
+                type="button"
+                onClick={() => simulateOrderMutation.mutate("ZOMATO")}
+                disabled={simulateOrderMutation.isPending}
+                className="px-2 py-1 rounded-md bg-slate-800 hover:bg-[#E23744] text-slate-200 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors cursor-pointer"
+                title="Simulate incoming test order from Zomato"
+              >
+                + Test Zomato
+              </button>
+            </div>
+
+            {/* Settings Button */}
+            <button
+              type="button"
+              onClick={() => setIsAggregatorSettingsOpen(true)}
+              className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors cursor-pointer"
+            >
+              ⚙️ Integrations
+            </button>
+          </div>
+        </div>
+
         {/* Top Control Bar */}
         <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row items-center gap-3">
           <Input
@@ -985,6 +1136,21 @@ export const POSPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Real-time Swiggy & Zomato Order Pop-up Modal */}
+      <AggregatorOrderModal
+        franchiseId={selectedFranchiseId}
+        isOpen={isAggregatorModalOpen}
+        onClose={() => setIsAggregatorModalOpen(false)}
+      />
+
+      {/* Swiggy & Zomato Webhooks & Integration Config Modal */}
+      <AggregatorSettingsModal
+        franchiseId={selectedFranchiseId}
+        isOpen={isAggregatorSettingsOpen}
+        onClose={() => setIsAggregatorSettingsOpen(false)}
+        onSimulateOrder={(platform) => simulateOrderMutation.mutate(platform)}
+      />
     </div>
   );
 };

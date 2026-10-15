@@ -216,6 +216,7 @@ model Franchise {
   customers             Customer[]
   customerVisits        CustomerVisit[]
   campaigns             Campaign[]
+  aggregatorIntegrations AggregatorIntegration[]
 }
 
 // =========================
@@ -695,6 +696,17 @@ model Order {
   paymentConfirmedAt DateTime?
   kotSentAt          DateTime?
 
+  // Aggregator / Online Delivery Integration
+  orderSource            String?   @default("POS") // "POS", "SWIGGY", "ZOMATO"
+  aggregatorOrderId      String?   // e.g. "SWIG-8492" / "ZOM-1940"
+  aggregatorStatus       String?   // "PENDING_ACCEPTANCE", "ACCEPTED", "REJECTED"
+  aggregatorRejectReason String?
+  customerDeliveryName   String?
+  customerDeliveryPhone  String?
+  deliveryAddress        String?
+  riderName              String?
+  riderPhone             String?
+
   subtotal Float @default(0)
   discount Float @default(0)
   tax      Float @default(0)
@@ -794,6 +806,27 @@ model Invoice {
   tax      Float @default(0)
   total    Float
 
+  // Statutory Tax & GST Audit Breakdown
+  taxableAmount Float?   @default(0)
+  cgstRate      Float?   @default(2.5)
+  cgstAmount    Float?   @default(0)
+  sgstRate      Float?   @default(2.5)
+  sgstAmount    Float?   @default(0)
+  igstRate      Float?   @default(0)
+  igstAmount    Float?   @default(0)
+  gstin         String?
+
+  // Anti-fraud dormant status & Manager void protection
+  isDormant       Boolean   @default(false)
+  dormantReason   String?
+  dormantBy       String?
+  dormantById     String?
+  dormantAt       DateTime?
+  dormantStatus   String?   @default("ACTIVE") // "ACTIVE" | "PENDING_AUDIT" | "VERIFIED_VOID" | "REINSTATED"
+  verifiedBy      String?
+  verifiedAt      DateTime?
+  adminAuditNotes String?
+
   createdAt DateTime @default(now())
 
   franchise Franchise @relation(fields: [franchiseId], references: [id])
@@ -801,6 +834,7 @@ model Invoice {
   payments  Payment[]
 
   @@index([franchiseId])
+  @@index([isDormant])
 }
 
 model Payment {
@@ -1070,3 +1104,27 @@ model BrandSettings {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }
+
+// ==========================================================
+// SWIGGY & ZOMATO AGGREGATOR INTEGRATION
+// ==========================================================
+
+model AggregatorIntegration {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  franchiseId     String   @db.ObjectId
+  platform        String   // "SWIGGY" | "ZOMATO"
+  isEnabled       Boolean  @default(false)
+  restaurantId    String?  // Aggregator merchant / store outlet ID
+  apiKey          String?  // API secret / webhook token
+  autoAccept      Boolean  @default(false)
+  prepTimeMinutes Int      @default(15)
+  webhookUrl      String?  // Webhook endpoint
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  franchise       Franchise @relation(fields: [franchiseId], references: [id])
+
+  @@unique([franchiseId, platform])
+  @@index([franchiseId])
+}
+

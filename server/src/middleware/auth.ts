@@ -10,6 +10,8 @@ export interface AuthenticatedUser {
   id?: string;
   role: string;
   franchiseId: string | null;
+  name?: string;
+  email?: string;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -47,6 +49,8 @@ export function authenticate(
       id: payload.userId || payload.id,
       role: payload.role,
       franchiseId: payload.franchiseId,
+      name: payload.name,
+      email: payload.email,
     };
     next();
   } catch {

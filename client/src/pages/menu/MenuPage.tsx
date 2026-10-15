@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Plus, Search, Edit2, Trash2, CheckCircle2, XCircle, Tag, ChefHat, Building2, Copy } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, CheckCircle2, XCircle, Tag, ChefHat, Building2, Copy, RefreshCw } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
 import type { Category, MenuItem, PreparationStation, Franchise } from "../../types/index.js";
@@ -65,7 +65,7 @@ export const MenuPage: React.FC = () => {
   const effectiveFranchiseId = selectedFranchiseId || targetFranchiseId || franchises[0]?.id || "";
 
   // Fetch Categories
-  const { data: categories = [] } = useQuery<Category[]>({
+  const { data: categories = [], isFetching: isFetchingCats } = useQuery<Category[]>({
     queryKey: ["categories", effectiveFranchiseId],
     queryFn: async () => {
       const res = await api.get("/menu/categories");
@@ -83,7 +83,7 @@ export const MenuPage: React.FC = () => {
   });
 
   // Fetch Menu Items
-  const { data: menuItems = [], isLoading } = useQuery<MenuItem[]>({
+  const { data: menuItems = [], isLoading, isFetching: isFetchingItems } = useQuery<MenuItem[]>({
     queryKey: ["menu-items", effectiveFranchiseId, selectedCategoryFilter],
     queryFn: async () => {
       const url = selectedCategoryFilter
@@ -93,6 +93,8 @@ export const MenuPage: React.FC = () => {
       return res.data.data;
     },
   });
+
+  const isMenuSyncing = isFetchingCats || isFetchingItems;
 
   // Item Mutation
   const saveItemMutation = useMutation({
@@ -233,6 +235,20 @@ export const MenuPage: React.FC = () => {
 
         {isBrandOwner ? (
           <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              disabled={isMenuSyncing}
+              onClick={async () => {
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: ["categories"] }),
+                  queryClient.invalidateQueries({ queryKey: ["menu-items"] }),
+                  queryClient.invalidateQueries({ queryKey: ["stations"] }),
+                ]);
+              }}
+              icon={<RefreshCw className={`w-4 h-4 text-indigo-600 ${isMenuSyncing ? "animate-spin" : ""}`} />}
+            >
+              {isMenuSyncing ? "Refreshing..." : "Refresh"}
+            </Button>
             {isBrandOwner && franchises.length > 1 && (
               <Button
                 variant="outline"
@@ -260,9 +276,24 @@ export const MenuPage: React.FC = () => {
             </Button>
           </div>
         ) : (
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center gap-2 max-w-md">
-            <Tag className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>Master Menu is centrally governed by Brand Owner. You can toggle live dish availability (In Stock / Out of Stock) below.</span>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              disabled={isMenuSyncing}
+              onClick={async () => {
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: ["categories"] }),
+                  queryClient.invalidateQueries({ queryKey: ["menu-items"] }),
+                ]);
+              }}
+              icon={<RefreshCw className={`w-4 h-4 text-indigo-600 ${isMenuSyncing ? "animate-spin" : ""}`} />}
+            >
+              {isMenuSyncing ? "Refreshing..." : "Refresh Menu"}
+            </Button>
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center gap-2 max-w-md">
+              <Tag className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Master Menu is centrally governed by Brand Owner. You can toggle live dish availability (In Stock / Out of Stock) below.</span>
+            </div>
           </div>
         )}
       </div>

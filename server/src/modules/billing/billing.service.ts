@@ -11,9 +11,25 @@ export const createInvoiceSchema = z.object({
   taxRate: z.number().nonnegative().optional(),
 });
 
+export const markDormantSchema = z.object({
+  reason: z.string().min(3, "Mandatory reason required to mark bill as dormant"),
+  notes: z.string().optional(),
+});
+
+export const verifyDormantSchema = z.object({
+  action: z.enum(["APPROVE_VOID", "REINSTATE"]),
+  notes: z.string().optional(),
+});
+
 export async function listInvoices(
   franchiseId: string | null,
-  filters: { startDate?: string; endDate?: string },
+  filters: {
+    startDate?: string;
+    endDate?: string;
+    isDormant?: boolean | string;
+    dormantStatus?: string;
+    orderSource?: string;
+  },
   userRole?: string
 ) {
   if (!franchiseId && userRole !== "SUPER_ADMIN") return [];
@@ -29,10 +45,20 @@ export async function listInvoices(
     }
   }
 
+  let dormantFilter: boolean | undefined = undefined;
+  if (filters.isDormant === true || filters.isDormant === "true") {
+    dormantFilter = true;
+  } else if (filters.isDormant === false || filters.isDormant === "false") {
+    dormantFilter = false;
+  }
+
   return prisma.invoice.findMany({
     where: {
       ...(franchiseId ? { franchiseId } : {}),
       createdAt: dateFilter,
+      isDormant: dormantFilter,
+      dormantStatus: filters.dormantStatus || undefined,
+      order: filters.orderSource ? { orderSource: filters.orderSource } : undefined,
     },
     include: {
       order: {
@@ -134,17 +160,24 @@ export async function createInvoiceForOrder(
     throw new AppError("Cannot generate invoice for a cancelled order", 400);
   }
 
+  const brand = await prisma.brandSettings.findFirst();
+
   // Recalculate if discount is overridden
   let subtotalNum = Number(order.subtotal);
   let discountNum = data.discount !== undefined ? data.discount : Number(order.discount);
   let taxNum = Number(order.tax);
+  let gstRateUsed = data.taxRate !== undefined ? data.taxRate : (brand?.defaultGstRate ?? 5.0);
 
   if (data.discount !== undefined || data.taxRate !== undefined) {
     const taxable = Math.max(0, subtotalNum - discountNum);
-    const rate = data.taxRate !== undefined ? data.taxRate : 5;
-    taxNum = (taxable * rate) / 100;
+    taxNum = (taxable * gstRateUsed) / 100;
   }
-  const totalNum = Math.max(0, subtotalNum - discountNum + taxNum);
+  const taxableNum = Math.max(0, subtotalNum - discountNum);
+  const totalNum = Math.max(0, taxableNum + taxNum);
+
+  // Statutory GST Breakdown (50% CGST + 50% SGST)
+  const halfRate = Number((gstRateUsed / 2).toFixed(2));
+  const halfTax = Number((taxNum / 2).toFixed(2));
 
   // Generate unique invoice number
   const franchise = await prisma.franchise.findUnique({
@@ -167,6 +200,17 @@ export async function createInvoiceForOrder(
         discount: Number(discountNum.toFixed(2)),
         tax: Number(taxNum.toFixed(2)),
         total: Number(totalNum.toFixed(2)),
+        // GST Audit breakdown
+        taxableAmount: Number(taxableNum.toFixed(2)),
+        cgstRate: halfRate,
+        cgstAmount: halfTax,
+        sgstRate: halfRate,
+        sgstAmount: halfTax,
+        igstRate: 0,
+        igstAmount: 0,
+        gstin: brand?.taxNumber || null,
+        isDormant: false,
+        dormantStatus: "ACTIVE",
       },
       include: {
         order: {
@@ -219,4 +263,273 @@ export async function createInvoiceForOrder(
   });
 
   return invoice;
+}
+
+/**
+ * Manager & Cashier Anti-Fraud Protection:
+ * Managers CANNOT hard-delete bills. They can only mark them as DORMANT with a mandatory reason.
+ * Dormant bills are excluded from physical day totals and sent to Super Admin for audit.
+ */
+export async function markInvoiceDormant(
+  invoiceId: string,
+  franchiseId: string | null,
+  reason: string,
+  user?: { id?: string; userId?: string; name?: string; role?: string }
+) {
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    include: {
+      order: {
+        include: { tableSession: true },
+      },
+    },
+  });
+
+  if (!invoice) {
+    throw new AppError("Invoice not found", 404);
+  }
+
+  if (user?.role !== "SUPER_ADMIN" && franchiseId && invoice.franchiseId !== franchiseId) {
+    throw new AppError("Unauthorized to modify this invoice", 403);
+  }
+
+  if (invoice.isDormant) {
+    throw new AppError("Invoice is already marked as dormant", 400);
+  }
+
+  const staffName = user?.name || "Franchise Staff";
+  const staffId = user?.id || user?.userId || null;
+
+  const updatedInvoice = await prisma.$transaction(async (tx) => {
+    const inv = await tx.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        isDormant: true,
+        dormantReason: reason.trim(),
+        dormantBy: staffName,
+        dormantById: staffId,
+        dormantAt: new Date(),
+        dormantStatus: "PENDING_AUDIT",
+      },
+      include: {
+        order: {
+          include: {
+            items: { include: { menuItem: true } },
+            tableSession: { include: { table: true } },
+          },
+        },
+        payments: true,
+        franchise: true,
+      },
+    });
+
+    // If order was attached to an active table session, release the table
+    if (invoice.order.tableSession?.tableId) {
+      await tx.restaurantTable.update({
+        where: { id: invoice.order.tableSession.tableId },
+        data: { status: TableStatus.AVAILABLE },
+      });
+      await tx.tableSession.update({
+        where: { id: invoice.order.tableSession.id },
+        data: { endedAt: new Date() },
+      });
+    }
+
+    return inv;
+  });
+
+  if (invoice.order.tableSession?.tableId) {
+    emitToFranchise(invoice.franchiseId, "table:status_changed", {
+      tableId: invoice.order.tableSession.tableId,
+      status: TableStatus.AVAILABLE,
+    });
+  }
+
+  emitToFranchise(invoice.franchiseId, "invoice:dormant_marked", updatedInvoice);
+
+  await logAudit({
+    franchiseId: invoice.franchiseId,
+    userId: staffId ?? undefined,
+    action: "MARK_INVOICE_DORMANT",
+    entity: "Invoice",
+    entityId: invoiceId,
+    newData: {
+      invoiceNumber: invoice.invoiceNumber,
+      dormantReason: reason.trim(),
+      dormantBy: staffName,
+    },
+  });
+
+  return updatedInvoice;
+}
+
+/**
+ * Super Admin Verification & Audit Authority:
+ * Super Admin reviews dormant bills to approve void or reinstate them.
+ */
+export async function verifyDormantInvoice(
+  invoiceId: string,
+  action: "APPROVE_VOID" | "REINSTATE",
+  adminNotes: string,
+  adminUser?: { id?: string; userId?: string; name?: string; role?: string }
+) {
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    include: { order: true, franchise: true },
+  });
+
+  if (!invoice) {
+    throw new AppError("Invoice not found", 404);
+  }
+
+  const adminName = adminUser?.name || "Super Admin";
+  const adminId = adminUser?.id || adminUser?.userId || null;
+
+  const isReinstating = action === "REINSTATE";
+
+  const updatedInvoice = await prisma.invoice.update({
+    where: { id: invoiceId },
+    data: {
+      isDormant: !isReinstating,
+      dormantStatus: isReinstating ? "REINSTATED" : "VERIFIED_VOID",
+      verifiedBy: adminName,
+      verifiedAt: new Date(),
+      adminAuditNotes: adminNotes?.trim() || (isReinstating ? "Reinstated by Super Admin" : "Void approved by Super Admin"),
+    },
+    include: {
+      order: {
+        include: {
+          items: { include: { menuItem: true } },
+          tableSession: { include: { table: true } },
+        },
+      },
+      payments: true,
+      franchise: true,
+    },
+  });
+
+  emitToFranchise(invoice.franchiseId, "invoice:dormant_verified", updatedInvoice);
+
+  await logAudit({
+    franchiseId: invoice.franchiseId,
+    userId: adminId ?? undefined,
+    action: "VERIFY_DORMANT_INVOICE",
+    entity: "Invoice",
+    entityId: invoiceId,
+    newData: {
+      action,
+      invoiceNumber: invoice.invoiceNumber,
+      verifiedBy: adminName,
+      adminAuditNotes: adminNotes,
+    },
+  });
+
+  return updatedInvoice;
+}
+
+/**
+ * Super Admin GST Filing & Statutory Tax Control Center:
+ * Aggregates all invoices across franchises with B2C/B2B breakdown for GSTR-1 preparation.
+ */
+export async function getGstAuditReport(
+  franchiseId: string | null,
+  filters: {
+    startDate?: string;
+    endDate?: string;
+    includeDormant?: boolean | string;
+  },
+  userRole?: string
+) {
+  if (!franchiseId && userRole !== "SUPER_ADMIN") return null;
+
+  let dateFilter: { gte?: Date; lte?: Date } | undefined;
+  if (filters.startDate || filters.endDate) {
+    dateFilter = {};
+    if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
+    if (filters.endDate) {
+      const e = new Date(filters.endDate);
+      e.setUTCHours(23, 59, 59, 999);
+      dateFilter.lte = e;
+    }
+  }
+
+  const includeDormant = filters.includeDormant === true || filters.includeDormant === "true";
+
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      ...(franchiseId ? { franchiseId } : {}),
+      createdAt: dateFilter,
+      ...(includeDormant ? {} : { isDormant: false }),
+    },
+    include: {
+      order: {
+        include: {
+          items: { include: { menuItem: true } },
+          customer: true,
+        },
+      },
+      payments: true,
+      franchise: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          address: true,
+          phone: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  // Calculate statutory totals
+  let grossTotal = 0;
+  let taxableTotal = 0;
+  let cgstTotal = 0;
+  let sgstTotal = 0;
+  let igstTotal = 0;
+  let totalTaxCollected = 0;
+  let dormantCount = 0;
+  let dormantTotal = 0;
+
+  for (const inv of invoices) {
+    if (inv.isDormant) {
+      dormantCount++;
+      dormantTotal += Number(inv.total);
+      // Skip dormant amounts from active tax liability calculation
+      continue;
+    }
+
+    grossTotal += Number(inv.total);
+    const taxable = inv.taxableAmount !== null && inv.taxableAmount !== undefined
+      ? Number(inv.taxableAmount)
+      : Math.max(0, Number(inv.subtotal) - Number(inv.discount));
+    taxableTotal += taxable;
+
+    const cgst = inv.cgstAmount !== null && inv.cgstAmount !== undefined
+      ? Number(inv.cgstAmount)
+      : Number((inv.tax / 2).toFixed(2));
+    const sgst = inv.sgstAmount !== null && inv.sgstAmount !== undefined
+      ? Number(inv.sgstAmount)
+      : Number((inv.tax / 2).toFixed(2));
+
+    cgstTotal += cgst;
+    sgstTotal += sgst;
+    totalTaxCollected += Number(inv.tax);
+  }
+
+  return {
+    summary: {
+      totalInvoicesCount: invoices.length - dormantCount,
+      grossTotal: Number(grossTotal.toFixed(2)),
+      taxableTotal: Number(taxableTotal.toFixed(2)),
+      cgstTotal: Number(cgstTotal.toFixed(2)),
+      sgstTotal: Number(sgstTotal.toFixed(2)),
+      igstTotal: Number(igstTotal.toFixed(2)),
+      totalTaxCollected: Number(totalTaxCollected.toFixed(2)),
+      dormantCount,
+      dormantTotal: Number(dormantTotal.toFixed(2)),
+    },
+    invoices,
+  };
 }

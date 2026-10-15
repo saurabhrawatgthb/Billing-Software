@@ -46,7 +46,7 @@ export const OrdersPage: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   // Fetch Orders
-  const { data: orders = [], isLoading, refetch } = useQuery<Order[]>({
+  const { data: orders = [], isLoading, isFetching, refetch } = useQuery<Order[]>({
     queryKey: ["orders", selectedFranchiseId, statusFilter],
     queryFn: async () => {
       const url = statusFilter ? `/orders?status=${statusFilter}` : "/orders";
@@ -119,8 +119,17 @@ export const OrdersPage: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => refetch()} icon={<RefreshCw className="w-3.5 h-3.5" />}>
-            Refresh
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isFetching}
+            onClick={async () => {
+              await queryClient.invalidateQueries({ queryKey: ["orders"] });
+              refetch();
+            }}
+            icon={<RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin text-indigo-600" : ""}`} />}
+          >
+            {isFetching ? "Refreshing..." : "Refresh"}
           </Button>
           <Button variant="primary" onClick={() => navigate("/pos")} icon={<Plus className="w-4 h-4" />}>
             New Order
