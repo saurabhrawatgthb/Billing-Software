@@ -17,6 +17,8 @@ import {
   updateCategory,
   updateMenuItem,
   updateMenuItemSchema,
+  cloneMenuSchema,
+  cloneFranchiseMenu,
 } from "./menu.service.js";
 import { AppError } from "../../middleware/error.js";
 
@@ -151,6 +153,21 @@ export async function addStation(req: AuthenticatedRequest, res: Response, next:
     const { name } = z.object({ name: z.string().trim().min(1) }).parse(req.body);
     const result = await createStation(name, franchiseId, req.user?.userId);
     return res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Clone Menu Between Franchises
+export async function cloneMenu(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const validated = cloneMenuSchema.parse(req.body);
+    const result = await cloneFranchiseMenu(validated, req.user?.userId);
+    return res.status(200).json({
+      success: true,
+      message: `Successfully cloned menu from ${result.sourceFranchiseName} to ${result.targetFranchiseName}`,
+      data: result,
+    });
   } catch (error) {
     next(error);
   }

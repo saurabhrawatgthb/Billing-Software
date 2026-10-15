@@ -11,6 +11,7 @@ import {
   Mail,
   Receipt,
   Sparkles,
+  Copy,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import type { Franchise, BrandSettings } from "../../types/index.js";
@@ -21,6 +22,7 @@ import { Modal } from "../../components/common/Modal.js";
 import { Badge, getStatusBadgeVariant } from "../../components/common/Badge.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
+import { CloneMenuModal } from "../../components/menu/CloneMenuModal.js";
 
 export const FranchisesPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -28,6 +30,8 @@ export const FranchisesPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingFranchise, setEditingFranchise] = useState<Franchise | null>(null);
   const [previewBillFranchise, setPreviewBillFranchise] = useState<Franchise | null>(null);
+  const [cloneModalTarget, setCloneModalTarget] = useState<Franchise | null>(null);
+  const [cloneNotification, setCloneNotification] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -147,6 +151,22 @@ export const FranchisesPage: React.FC = () => {
           Add New Franchise
         </Button>
       </div>
+
+      {/* Clone Menu Success Banner */}
+      {cloneNotification && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-3 text-emerald-800 text-sm font-medium shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{cloneNotification}</span>
+          </div>
+          <button
+            onClick={() => setCloneNotification(null)}
+            className="text-xs text-emerald-700 hover:text-emerald-900 font-semibold cursor-pointer underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Info Callout: Branch Bill Address Isolation */}
       <div className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-200 text-xs text-indigo-900 flex items-start gap-3 shadow-xs">
@@ -289,6 +309,17 @@ export const FranchisesPage: React.FC = () => {
                   </button>
 
                   <div className="flex items-center gap-2">
+                    {franchises.length > 1 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCloneModalTarget(franchise)}
+                        icon={<Copy className="w-3.5 h-3.5 text-indigo-600" />}
+                        title="Copy another branch's menu into this franchise"
+                      >
+                        Copy Menu
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -484,6 +515,21 @@ export const FranchisesPage: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* Clone Menu Modal */}
+      {cloneModalTarget && (
+        <CloneMenuModal
+          isOpen={!!cloneModalTarget}
+          onClose={() => setCloneModalTarget(null)}
+          franchises={franchises}
+          initialTargetId={cloneModalTarget.id}
+          onSuccess={(result) => {
+            setCloneNotification(
+              `Cloned ${result.totalItems} dishes & ${result.categoriesCount} categories from ${result.sourceFranchiseName} into ${result.targetFranchiseName}!`
+            );
+          }}
+        />
+      )}
     </div>
   );
 };

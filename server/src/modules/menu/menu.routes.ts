@@ -12,11 +12,15 @@ import {
   getStations,
   removeCategory,
   toggleAvailability,
+  cloneMenu,
 } from "./menu.controller.js";
 
 const router = Router();
 
 router.use(authenticate);
+
+// Clone Menu Across Franchises (Super Admin only)
+router.post("/clone", authorize("SUPER_ADMIN"), cloneMenu);
 
 // Categories
 router.get("/categories", getCategories);

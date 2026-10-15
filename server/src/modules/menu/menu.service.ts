@@ -394,3 +394,193 @@ export async function createStation(name: string, franchiseId: string, currentUs
 
   return station;
 }
+
+// ========================
+// CLONE MENU BETWEEN FRANCHISES
+// ========================
+
+export const cloneMenuSchema = z.object({
+  sourceFranchiseId: z.string().min(1, "Source franchise is required"),
+  targetFranchiseId: z.string().min(1, "Target franchise is required"),
+  mode: z.enum(["MERGE", "REPLACE"]).default("MERGE"),
+  priceAdjustmentPercent: z.number().optional().default(0),
+  copyStations: z.boolean().optional().default(true),
+});
+
+export type CloneMenuInput = z.infer<typeof cloneMenuSchema>;
+
+export async function cloneFranchiseMenu(input: CloneMenuInput, currentUserId?: string) {
+  const { sourceFranchiseId, targetFranchiseId, mode, priceAdjustmentPercent, copyStations } = input;
+
+  if (sourceFranchiseId === targetFranchiseId) {
+    throw new AppError("Source and target franchises cannot be the same", 400);
+  }
+
+  const [sourceFranchise, targetFranchise] = await Promise.all([
+    prisma.franchise.findUnique({ where: { id: sourceFranchiseId } }),
+    prisma.franchise.findUnique({ where: { id: targetFranchiseId } }),
+  ]);
+
+  if (!sourceFranchise) throw new AppError("Source franchise not found", 404);
+  if (!targetFranchise) throw new AppError("Target franchise not found", 404);
+
+  // 1. Fetch all source categories, stations, items
+  const [sourceCategories, sourceStations, sourceItems] = await Promise.all([
+    prisma.category.findMany({ where: { franchiseId: sourceFranchiseId } }),
+    prisma.preparationStation.findMany({ where: { franchiseId: sourceFranchiseId } }),
+    prisma.menuItem.findMany({ where: { franchiseId: sourceFranchiseId } }),
+  ]);
+
+  if (sourceCategories.length === 0 && sourceItems.length === 0) {
+    throw new AppError(`Source franchise (${sourceFranchise.name}) has no menu categories or dishes to copy`, 400);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    // If mode is REPLACE, remove target items if not yet ordered
+    if (mode === "REPLACE") {
+      const orderCount = await tx.orderItem.count({
+        where: { order: { franchiseId: targetFranchiseId } },
+      });
+      if (orderCount === 0) {
+        await tx.menuItem.deleteMany({ where: { franchiseId: targetFranchiseId } });
+        await tx.category.deleteMany({ where: { franchiseId: targetFranchiseId } });
+      }
+    }
+
+    // 2. Map or create stations in target franchise
+    const stationMap = new Map<string, string>();
+    if (copyStations) {
+      for (const st of sourceStations) {
+        const existing = await tx.preparationStation.findUnique({
+          where: {
+            franchiseId_name: {
+              franchiseId: targetFranchiseId,
+              name: st.name,
+            },
+          },
+        });
+        if (existing) {
+          stationMap.set(st.id, existing.id);
+        } else {
+          const created = await tx.preparationStation.create({
+            data: {
+              franchiseId: targetFranchiseId,
+              name: st.name,
+            },
+          });
+          stationMap.set(st.id, created.id);
+        }
+      }
+    }
+
+    // 3. Map or create categories in target franchise
+    const categoryMap = new Map<string, string>();
+    let categoriesCreated = 0;
+    for (const cat of sourceCategories) {
+      const existing = await tx.category.findUnique({
+        where: {
+          franchiseId_name: {
+            franchiseId: targetFranchiseId,
+            name: cat.name,
+          },
+        },
+      });
+      if (existing) {
+        categoryMap.set(cat.id, existing.id);
+      } else {
+        const created = await tx.category.create({
+          data: {
+            franchiseId: targetFranchiseId,
+            name: cat.name,
+            description: cat.description,
+            isActive: cat.isActive,
+          },
+        });
+        categoryMap.set(cat.id, created.id);
+        categoriesCreated++;
+      }
+    }
+
+    // 4. Map and clone menu items
+    let itemsCreated = 0;
+    let itemsUpdated = 0;
+
+    for (const item of sourceItems) {
+      const targetCatId = categoryMap.get(item.categoryId);
+      if (!targetCatId) continue;
+
+      const targetStationId = item.stationId ? (stationMap.get(item.stationId) || null) : null;
+
+      // Price calculation
+      let price = Number(item.price);
+      if (priceAdjustmentPercent && priceAdjustmentPercent !== 0) {
+        price = Math.round((price * (1 + priceAdjustmentPercent / 100)) * 100) / 100;
+      }
+
+      // Check if item code already exists in target franchise
+      const existingItem = await tx.menuItem.findUnique({
+        where: {
+          franchiseId_code: {
+            franchiseId: targetFranchiseId,
+            code: item.code,
+          },
+        },
+      });
+
+      if (existingItem) {
+        await tx.menuItem.update({
+          where: { id: existingItem.id },
+          data: {
+            name: item.name,
+            categoryId: targetCatId,
+            stationId: targetStationId,
+            description: item.description,
+            price,
+            isAvailable: item.isAvailable,
+          },
+        });
+        itemsUpdated++;
+      } else {
+        await tx.menuItem.create({
+          data: {
+            franchiseId: targetFranchiseId,
+            categoryId: targetCatId,
+            stationId: targetStationId,
+            name: item.name,
+            code: item.code,
+            description: item.description,
+            price,
+            isAvailable: item.isAvailable,
+          },
+        });
+        itemsCreated++;
+      }
+    }
+
+    await logAudit({
+      franchiseId: targetFranchiseId,
+      userId: currentUserId,
+      action: "CLONE_MENU",
+      entity: "Menu",
+      entityId: targetFranchiseId,
+      newData: {
+        sourceFranchise: sourceFranchise.name,
+        targetFranchise: targetFranchise.name,
+        categoriesCreated,
+        itemsCreated,
+        itemsUpdated,
+        priceAdjustmentPercent,
+      },
+    });
+
+    return {
+      sourceFranchiseName: sourceFranchise.name,
+      targetFranchiseName: targetFranchise.name,
+      categoriesCount: categoriesCreated + (sourceCategories.length - categoriesCreated),
+      categoriesCreated,
+      itemsCreated,
+      itemsUpdated,
+      totalItems: itemsCreated + itemsUpdated,
+    };
+  });
+}

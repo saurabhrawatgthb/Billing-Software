@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Plus, Search, Edit2, Trash2, CheckCircle2, XCircle, Tag, ChefHat, Building2 } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, CheckCircle2, XCircle, Tag, ChefHat, Building2, Copy } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
 import type { Category, MenuItem, PreparationStation, Franchise } from "../../types/index.js";
@@ -13,15 +13,18 @@ import { Modal } from "../../components/common/Modal.js";
 import { Badge } from "../../components/common/Badge.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
+import { CloneMenuModal } from "../../components/menu/CloneMenuModal.js";
 
 export const MenuPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { selectedFranchiseId, user } = useAuthStore();
+  const { selectedFranchiseId, setSelectedFranchise, user } = useAuthStore();
   const isBrandOwner = user?.role === "SUPER_ADMIN";
 
   const [activeTab, setActiveTab] = useState<"items" | "categories">("items");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("");
+  const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
+  const [cloneNotification, setCloneNotification] = useState<string | null>(null);
 
   // Item Modal State
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -230,6 +233,15 @@ export const MenuPage: React.FC = () => {
 
         {isBrandOwner ? (
           <div className="flex items-center gap-3">
+            {isBrandOwner && franchises.length > 1 && (
+              <Button
+                variant="outline"
+                onClick={() => setIsCloneModalOpen(true)}
+                icon={<Copy className="w-4 h-4 text-indigo-600" />}
+              >
+                Copy Menu Across Outlets
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={handleOpenCreateCategory}
@@ -254,6 +266,22 @@ export const MenuPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Cloned Notification Banner */}
+      {cloneNotification && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-3 text-emerald-800 text-sm font-medium shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{cloneNotification}</span>
+          </div>
+          <button
+            onClick={() => setCloneNotification(null)}
+            className="text-xs text-emerald-700 hover:text-emerald-900 font-semibold cursor-pointer underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Zero Franchises Alert */}
       {isBrandOwner && franchises.length === 0 && (
@@ -619,6 +647,22 @@ export const MenuPage: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Clone Menu Modal */}
+      {isBrandOwner && (
+        <CloneMenuModal
+          isOpen={isCloneModalOpen}
+          onClose={() => setIsCloneModalOpen(false)}
+          franchises={franchises}
+          initialSourceId={selectedFranchiseId || franchises[0]?.id}
+          onSuccess={(result) => {
+            setSelectedFranchise(result.targetFranchiseId);
+            setCloneNotification(
+              `Cloned ${result.totalItems} dishes & ${result.categoriesCount} categories from ${result.sourceFranchiseName} into ${result.targetFranchiseName}. You are now viewing ${result.targetFranchiseName}'s menu!`
+            );
+          }}
+        />
+      )}
     </div>
   );
 };
