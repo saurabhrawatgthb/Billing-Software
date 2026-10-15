@@ -22,6 +22,9 @@ import {
   UtensilsCrossed,
   Store,
   Users,
+  Upload,
+  Image as ImageIcon,
+  Trash2,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import type { BrandSettings, Franchise } from "../../types/index.js";
@@ -138,6 +141,59 @@ export const BrandSettingsPage: React.FC = () => {
   const handlePrintSimulation = () => {
     setPrintSimulated(true);
     setTimeout(() => setPrintSimulated(false), 2500);
+  };
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setErrorMessage("Please select a valid image file (PNG, JPG, SVG, WebP)");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMessage("Image file size should be less than 5MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new window.Image();
+      img.onload = () => {
+        // Optimize logo dimensions to max 512x512
+        const maxDim = 512;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL("image/png", 0.9);
+          setForm((prev) => ({ ...prev, logoUrl: compressedDataUrl }));
+          setSuccessMessage("Brand logo loaded from your computer successfully!");
+          setErrorMessage(null);
+          setTimeout(() => setSuccessMessage(null), 4000);
+        } else {
+          setForm((prev) => ({ ...prev, logoUrl: event.target?.result as string }));
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   if (isLoading) {
@@ -353,14 +409,61 @@ export const BrandSettingsPage: React.FC = () => {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                  <Input
-                    label="Brand Logo URL"
-                    placeholder="https://example.com/logo.png"
-                    value={form.logoUrl}
-                    onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
-                    helperText="Paste direct image link for bill printouts and web app"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Brand Logo
+                    </label>
+                    <div className="flex gap-2 items-center">
+                      <div className="flex-1">
+                        <Input
+                          placeholder="Paste image URL (https://...) or upload below"
+                          value={form.logoUrl.startsWith("data:") ? "[Local Uploaded Image]" : form.logoUrl}
+                          onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
+                          leftIcon={<ImageIcon className="w-4 h-4 text-slate-400" />}
+                        />
+                      </div>
+                      <label className="cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg border border-indigo-200 transition-colors shadow-2xs shrink-0">
+                        <Upload className="w-4 h-4" />
+                        <span>Upload File</span>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+                          className="hidden"
+                          onChange={handleLogoFileUpload}
+                        />
+                      </label>
+                      {form.logoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setForm({ ...form, logoUrl: "" })}
+                          className="p-2.5 text-rose-500 hover:bg-rose-50 rounded-lg border border-rose-200 transition-colors shrink-0"
+                          title="Remove logo"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    {form.logoUrl && (
+                      <div className="flex items-center gap-3 p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                        <img
+                          src={form.logoUrl}
+                          alt="Brand Logo Preview"
+                          className="w-10 h-10 object-contain rounded border border-slate-200 bg-white p-0.5"
+                        />
+                        <div className="text-xs text-slate-600 flex-1">
+                          <p className="font-semibold text-slate-800">Logo active</p>
+                          <p className="text-[11px] text-slate-400">
+                            {form.logoUrl.startsWith("data:") ? "Loaded directly from your computer" : "Loaded from external web URL"}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-slate-500">
+                      Upload any image (.png, .jpg, .svg) from your computer or paste an external image link.
+                    </p>
+                  </div>
 
                   <div className="space-y-1">
                     <Input
