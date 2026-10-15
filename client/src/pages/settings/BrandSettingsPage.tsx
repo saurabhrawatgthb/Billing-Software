@@ -409,7 +409,7 @@ export const BrandSettingsPage: React.FC = () => {
                     placeholder="e.g. 22AAAAA0000A1Z5 (Optional)"
                     value={form.taxNumber}
                     onChange={(e) => setForm({ ...form, taxNumber: e.target.value })}
-                    helperText="Optional. Leave blank if not GST registered or operating under non-GST threshold."
+                    helperText="Optional. Leave blank if not entering a GST number. No GST header will appear on bills."
                   />
 
                   <Input
@@ -417,7 +417,7 @@ export const BrandSettingsPage: React.FC = () => {
                     placeholder="e.g. 10019022000000 (Optional)"
                     value={form.fssaiNumber}
                     onChange={(e) => setForm({ ...form, fssaiNumber: e.target.value })}
-                    helperText="Optional. 14-digit food safety license. Leave blank if pending."
+                    helperText="Optional. 14-digit food safety license. Leave blank if not entering an FSSAI number."
                   />
 
                   <div>
@@ -706,11 +706,7 @@ export const BrandSettingsPage: React.FC = () => {
                     {form.taxNumber?.trim() && <div>GSTIN: {form.taxNumber.trim()}</div>}
                     {form.fssaiNumber?.trim() && <div>FSSAI Lic No: {form.fssaiNumber.trim()}</div>}
                   </div>
-                ) : (
-                  <div className="pt-1 text-[10px] text-slate-400 italic">
-                    (Non-GST / FSSAI unregistered business)
-                  </div>
-                )}
+                ) : null}
               </div>
 
               {/* Bill Metadata */}

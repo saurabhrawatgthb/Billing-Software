@@ -358,7 +358,7 @@ export const BillingPage: React.FC = () => {
         `"${inv.franchise?.code || "HQ"}"`,
         `"${inv.order?.orderSource || "POS"}"`,
         `"${inv.order?.customerDeliveryName || (inv.order as any)?.customer?.name || "B2C Consumer"}"`,
-        `"${inv.gstin || "N/A"}"`,
+        `"${inv.gstin || ""}"`,
         taxable.toFixed(2),
         cgstRt,
         cgstAmt.toFixed(2),
@@ -907,8 +907,8 @@ export const BillingPage: React.FC = () => {
                         <td className="px-4 py-3 font-black text-gray-900">
                           {currSym}{Number(inv.total).toFixed(2)}
                         </td>
-                        <td className="px-4 py-3 font-mono text-[11px]">
-                          {inv.gstin || "Unregistered"}
+                        <td className="px-4 py-3 font-mono text-[11px] text-gray-500">
+                          {inv.gstin || "—"}
                         </td>
                         <td className="px-4 py-3">
                           {inv.isDormant ? (
