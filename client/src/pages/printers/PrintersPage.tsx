@@ -24,6 +24,7 @@ import { Modal } from "../../components/common/Modal.js";
 import { Badge, getStatusBadgeVariant } from "../../components/common/Badge.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
+import { usePermissions } from "../../hooks/usePermissions.js";
 
 const PRINTER_TYPES: { value: PrinterType; label: string }[] = [
   { value: "RECEIPT", label: "🧾 Receipt Thermal Printer" },
@@ -37,7 +38,9 @@ const PRINTER_TYPES: { value: PrinterType; label: string }[] = [
 export const PrintersPage: React.FC = () => {
   const queryClient = useQueryClient();
   const { selectedFranchiseId, user } = useAuthStore();
-  const canManage = ["SUPER_ADMIN", "FRANCHISE_MANAGER"].includes(user?.role || "");
+  const { isSuperAdmin, canManagePrinters } = usePermissions();
+  const canManage = isSuperAdmin || canManagePrinters;
+  const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPrinter, setEditingPrinter] = useState<Printer | null>(null);
@@ -60,18 +63,20 @@ export const PrintersPage: React.FC = () => {
 
   // Fetch Printers
   const { data: printers = [], isLoading } = useQuery<Printer[]>({
-    queryKey: ["printers", selectedFranchiseId],
+    queryKey: ["printers", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/printers");
+      const url = effectiveFranchiseId ? `/printers?franchiseId=${effectiveFranchiseId}` : "/printers";
+      const res = await api.get(url);
       return res.data.data;
     },
   });
 
   // Fetch Stations
   const { data: stations = [] } = useQuery<PreparationStation[]>({
-    queryKey: ["stations", selectedFranchiseId],
+    queryKey: ["stations", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/menu/stations");
+      const url = effectiveFranchiseId ? `/menu/stations?franchiseId=${effectiveFranchiseId}` : "/menu/stations";
+      const res = await api.get(url);
       return res.data.data;
     },
   });
@@ -80,6 +85,7 @@ export const PrintersPage: React.FC = () => {
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const payload = {
+        franchiseId: effectiveFranchiseId || undefined,
         name: data.name,
         type: data.type,
         ipAddress: data.ipAddress || null,

@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "../../lib/prisma.js";
 import { AppError } from "../../middleware/error.js";
 import { logAudit } from "../../lib/audit.js";
+import { emitToFranchise } from "../../lib/socket.js";
 
 // ========================
 // CATEGORIES
@@ -57,6 +58,8 @@ export async function createCategory(data: z.infer<typeof categorySchema>, franc
     newData: category,
   });
 
+  emitToFranchise(franchiseId, "menu:updated", { type: "category_created", data: category });
+
   return category;
 }
 
@@ -100,6 +103,8 @@ export async function updateCategory(
     newData: updated,
   });
 
+  emitToFranchise(franchiseId, "menu:updated", { type: "category_updated", data: updated });
+
   return updated;
 }
 
@@ -127,6 +132,8 @@ export async function deleteCategory(id: string, franchiseId: string, currentUse
     entityId: id,
     oldData: existing,
   });
+
+  emitToFranchise(franchiseId, "menu:updated", { type: "category_deleted", id });
 
   return { success: true, message: "Category deleted" };
 }
@@ -251,6 +258,8 @@ export async function createMenuItem(
     newData: item,
   });
 
+  emitToFranchise(franchiseId, "menu:updated", { type: "item_created", data: item });
+
   return item;
 }
 
@@ -324,6 +333,8 @@ export async function updateMenuItem(
     newData: updated,
   });
 
+  emitToFranchise(franchiseId, "menu:updated", { type: "item_updated", data: updated });
+
   return updated;
 }
 
@@ -353,6 +364,8 @@ export async function setMenuItemAvailability(
     oldData: { isAvailable: existing.isAvailable },
     newData: { isAvailable },
   });
+
+  emitToFranchise(franchiseId, "menu:updated", { type: "availability_changed", data: updated });
 
   return updated;
 }
@@ -403,6 +416,8 @@ export async function createStation(name: string, franchiseId: string, currentUs
     entityId: station.id,
     newData: station,
   });
+
+  emitToFranchise(franchiseId, "menu:updated", { type: "station_created", data: station });
 
   return station;
 }
@@ -585,7 +600,7 @@ export async function cloneFranchiseMenu(input: CloneMenuInput, currentUserId?: 
       },
     });
 
-    return {
+    const result = {
       sourceFranchiseName: sourceFranchise.name,
       targetFranchiseName: targetFranchise.name,
       categoriesCount: categoriesCreated + (sourceCategories.length - categoriesCreated),
@@ -594,5 +609,9 @@ export async function cloneFranchiseMenu(input: CloneMenuInput, currentUserId?: 
       itemsUpdated,
       totalItems: itemsCreated + itemsUpdated,
     };
+
+    emitToFranchise(targetFranchiseId, "menu:updated", { type: "menu_cloned", data: result });
+
+    return result;
   });
 }

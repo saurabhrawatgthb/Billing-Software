@@ -2,6 +2,7 @@ import { CustomerSegment, CampaignType, CampaignStatus, CommunicationChannel, Co
 import prisma from "../../lib/prisma.js";
 import { AppError } from "../../middleware/error.js";
 import { MessagingService } from "./messaging.service.js";
+import { emitToFranchise, broadcastEvent } from "../../lib/socket.js";
 import type {
   CreateCustomerInput,
   CustomerFilterParams,
@@ -169,7 +170,7 @@ export class CRMService {
       throw new AppError("A customer with this phone number already exists", 400);
     }
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const customer = await tx.customer.create({
         data: {
           franchiseId: franchiseId || null,
@@ -200,6 +201,14 @@ export class CRMService {
         include: { preference: true },
       });
     });
+
+    if (franchiseId) {
+      emitToFranchise(franchiseId, "crm:updated", { customerId: result?.id });
+    } else {
+      broadcastEvent("crm:updated", { customerId: result?.id });
+    }
+
+    return result;
   }
 
   /**
@@ -218,7 +227,7 @@ export class CRMService {
       optOutAt = null;
     }
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const updated = await tx.customer.update({
         where: { id },
         data: {
@@ -255,6 +264,14 @@ export class CRMService {
         include: { preference: true },
       });
     });
+
+    if (customer.franchiseId) {
+      emitToFranchise(customer.franchiseId, "crm:updated", { customerId: result?.id });
+    } else {
+      broadcastEvent("crm:updated", { customerId: result?.id });
+    }
+
+    return result;
   }
 
   /**
@@ -608,7 +625,7 @@ export class CRMService {
    * Create campaign
    */
   static async createCampaign(data: CreateCampaignInput, franchiseId?: string | null) {
-    return prisma.campaign.create({
+    const campaign = await prisma.campaign.create({
       data: {
         franchiseId: franchiseId || null,
         name: data.name.trim(),
@@ -626,6 +643,14 @@ export class CRMService {
         scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
       },
     });
+
+    if (franchiseId) {
+      emitToFranchise(franchiseId, "crm:updated", { campaignId: campaign.id });
+    } else {
+      broadcastEvent("crm:updated", { campaignId: campaign.id });
+    }
+
+    return campaign;
   }
 
   /**
@@ -694,6 +719,12 @@ export class CRMService {
         sentAt: new Date(),
       },
     });
+
+    if (campaign.franchiseId) {
+      emitToFranchise(campaign.franchiseId, "crm:updated", { campaignId: campaign.id });
+    } else {
+      broadcastEvent("crm:updated", { campaignId: campaign.id });
+    }
 
     return {
       campaign: updated,

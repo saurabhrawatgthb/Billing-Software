@@ -49,11 +49,13 @@ export const UsersPage: React.FC = () => {
   });
   const [formError, setFormError] = useState<string | null>(null);
 
+  const effectiveFranchiseId = selectedFranchiseId || currentUser?.franchiseId;
+
   // Fetch Users
   const { data: users = [], isLoading } = useQuery<User[]>({
-    queryKey: ["users", selectedFranchiseId],
+    queryKey: ["users", effectiveFranchiseId],
     queryFn: async () => {
-      const url = selectedFranchiseId ? `/users?franchiseId=${selectedFranchiseId}` : "/users";
+      const url = effectiveFranchiseId ? `/users?franchiseId=${effectiveFranchiseId}` : "/users";
       const res = await api.get(url);
       return res.data.data;
     },
@@ -82,6 +84,7 @@ export const UsersPage: React.FC = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       handleCloseModal();
     },
     onError: (err) => {

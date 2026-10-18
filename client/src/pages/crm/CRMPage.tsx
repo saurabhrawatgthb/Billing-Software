@@ -51,7 +51,8 @@ const SEGMENT_COLORS: Record<CustomerSegment, { bg: string; text: string; border
 
 export const CRMPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { selectedFranchiseId } = useAuthStore();
+  const { selectedFranchiseId, user } = useAuthStore();
+  const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId;
 
   const [activeTab, setActiveTab] = useState<"overview" | "customers" | "campaigns" | "logs">("overview");
   const [searchQuery, setSearchQuery] = useState("");
@@ -93,9 +94,9 @@ export const CRMPage: React.FC = () => {
 
   // Query: Analytics
   const { data: analytics, isLoading: isLoadingAnalytics } = useQuery<CRMAnalytics>({
-    queryKey: ["crm-analytics", selectedFranchiseId],
+    queryKey: ["crm-analytics", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/crm/analytics", { params: { franchiseId: selectedFranchiseId } });
+      const res = await api.get("/crm/analytics", { params: { franchiseId: effectiveFranchiseId } });
       return res.data.data;
     },
   });
@@ -105,11 +106,11 @@ export const CRMPage: React.FC = () => {
     customers: Customer[];
     pagination: { total: number };
   }>({
-    queryKey: ["crm-customers", selectedFranchiseId, searchQuery, selectedSegment],
+    queryKey: ["crm-customers", effectiveFranchiseId, searchQuery, selectedSegment],
     queryFn: async () => {
       const res = await api.get("/crm/customers", {
         params: {
-          franchiseId: selectedFranchiseId,
+          franchiseId: effectiveFranchiseId,
           query: searchQuery || undefined,
           segment: selectedSegment !== "ALL" ? selectedSegment : undefined,
         },
@@ -130,18 +131,18 @@ export const CRMPage: React.FC = () => {
 
   // Query: Campaigns
   const { data: campaigns = [], isLoading: isLoadingCampaigns } = useQuery<Campaign[]>({
-    queryKey: ["crm-campaigns", selectedFranchiseId],
+    queryKey: ["crm-campaigns", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/crm/campaigns", { params: { franchiseId: selectedFranchiseId } });
+      const res = await api.get("/crm/campaigns", { params: { franchiseId: effectiveFranchiseId } });
       return res.data.data;
     },
   });
 
   // Query: Communication Logs
   const { data: logs = [], isLoading: isLoadingLogs } = useQuery<CommunicationLog[]>({
-    queryKey: ["crm-logs", selectedFranchiseId],
+    queryKey: ["crm-logs", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/crm/logs", { params: { franchiseId: selectedFranchiseId } });
+      const res = await api.get("/crm/logs", { params: { franchiseId: effectiveFranchiseId } });
       return res.data.data;
     },
   });
@@ -149,7 +150,7 @@ export const CRMPage: React.FC = () => {
   // Mutation: Recalculate Segments
   const recalculateMutation = useMutation({
     mutationFn: async () => {
-      const res = await api.post("/crm/recalculate-segments", { franchiseId: selectedFranchiseId });
+      const res = await api.post("/crm/recalculate-segments", { franchiseId: effectiveFranchiseId });
       return res.data;
     },
     onSuccess: (data) => {
@@ -166,7 +167,7 @@ export const CRMPage: React.FC = () => {
     mutationFn: async (payload: typeof customerForm) => {
       const res = await api.post("/crm/customers", {
         ...payload,
-        franchiseId: selectedFranchiseId,
+        franchiseId: effectiveFranchiseId,
       });
       return res.data;
     },
@@ -198,7 +199,7 @@ export const CRMPage: React.FC = () => {
       const res = await api.post("/crm/campaigns", {
         ...payload,
         targetSegment: payload.targetSegment !== "ALL" ? payload.targetSegment : null,
-        franchiseId: selectedFranchiseId,
+        franchiseId: effectiveFranchiseId,
       });
       return res.data;
     },
@@ -218,7 +219,7 @@ export const CRMPage: React.FC = () => {
       const res = await api.post("/crm/campaigns/preview", {
         ...payload,
         targetSegment: payload.targetSegment !== "ALL" ? payload.targetSegment : null,
-        franchiseId: selectedFranchiseId,
+        franchiseId: effectiveFranchiseId,
       });
       return res.data.data;
     },

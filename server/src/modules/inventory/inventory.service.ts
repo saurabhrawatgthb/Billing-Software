@@ -133,6 +133,7 @@ export async function createInventoryItem(
       newData: item,
     });
 
+    emitToFranchise(franchiseId, "inventory:stock_updated", { itemId: item.id, action: "created" });
     return item;
   });
 }
@@ -179,6 +180,7 @@ export async function updateInventoryItem(
     newData: updated,
   });
 
+  emitToFranchise(franchiseId, "inventory:stock_updated", { itemId: updated.id, action: "updated" });
   return updated;
 }
 
@@ -300,6 +302,7 @@ export async function adjustStock(
       },
     });
 
+    emitToFranchise(franchiseId, "inventory:stock_updated", { itemId: invItem.id, action: "adjusted" });
     return txRecord;
   });
 }

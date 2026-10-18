@@ -12,6 +12,26 @@ export function getSocket(): Socket {
       autoConnect: true,
       reconnection: true,
       reconnectionDelay: 1000,
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("connect", () => {
+      try {
+        const savedUserStr = localStorage.getItem("rms_user");
+        const savedFranchise = localStorage.getItem("rms_selected_franchise");
+        if (savedUserStr) {
+          const user = JSON.parse(savedUserStr);
+          if (user.role === "SUPER_ADMIN") {
+            socket?.emit("join-super-admin");
+          }
+          const fId = savedFranchise || user.franchiseId;
+          if (fId) {
+            socket?.emit("join-franchise", fId);
+          }
+        }
+      } catch (e) {
+        console.error("Error auto-joining socket rooms:", e);
+      }
     });
   }
   return socket;
@@ -19,10 +39,14 @@ export function getSocket(): Socket {
 
 export function joinFranchiseRoom(franchiseId: string) {
   const s = getSocket();
-  s.emit("join-franchise", franchiseId);
+  if (s.connected) {
+    s.emit("join-franchise", franchiseId);
+  }
 }
 
 export function joinStationRoom(franchiseId: string, stationId: string) {
   const s = getSocket();
-  s.emit("join-station", { franchiseId, stationId });
+  if (s.connected) {
+    s.emit("join-station", { franchiseId, stationId });
+  }
 }

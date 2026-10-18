@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, authorize } from "../../middleware/auth.js";
+import { authenticate, authorize, authorizeWithPermission } from "../../middleware/auth.js";
 import {
   attendance,
   dashboard,
@@ -15,8 +15,8 @@ const router = Router();
 router.use(authenticate);
 
 router.get("/dashboard", dashboard);
-router.get("/sales", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "ACCOUNTANT"), sales);
-router.get("/payments", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "ACCOUNTANT"), payments);
+router.get("/sales", authorizeWithPermission("canViewReports", "ACCOUNTANT"), sales);
+router.get("/payments", authorizeWithPermission("canViewReports", "ACCOUNTANT"), payments);
 router.get("/menu", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "CHEF"), menu);
 router.get("/attendance", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "HR"), attendance);
 router.get("/payroll", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "HR", "ACCOUNTANT"), payroll);

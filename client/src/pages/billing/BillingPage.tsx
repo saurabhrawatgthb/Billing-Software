@@ -31,13 +31,16 @@ import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
 import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
 import { printReceiptDirectly } from "../../utils/print.js";
+import { usePermissions } from "../../hooks/usePermissions.js";
 
 export const BillingPage: React.FC = () => {
   const queryClient = useQueryClient();
   const { selectedFranchiseId, user } = useAuthStore();
-  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const { isSuperAdmin: isPermAdmin, canVoidBills } = usePermissions();
+  const isSuperAdmin = user?.role === "SUPER_ADMIN" || isPermAdmin;
   const isAccountant = user?.role === "ACCOUNTANT";
   const canAudit = isSuperAdmin || isAccountant;
+  const canPermanentlyDelete = isSuperAdmin || canVoidBills;
 
   const [activeTab, setActiveTab] = useState<"invoices" | "gst_audit" | "dormant">("invoices");
   const [searchTerm, setSearchTerm] = useState("");
@@ -724,8 +727,8 @@ export const BillingPage: React.FC = () => {
                               </Button>
                             )}
 
-                            {/* Super Admin Permanent Delete Bill Button (Cleanup / Testing) */}
-                            {isSuperAdmin && (
+                            {/* Permanent Delete Bill Button (Super Admin or authorized Franchise Manager) */}
+                            {canPermanentlyDelete && (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -1563,7 +1566,7 @@ export const BillingPage: React.FC = () => {
                 >
                   Print Receipt
                 </Button>
-                {isSuperAdmin && (
+                {canPermanentlyDelete && (
                   <Button
                     variant="outline"
                     size="sm"

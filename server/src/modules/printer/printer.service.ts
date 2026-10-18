@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "../../lib/prisma.js";
 import { AppError } from "../../middleware/error.js";
 import { logAudit } from "../../lib/audit.js";
+import { emitToFranchise } from "../../lib/socket.js";
 
 export const printerSchema = z.object({
   name: z.string().trim().min(1, "Printer name is required"),
@@ -61,6 +62,7 @@ export async function createPrinter(
     newData: printer,
   });
 
+  emitToFranchise(franchiseId, "printer:updated", printer);
   return printer;
 }
 
@@ -98,6 +100,7 @@ export async function updatePrinter(
     newData: updated,
   });
 
+  emitToFranchise(franchiseId, "printer:updated", updated);
   return updated;
 }
 
@@ -118,6 +121,7 @@ export async function deletePrinter(id: string, franchiseId: string, currentUser
     oldData: existing,
   });
 
+  emitToFranchise(franchiseId, "printer:updated", { id, deleted: true });
   return { success: true, message: "Printer configuration deleted" };
 }
 

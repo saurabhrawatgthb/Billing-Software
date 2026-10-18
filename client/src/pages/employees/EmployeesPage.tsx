@@ -56,11 +56,13 @@ export const EmployeesPage: React.FC = () => {
   });
   const [formError, setFormError] = useState<string | null>(null);
 
+  const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId;
+
   // Fetch Employees
   const { data: employees = [], isLoading } = useQuery<Employee[]>({
-    queryKey: ["employees", selectedFranchiseId],
+    queryKey: ["employees", effectiveFranchiseId],
     queryFn: async () => {
-      const url = selectedFranchiseId ? `/employees?franchiseId=${selectedFranchiseId}` : "/employees";
+      const url = effectiveFranchiseId ? `/employees?franchiseId=${effectiveFranchiseId}` : "/employees";
       const res = await api.get(url);
       return res.data.data;
     },
@@ -87,6 +89,8 @@ export const EmployeesPage: React.FC = () => {
 
       if (isSuperAdmin) {
         payload.franchiseId = data.franchiseId || selectedFranchiseId || (franchises[0]?.id ?? null);
+      } else {
+        payload.franchiseId = user?.franchiseId || selectedFranchiseId;
       }
 
       if (editingEmployee) {
@@ -96,6 +100,7 @@ export const EmployeesPage: React.FC = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       handleCloseModal();
     },
     onError: (err) => {
@@ -106,7 +111,7 @@ export const EmployeesPage: React.FC = () => {
   const handleOpenCreate = () => {
     setEditingEmployee(null);
     setFormData({
-      franchiseId: selectedFranchiseId || (franchises[0]?.id ?? ""),
+      franchiseId: selectedFranchiseId || user?.franchiseId || (franchises[0]?.id ?? ""),
       employeeCode: `EMP-${String(employees.length + 1).padStart(3, "0")}`,
       firstName: "",
       lastName: "",
@@ -126,7 +131,7 @@ export const EmployeesPage: React.FC = () => {
   const handleOpenEdit = (emp: Employee) => {
     setEditingEmployee(emp);
     setFormData({
-      franchiseId: emp.franchiseId || selectedFranchiseId || (franchises[0]?.id ?? ""),
+      franchiseId: emp.franchiseId || selectedFranchiseId || user?.franchiseId || (franchises[0]?.id ?? ""),
       employeeCode: emp.employeeCode,
       firstName: emp.firstName,
       lastName: emp.lastName || "",

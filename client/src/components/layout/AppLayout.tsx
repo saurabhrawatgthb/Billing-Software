@@ -2,8 +2,11 @@ import React from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar.js";
 import { Navbar } from "./Navbar.js";
+import { useRealtimeSync } from "../../hooks/useRealtimeSync.js";
 
 export const AppLayout: React.FC = () => {
+  useRealtimeSync();
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-800">
       <Sidebar />

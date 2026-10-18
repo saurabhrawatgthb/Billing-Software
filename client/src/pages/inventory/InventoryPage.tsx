@@ -26,12 +26,13 @@ import { Modal } from "../../components/common/Modal.js";
 import { Badge } from "../../components/common/Badge.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
+import { usePermissions } from "../../hooks/usePermissions.js";
 
 export const InventoryPage: React.FC = () => {
   const queryClient = useQueryClient();
   const { selectedFranchiseId, user } = useAuthStore();
-  const isSuperAdmin = user?.role === "SUPER_ADMIN";
-  const canManage = ["SUPER_ADMIN", "FRANCHISE_MANAGER"].includes(user?.role || "");
+  const { isSuperAdmin, canManageInventory } = usePermissions();
+  const canManage = isSuperAdmin || canManageInventory;
 
   const [targetFranchiseId, setTargetFranchiseId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -53,7 +54,7 @@ export const InventoryPage: React.FC = () => {
     enabled: isSuperAdmin,
   });
 
-  const effectiveFranchiseId = selectedFranchiseId || targetFranchiseId || "";
+  const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId || targetFranchiseId || franchises[0]?.id || "";
 
   // Forms state
   const [itemForm, setItemForm] = useState<{

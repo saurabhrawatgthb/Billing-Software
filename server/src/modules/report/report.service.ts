@@ -409,7 +409,30 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
   }
 
   // Franchise-specific dashboard
-  const fid = franchiseId!;
+  let fid = franchiseId;
+  if (!fid) {
+    const firstFranchise = await prisma.franchise.findFirst({ where: { isActive: true } });
+    fid = firstFranchise?.id || null;
+  }
+
+  if (!fid) {
+    return {
+      isSuperAdmin: false,
+      franchiseId: null,
+      todayRevenue: 0,
+      todayOrdersCount: 0,
+      occupiedTables: 0,
+      availableTables: 0,
+      totalTables: 0,
+      activeKOTsCount: 0,
+      totalEmployees: 0,
+      presentStaffCount: 0,
+      activeUsersCount: 0,
+      employees: [],
+      users: [],
+    };
+  }
+
   const [
     todayOrders,
     monthOrders,

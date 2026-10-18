@@ -2,6 +2,7 @@ import { RegisterStatus } from "@prisma/client";
 import prisma from "../../lib/prisma.js";
 import { AppError } from "../../middleware/error.js";
 import { logAudit } from "../../lib/audit.js";
+import { emitToFranchise } from "../../lib/socket.js";
 
 export async function getCurrentRegister(franchiseId: string) {
   const current = await prisma.dailyRegister.findFirst({
@@ -118,6 +119,7 @@ export async function openRegister(
     newData: { openingFloat, openedAt: register.openedAt },
   });
 
+  emitToFranchise(franchiseId, "register:opened", register);
   return register;
 }
 
@@ -223,6 +225,7 @@ export async function closeRegister(
     },
   });
 
+  emitToFranchise(register.franchiseId, "register:closed", closedRegister);
   return closedRegister;
 }
 

@@ -14,11 +14,15 @@ import { Badge } from "../../components/common/Badge.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
 import { CloneMenuModal } from "../../components/menu/CloneMenuModal.js";
+import { usePermissions } from "../../hooks/usePermissions.js";
 
 export const MenuPage: React.FC = () => {
   const queryClient = useQueryClient();
   const { selectedFranchiseId, setSelectedFranchise, user } = useAuthStore();
-  const isBrandOwner = user?.role === "SUPER_ADMIN";
+  const { isSuperAdmin, canEditMenu, canEditPrices } = usePermissions();
+  const canModifyMenu = isSuperAdmin || canEditMenu;
+  const canModifyDishes = isSuperAdmin || canEditMenu || canEditPrices;
+  const isBrandOwner = isSuperAdmin;
 
   const [activeTab, setActiveTab] = useState<"items" | "categories">("items");
   const [searchTerm, setSearchTerm] = useState("");
@@ -65,8 +69,8 @@ export const MenuPage: React.FC = () => {
     enabled: isBrandOwner,
   });
 
-  // Effective franchise context: selected in navbar, or chosen in modal, or sole franchise
-  const effectiveFranchiseId = selectedFranchiseId || targetFranchiseId || franchises[0]?.id || "";
+  // Effective franchise context: selected in navbar, or chosen in modal, or user's assigned franchise, or sole franchise
+  const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId || targetFranchiseId || franchises[0]?.id || "";
 
   // Fetch Categories
   const { data: categories = [], isFetching: isFetchingCats } = useQuery<Category[]>({
@@ -110,7 +114,7 @@ export const MenuPage: React.FC = () => {
   // Item Mutation
   const saveItemMutation = useMutation({
     mutationFn: async (data: typeof itemFormData) => {
-      const franchiseToUse = targetFranchiseId || selectedFranchiseId || franchises[0]?.id;
+      const franchiseToUse = targetFranchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id;
       const basePrice = data.hasSizes
         ? Number(data.priceMedium || data.priceSmall || data.priceLarge || data.price || 0)
         : Number(data.price);
@@ -154,7 +158,7 @@ export const MenuPage: React.FC = () => {
   // Category Mutation
   const saveCategoryMutation = useMutation({
     mutationFn: async (data: typeof categoryFormData) => {
-      const franchiseToUse = targetFranchiseId || selectedFranchiseId || franchises[0]?.id;
+      const franchiseToUse = targetFranchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id;
       const payload = {
         ...data,
         franchiseId: franchiseToUse,
@@ -211,7 +215,7 @@ export const MenuPage: React.FC = () => {
 
   const handleOpenEditItem = (item: MenuItem) => {
     setEditingItem(item);
-    setTargetFranchiseId(item.franchiseId || selectedFranchiseId || franchises[0]?.id || "");
+    setTargetFranchiseId(item.franchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id || "");
     const isPizza =
       Boolean(item.hasSizes) ||
       item.name.toLowerCase().includes("pizza") ||
@@ -236,7 +240,7 @@ export const MenuPage: React.FC = () => {
 
   const handleOpenCreateCategory = () => {
     setEditingCategory(null);
-    setTargetFranchiseId(selectedFranchiseId || franchises[0]?.id || "");
+    setTargetFranchiseId(selectedFranchiseId || user?.franchiseId || franchises[0]?.id || "");
     setCategoryFormData({ name: "", description: "", isActive: true });
     setFormError(null);
     setIsCategoryModalOpen(true);
@@ -244,7 +248,7 @@ export const MenuPage: React.FC = () => {
 
   const handleOpenEditCategory = (cat: Category) => {
     setEditingCategory(cat);
-    setTargetFranchiseId(cat.franchiseId || selectedFranchiseId || franchises[0]?.id || "");
+    setTargetFranchiseId(cat.franchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id || "");
     setCategoryFormData({
       name: cat.name,
       description: cat.description || "",
@@ -272,9 +276,9 @@ export const MenuPage: React.FC = () => {
           </p>
         </div>
 
-        {isBrandOwner ? (
+        {canModifyMenu || canModifyDishes ? (
           <div className="flex flex-wrap items-center gap-3">
-            {franchises.length > 0 && (
+            {isSuperAdmin && franchises.length > 0 && (
               <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-100 rounded-lg px-2.5 py-1 text-xs text-indigo-900">
                 <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                 <span className="font-semibold text-gray-700">Outlet:</span>
@@ -306,7 +310,7 @@ export const MenuPage: React.FC = () => {
             >
               {isMenuSyncing ? "Refreshing..." : "Refresh"}
             </Button>
-            {isBrandOwner && franchises.length > 1 && (
+            {isSuperAdmin && franchises.length > 1 && (
               <Button
                 variant="outline"
                 onClick={() => setIsCloneModalOpen(true)}
@@ -315,31 +319,35 @@ export const MenuPage: React.FC = () => {
                 Copy Menu Across Outlets
               </Button>
             )}
-            <Button
-              variant="outline"
-              onClick={handleOpenCreateCategory}
-              icon={<Tag className="w-4 h-4" />}
-              disabled={franchises.length === 0}
-            >
-              Add Category
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => handleOpenCreateItem(true)}
-              className="border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100 font-bold shadow-xs"
-              icon={<span className="text-base leading-none">🍕</span>}
-              disabled={franchises.length === 0}
-            >
-              Add Pizza (S/M/L)
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => handleOpenCreateItem(false)}
-              icon={<Plus className="w-4 h-4" />}
-              disabled={franchises.length === 0}
-            >
-              Add Menu Item
-            </Button>
+            {canModifyMenu && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleOpenCreateCategory}
+                  icon={<Tag className="w-4 h-4" />}
+                  disabled={!effectiveFranchiseId}
+                >
+                  Add Category
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => handleOpenCreateItem(true)}
+                  className="border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100 font-bold shadow-xs"
+                  icon={<span className="text-base leading-none">🍕</span>}
+                  disabled={!effectiveFranchiseId}
+                >
+                  Add Pizza (S/M/L)
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => handleOpenCreateItem(false)}
+                  icon={<Plus className="w-4 h-4" />}
+                  disabled={!effectiveFranchiseId}
+                >
+                  Add Menu Item
+                </Button>
+              </>
+            )}
           </div>
         ) : (
           <div className="flex items-center gap-3">
@@ -358,7 +366,7 @@ export const MenuPage: React.FC = () => {
             </Button>
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center gap-2 max-w-md">
               <Tag className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>Master Menu is centrally governed by Brand Owner. You can toggle live dish availability (In Stock / Out of Stock) below.</span>
+              <span>Menu is centrally managed. Contact brand owner for dish addition permissions.</span>
             </div>
           </div>
         )}
@@ -454,8 +462,8 @@ export const MenuPage: React.FC = () => {
             <EmptyState
               title="No Dishes Found"
               description="Create menu items and assign them to categories and kitchen stations."
-              actionLabel={isBrandOwner ? "Add Dish" : undefined}
-              onAction={isBrandOwner ? handleOpenCreateItem : undefined}
+              actionLabel={canModifyMenu ? "Add Dish" : undefined}
+              onAction={canModifyMenu ? () => handleOpenCreateItem(false) : undefined}
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -528,7 +536,7 @@ export const MenuPage: React.FC = () => {
                         )}
                       </button>
 
-                      {isBrandOwner && (
+                      {canModifyDishes && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -567,7 +575,7 @@ export const MenuPage: React.FC = () => {
 
                 <div className="flex items-center justify-between text-xs pt-2 border-t border-gray-100 font-medium text-gray-600">
                   <span>{cat._count?.menuItems || 0} Menu Items</span>
-                  {isBrandOwner && (
+                  {canModifyMenu && (
                     <div className="flex items-center gap-2">
                       <Button
                         variant="ghost"
@@ -997,7 +1005,7 @@ export const MenuPage: React.FC = () => {
       </Modal>
 
       {/* Clone Menu Modal */}
-      {isBrandOwner && (
+      {(isBrandOwner || canModifyMenu) && (
         <CloneMenuModal
           isOpen={isCloneModalOpen}
           onClose={() => setIsCloneModalOpen(false)}

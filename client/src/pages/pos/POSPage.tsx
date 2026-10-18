@@ -52,12 +52,15 @@ import { AggregatorOrderModal } from "../../components/pos/AggregatorOrderModal.
 import { AggregatorSettingsModal } from "../../components/pos/AggregatorSettingsModal.js";
 import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
 import { Globe, Bell, LayoutGrid, Store, Cpu, Check } from "lucide-react";
+import { usePermissions } from "../../hooks/usePermissions.js";
 
 export const POSPage: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { selectedFranchiseId, user, setSelectedFranchise } = useAuthStore();
-  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const { isSuperAdmin: isPermAdmin, canApplyDiscounts, maxDiscountPercent } = usePermissions();
+  const isSuperAdmin = user?.role === "SUPER_ADMIN" || isPermAdmin;
+  const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId;
 
   const {
     items: cartItems,
@@ -184,9 +187,9 @@ export const POSPage: React.FC = () => {
 
   // Fetch Active Campaigns to validate promo codes
   const { data: campaigns = [] } = useQuery<any[]>({
-    queryKey: ["crm-campaigns", selectedFranchiseId],
+    queryKey: ["crm-campaigns", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/crm/campaigns");
+      const res = await api.get(effectiveFranchiseId ? `/crm/campaigns?franchiseId=${effectiveFranchiseId}` : "/crm/campaigns");
       return res.data.data;
     },
   });
@@ -215,24 +218,24 @@ export const POSPage: React.FC = () => {
 
   // Fetch Pending Aggregator Orders
   const { data: pendingAggregatorOrders = [] } = useQuery<any[]>({
-    queryKey: ["aggregator-pending", selectedFranchiseId],
+    queryKey: ["aggregator-pending", effectiveFranchiseId],
     queryFn: async () => {
-      if (!selectedFranchiseId) return [];
-      const res = await api.get(`/aggregators/pending?franchiseId=${selectedFranchiseId}`);
+      if (!effectiveFranchiseId) return [];
+      const res = await api.get(`/aggregators/pending?franchiseId=${effectiveFranchiseId}`);
       return res.data.data;
     },
-    enabled: !!selectedFranchiseId,
+    enabled: !!effectiveFranchiseId,
   });
 
   // Fetch Aggregator Settings
   const { data: aggregatorSettings = [] } = useQuery<any[]>({
-    queryKey: ["aggregator-settings", selectedFranchiseId],
+    queryKey: ["aggregator-settings", effectiveFranchiseId],
     queryFn: async () => {
-      if (!selectedFranchiseId) return [];
-      const res = await api.get(`/aggregators/settings?franchiseId=${selectedFranchiseId}`);
+      if (!effectiveFranchiseId) return [];
+      const res = await api.get(`/aggregators/settings?franchiseId=${effectiveFranchiseId}`);
       return res.data.data;
     },
-    enabled: !!selectedFranchiseId,
+    enabled: !!effectiveFranchiseId,
   });
 
   const isSwiggyEnabled = aggregatorSettings.find((i: any) => i.platform === "SWIGGY")?.isEnabled ?? true;
@@ -251,7 +254,7 @@ export const POSPage: React.FC = () => {
   const simulateOrderMutation = useMutation({
     mutationFn: async (platform: "SWIGGY" | "ZOMATO") => {
       const res = await api.post("/aggregators/simulate", {
-        franchiseId: selectedFranchiseId,
+        franchiseId: effectiveFranchiseId,
         platform,
       });
       return res.data.data;
@@ -274,9 +277,16 @@ export const POSPage: React.FC = () => {
   };
 
   const applyLoyaltyDiscount = () => {
+    if (!canApplyDiscounts) {
+      setPromoMessage({ text: "Permission denied: You do not have permission to apply discounts.", type: "error" });
+      return;
+    }
     if (!selectedCustomer) return;
-    const rate = getCustomerLoyaltyDiscountRate(selectedCustomer.segment);
+    let rate = getCustomerLoyaltyDiscountRate(selectedCustomer.segment);
     if (rate <= 0) return;
+    if (maxDiscountPercent != null && rate > maxDiscountPercent) {
+      rate = maxDiscountPercent;
+    }
     const currentSubtotal = getSubtotal();
     const disc = Number(((currentSubtotal * rate) / 100).toFixed(2));
     setDiscount(disc);
@@ -284,6 +294,10 @@ export const POSPage: React.FC = () => {
   };
 
   const applyPromoCode = (codeToApply?: string) => {
+    if (!canApplyDiscounts) {
+      setPromoMessage({ text: "Permission denied: You do not have permission to apply discounts.", type: "error" });
+      return;
+    }
     const code = (codeToApply || couponCode).trim().toUpperCase();
     if (!code) return;
     const currentSubtotal = getSubtotal();
@@ -307,6 +321,14 @@ export const POSPage: React.FC = () => {
     } else {
       setPromoMessage({ text: `Invalid or expired coupon "${code}"`, type: "error" });
       return;
+    }
+
+    if (maxDiscountPercent != null && pct > maxDiscountPercent) {
+      setPromoMessage({
+        text: `Discount clamped to maximum allowed ${maxDiscountPercent}% (Coupon offered ${pct}%)`,
+        type: "error",
+      });
+      pct = maxDiscountPercent;
     }
 
     const disc = Number(((currentSubtotal * pct) / 100).toFixed(2));
@@ -342,7 +364,7 @@ export const POSPage: React.FC = () => {
     mutationFn: async () => {
       const res = await api.post("/crm/customers", {
         ...quickAddForm,
-        franchiseId: selectedFranchiseId,
+        franchiseId: effectiveFranchiseId,
       });
       return res.data.data;
     },
@@ -360,27 +382,27 @@ export const POSPage: React.FC = () => {
 
   // Fetch Tables
   const { data: tables = [] } = useQuery<RestaurantTable[]>({
-    queryKey: ["tables", selectedFranchiseId],
+    queryKey: ["tables", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/tables");
+      const res = await api.get(effectiveFranchiseId ? `/tables?franchiseId=${effectiveFranchiseId}` : "/tables");
       return res.data.data;
     },
   });
 
   // Fetch Categories
   const { data: categories = [] } = useQuery<Category[]>({
-    queryKey: ["categories", selectedFranchiseId],
+    queryKey: ["categories", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/menu/categories");
+      const res = await api.get(effectiveFranchiseId ? `/menu/categories?franchiseId=${effectiveFranchiseId}` : "/menu/categories");
       return res.data.data;
     },
   });
 
   // Fetch Menu Items
   const { data: menuItems = [], isLoading: isLoadingMenu } = useQuery<MenuItem[]>({
-    queryKey: ["menu-items", selectedFranchiseId],
+    queryKey: ["menu-items", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/menu/items");
+      const res = await api.get(effectiveFranchiseId ? `/menu/items?franchiseId=${effectiveFranchiseId}` : "/menu/items");
       return res.data.data;
     },
   });
@@ -472,7 +494,7 @@ export const POSPage: React.FC = () => {
 
       // 2. Identify active franchise details with safety fallbacks
       const currFranchise =
-        (activeFranchises && activeFranchises.find((f) => f.id === selectedFranchiseId)) ||
+        (activeFranchises && activeFranchises.find((f) => f.id === effectiveFranchiseId)) ||
         user?.franchise ||
         undefined;
 
@@ -1227,10 +1249,20 @@ export const POSPage: React.FC = () => {
               <input
                 type="number"
                 min="0"
-                max={subtotal}
+                max={maxDiscountPercent != null ? (subtotal * maxDiscountPercent) / 100 : subtotal}
                 value={discount}
-                onChange={(e) => setDiscount(Number(e.target.value))}
-                className="w-20 text-right text-xs bg-white border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-emerald-700"
+                disabled={!canApplyDiscounts}
+                onChange={(e) => {
+                  if (!canApplyDiscounts) return;
+                  let val = Number(e.target.value);
+                  if (maxDiscountPercent != null) {
+                    const maxAllowedVal = (subtotal * maxDiscountPercent) / 100;
+                    if (val > maxAllowedVal) val = maxAllowedVal;
+                  }
+                  setDiscount(val);
+                }}
+                className={`w-20 text-right text-xs bg-white border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold ${!canApplyDiscounts ? "opacity-50 cursor-not-allowed text-gray-400" : "text-emerald-700"}`}
+                title={!canApplyDiscounts ? "You do not have permission to apply discounts" : (maxDiscountPercent != null ? `Max discount: ${maxDiscountPercent}%` : undefined)}
               />
             </div>
 
@@ -1439,14 +1471,14 @@ export const POSPage: React.FC = () => {
 
       {/* Real-time Swiggy & Zomato Order Pop-up Modal */}
       <AggregatorOrderModal
-        franchiseId={selectedFranchiseId}
+        franchiseId={effectiveFranchiseId || null}
         isOpen={isAggregatorModalOpen}
         onClose={() => setIsAggregatorModalOpen(false)}
       />
 
       {/* Swiggy & Zomato Webhooks & Integration Config Modal */}
       <AggregatorSettingsModal
-        franchiseId={selectedFranchiseId}
+        franchiseId={effectiveFranchiseId || null}
         isOpen={isAggregatorSettingsOpen}
         onClose={() => setIsAggregatorSettingsOpen(false)}
         onSimulateOrder={(platform) => simulateOrderMutation.mutate(platform)}
@@ -1463,7 +1495,7 @@ export const POSPage: React.FC = () => {
             setGuestCount(table.capacity || 2);
           }
         }}
-        franchiseId={selectedFranchiseId}
+        franchiseId={effectiveFranchiseId}
       />
 
       {/* ============================================================== */}

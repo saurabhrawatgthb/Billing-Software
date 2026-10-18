@@ -1,6 +1,7 @@
 import { UserRole } from "@prisma/client";
 import prisma from "../../lib/prisma.js";
 import { logAudit } from "../../lib/audit.js";
+import { emitToFranchise, broadcastEvent } from "../../lib/socket.js";
 
 export interface PermissionSettings {
   canEditMenu?: boolean;
@@ -141,6 +142,12 @@ export async function updatePermissionsForRole(
     entityId: saved.id,
     newData: settings,
   });
+
+  if (fId) {
+    emitToFranchise(fId, "permissions:updated", saved);
+  } else {
+    broadcastEvent("permissions:updated", saved);
+  }
 
   return saved;
 }

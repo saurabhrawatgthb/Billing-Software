@@ -20,11 +20,14 @@ import { Modal } from "../../components/common/Modal.js";
 import { Badge } from "../../components/common/Badge.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
+import { usePermissions } from "../../hooks/usePermissions.js";
 
 export const RecipesPage: React.FC = () => {
   const queryClient = useQueryClient();
   const { selectedFranchiseId, user } = useAuthStore();
-  const isBrandOwner = user?.role === "SUPER_ADMIN";
+  const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId;
+  const { isSuperAdmin, canEditMenu } = usePermissions();
+  const canManageRecipes = isSuperAdmin || canEditMenu;
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -40,30 +43,30 @@ export const RecipesPage: React.FC = () => {
 
   // Queries
   const { data: menuData } = useQuery<{ success: boolean; data: MenuItem[] }>({
-    queryKey: ["menu-items-for-recipes", selectedFranchiseId],
+    queryKey: ["menu-items-for-recipes", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/menu/items");
+      const res = await api.get(effectiveFranchiseId ? `/menu/items?franchiseId=${effectiveFranchiseId}` : "/menu/items");
       return res.data;
     },
-    enabled: !!selectedFranchiseId,
+    enabled: !!effectiveFranchiseId,
   });
 
   const { data: recipesData, isLoading } = useQuery<{ success: boolean; data: Recipe[] }>({
-    queryKey: ["recipes", selectedFranchiseId],
+    queryKey: ["recipes", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/recipes");
+      const res = await api.get(effectiveFranchiseId ? `/recipes?franchiseId=${effectiveFranchiseId}` : "/recipes");
       return res.data;
     },
-    enabled: !!selectedFranchiseId,
+    enabled: !!effectiveFranchiseId,
   });
 
   const { data: invData } = useQuery<{ success: boolean; data: InventoryItem[] }>({
-    queryKey: ["inventory-items-for-recipes", selectedFranchiseId],
+    queryKey: ["inventory-items-for-recipes", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/inventory");
+      const res = await api.get(effectiveFranchiseId ? `/inventory?franchiseId=${effectiveFranchiseId}` : "/inventory");
       return res.data;
     },
-    enabled: !!selectedFranchiseId,
+    enabled: !!effectiveFranchiseId,
   });
 
   const upsertMutation = useMutation({
@@ -134,10 +137,10 @@ export const RecipesPage: React.FC = () => {
         </div>
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          {!isBrandOwner && (
+          {!canManageRecipes && (
             <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl text-indigo-900 text-xs flex items-center gap-2 max-w-sm">
               <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span>SOP Recipes are centrally created & published by Brand Owner.</span>
+              <span>SOP Recipes are centrally managed. Contact franchise admin for editing permissions.</span>
             </div>
           )}
           <div className="w-full sm:w-72">
@@ -220,7 +223,7 @@ export const RecipesPage: React.FC = () => {
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
-                  {isBrandOwner ? (
+                  {canManageRecipes ? (
                     <>
                       {recipe && (
                         <Button

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, authorize } from "../../middleware/auth.js";
+import { authenticate, authorize, authorizeWithPermission } from "../../middleware/auth.js";
 import {
   create,
   get,
@@ -32,7 +32,7 @@ router.post("/invoices/:id/dormant", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER
 // Super Admin dormant audit verification & reinstatement
 router.post("/invoices/:id/verify-dormant", authorize("SUPER_ADMIN"), verifyDormant);
 
-// Super Admin permanent bill deletion (testing & database cleanup)
-router.delete("/invoices/:id", authorize("SUPER_ADMIN"), deleteInvoiceHandler);
+// Permanent bill deletion (Super Admin or authorized Franchise Manager)
+router.delete("/invoices/:id", authorizeWithPermission("canVoidBills"), deleteInvoiceHandler);
 
 export default router;

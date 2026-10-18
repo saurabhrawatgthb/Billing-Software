@@ -4,6 +4,7 @@ import { z } from "zod";
 import prisma from "../../lib/prisma.js";
 import { AppError } from "../../middleware/error.js";
 import { logAudit } from "../../lib/audit.js";
+import { emitToFranchise, broadcastEvent } from "../../lib/socket.js";
 
 export const createUserSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters"),
@@ -134,6 +135,12 @@ export async function createUser(
     newData: { id: newUser.id, email: newUser.email, role: newUser.role },
   });
 
+  if (finalFranchiseId) {
+    emitToFranchise(finalFranchiseId, "user:updated", newUser);
+  } else {
+    broadcastEvent("user:updated", newUser);
+  }
+
   return newUser;
 }
 
@@ -199,6 +206,12 @@ export async function updateUser(
     newData: { id: updatedUser.id, email: updatedUser.email, role: updatedUser.role },
   });
 
+  if (existing.franchiseId) {
+    emitToFranchise(existing.franchiseId, "user:updated", updatedUser);
+  } else {
+    broadcastEvent("user:updated", updatedUser);
+  }
+
   return updatedUser;
 }
 
@@ -232,6 +245,12 @@ export async function setUserStatus(
     entityId: id,
     newData: { isActive },
   });
+
+  if (existing.franchiseId) {
+    emitToFranchise(existing.franchiseId, "user:updated", updatedUser);
+  } else {
+    broadcastEvent("user:updated", updatedUser);
+  }
 
   return updatedUser;
 }

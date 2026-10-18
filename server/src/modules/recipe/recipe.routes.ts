@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, authorizeRole } from "../../middleware/auth.js";
+import { authenticate, authorizeRole, authorizeWithPermission } from "../../middleware/auth.js";
 import { UserRole } from "@prisma/client";
 import {
   listRecipesHandler,
@@ -16,8 +16,8 @@ router.use(authenticate);
 router.get("/", authorizeRole(UserRole.SUPER_ADMIN, UserRole.FRANCHISE_MANAGER, UserRole.CHEF, UserRole.CASHIER), listRecipesHandler);
 router.get("/menu-item/:menuItemId", authorizeRole(UserRole.SUPER_ADMIN, UserRole.FRANCHISE_MANAGER, UserRole.CHEF, UserRole.CASHIER), getRecipeHandler);
 
-// Manage recipes (SOP) - Super Admin / Brand Owner only
-router.post("/menu-item/:menuItemId", authorizeRole(UserRole.SUPER_ADMIN), upsertRecipeHandler);
-router.delete("/menu-item/:menuItemId", authorizeRole(UserRole.SUPER_ADMIN), deleteRecipeHandler);
+// Manage recipes (SOP) - Super Admin or authorized Franchise Manager
+router.post("/menu-item/:menuItemId", authorizeWithPermission("canEditMenu"), upsertRecipeHandler);
+router.delete("/menu-item/:menuItemId", authorizeWithPermission("canEditMenu"), deleteRecipeHandler);
 
 export default router;

@@ -42,7 +42,8 @@ export const TableLayoutModal: React.FC<TableLayoutModalProps> = ({
   const { data: tables = [], isLoading, isFetching } = useQuery<RestaurantTable[]>({
     queryKey: ["tables", franchiseId],
     queryFn: async () => {
-      const res = await api.get("/tables");
+      const url = franchiseId ? `/tables?franchiseId=${franchiseId}` : "/tables";
+      const res = await api.get(url);
       return res.data.data;
     },
     enabled: isOpen,
@@ -52,6 +53,7 @@ export const TableLayoutModal: React.FC<TableLayoutModalProps> = ({
   const createTableMutation = useMutation({
     mutationFn: async () => {
       const res = await api.post("/tables", {
+        franchiseId: franchiseId || undefined,
         tableNumber: newTableNumber.trim(),
         capacity: Number(newCapacity),
       });
