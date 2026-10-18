@@ -43,22 +43,29 @@ export function printReceiptDirectly(
   // Strip excess trailing blank newlines so continuous thermal paper feeds stop immediately after the footer
   const cleanedText = rawText.replace(/\n{3,}$/, "\n").trimEnd();
 
-  // CSS for exact paper dimensions, forced portrait orientation, and zero blank paper wastage
   const is58mm = paperSize === "58mm";
   const rollWidth = is58mm ? "58mm" : "80mm";
   const contentWidth = is58mm ? "48mm" : "72mm";
-  const fontSize = is58mm ? "8.5px" : "11.5px";
-  const lineHeight = is58mm ? "1.2" : "1.25";
+  const fontSize = is58mm ? "9.5px" : "12.5px";
+  const lineHeight = is58mm ? "1.22" : "1.28";
+
+  // Compute exact physical height needed: line count * line height + padding
+  const lines = cleanedText.split("\n");
+  const lineCount = lines.length;
+  const mmPerLine = is58mm ? 3.8 : 4.4;
+  const dynamicHeightMm = Math.max(50, Math.ceil(lineCount * mmPerLine + 12));
 
   const printStyles = `
     @page {
-      size: portrait;
+      size: ${rollWidth} ${dynamicHeightMm}mm;
       margin: 0mm;
     }
     @media print {
       html, body {
         width: ${rollWidth} !important;
         max-width: ${rollWidth} !important;
+        height: ${dynamicHeightMm}mm !important;
+        max-height: ${dynamicHeightMm}mm !important;
         margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
@@ -75,7 +82,7 @@ export function printReceiptDirectly(
         font-size: ${fontSize};
         line-height: ${lineHeight};
         font-weight: 700;
-        letter-spacing: -0.25px;
+        letter-spacing: -0.2px;
         margin: 0 auto;
         padding: 2mm 0;
         white-space: pre;
@@ -100,7 +107,7 @@ export function printReceiptDirectly(
       font-size: ${fontSize};
       line-height: ${lineHeight};
       font-weight: 700;
-      letter-spacing: -0.25px;
+      letter-spacing: -0.2px;
       margin: 0 auto;
       padding: 2mm 0;
       white-space: pre;
@@ -110,37 +117,42 @@ export function printReceiptDirectly(
     }
   `;
 
-  // Use a hidden zero-size iframe for direct spooling
+  // Use a hidden iframe with matching viewport for accurate layout calculation
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
   iframe.style.right = "0";
   iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
+  iframe.style.width = rollWidth;
+  iframe.style.height = `${dynamicHeightMm}mm`;
   iframe.style.border = "none";
   iframe.style.zIndex = "-9999";
+  iframe.style.visibility = "hidden";
   document.body.appendChild(iframe);
 
   const doc = iframe.contentWindow?.document;
   if (!doc) {
     // Fallback popup if iframe execution is restricted
-    const win = window.open("", "_blank", `width=${is58mm ? 300 : 380},height=500`);
+    const win = window.open("", "_blank", `width=${is58mm ? 300 : 380},height=${dynamicHeightMm * 4}`);
     if (win) {
       win.document.write(`
         <!DOCTYPE html>
         <html>
           <head>
             <title>${escapeHtml(title)}</title>
-            <style>${printStyles}</style>
+            <style id="thermal-print-styles">${printStyles}</style>
           </head>
           <body>
-            <div class="thermal-receipt">${escapeHtml(cleanedText)}</div>
+            <div id="receipt-container" class="thermal-receipt">${escapeHtml(cleanedText)}</div>
           </body>
         </html>
       `);
       win.document.close();
       win.focus();
-      win.print();
+      setTimeout(() => {
+        try {
+          win.print();
+        } catch {}
+      }, 150);
     }
     return;
   }
@@ -151,10 +163,10 @@ export function printReceiptDirectly(
     <html>
       <head>
         <title>${escapeHtml(title)}</title>
-        <style>${printStyles}</style>
+        <style id="thermal-print-styles">${printStyles}</style>
       </head>
       <body>
-        <div class="thermal-receipt">${escapeHtml(cleanedText)}</div>
+        <div id="receipt-container" class="thermal-receipt">${escapeHtml(cleanedText)}</div>
       </body>
     </html>
   `);
@@ -165,6 +177,54 @@ export function printReceiptDirectly(
     win.focus();
     setTimeout(() => {
       try {
+        // Measure real DOM height for ultra-precise @page dimension
+        const el = doc.getElementById("receipt-container");
+        if (el) {
+          const actualHeightPx = el.scrollHeight || el.offsetHeight;
+          if (actualHeightPx > 0) {
+            const measuredMm = Math.ceil((actualHeightPx * 25.4) / 96) + 4;
+            const styleTag = doc.getElementById("thermal-print-styles");
+            if (styleTag && measuredMm > 0) {
+              styleTag.innerHTML = `
+                @page {
+                  size: ${rollWidth} ${measuredMm}mm;
+                  margin: 0mm;
+                }
+                @media print {
+                  html, body {
+                    width: ${rollWidth} !important;
+                    max-width: ${rollWidth} !important;
+                    height: ${measuredMm}mm !important;
+                    max-height: ${measuredMm}mm !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    background: #ffffff !important;
+                    color: #000000 !important;
+                    overflow: hidden !important;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                  }
+                  .thermal-receipt {
+                    width: ${contentWidth} !important;
+                    max-width: ${contentWidth} !important;
+                    box-sizing: border-box;
+                    font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+                    font-size: ${fontSize};
+                    line-height: ${lineHeight};
+                    font-weight: 700;
+                    letter-spacing: -0.2px;
+                    margin: 0 auto;
+                    padding: 2mm 0;
+                    white-space: pre;
+                    word-break: normal;
+                    page-break-after: avoid;
+                    break-after: avoid;
+                  }
+                }
+              `;
+            }
+          }
+        }
         win.print();
       } catch (err) {
         console.error("Direct thermal print error:", err);
