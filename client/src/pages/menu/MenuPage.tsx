@@ -185,14 +185,18 @@ export const MenuPage: React.FC = () => {
   const handleOpenCreateItem = () => {
     setEditingItem(null);
     setTargetFranchiseId(selectedFranchiseId || franchises[0]?.id || "");
+    const defaultCat = selectedCategoryFilter || categories[0]?.id || "";
+    const catName = categories.find((c) => c.id === defaultCat)?.name || "";
+    const isPizza = catName.toLowerCase().includes("pizza");
+
     setItemFormData({
-      categoryId: categories[0]?.id || "",
+      categoryId: defaultCat,
       stationId: stations[0]?.id || "",
       name: "",
       code: "",
       description: "",
       price: 200,
-      hasSizes: false,
+      hasSizes: isPizza,
       priceSmall: 150,
       priceMedium: 250,
       priceLarge: 350,
@@ -205,6 +209,11 @@ export const MenuPage: React.FC = () => {
   const handleOpenEditItem = (item: MenuItem) => {
     setEditingItem(item);
     setTargetFranchiseId(item.franchiseId || selectedFranchiseId || franchises[0]?.id || "");
+    const isPizza =
+      Boolean(item.hasSizes) ||
+      item.name.toLowerCase().includes("pizza") ||
+      Boolean(item.category?.name?.toLowerCase().includes("pizza"));
+
     setItemFormData({
       categoryId: item.categoryId,
       stationId: item.stationId || "",
@@ -212,10 +221,10 @@ export const MenuPage: React.FC = () => {
       code: item.code || "",
       description: item.description || "",
       price: Number(item.price),
-      hasSizes: Boolean(item.hasSizes),
-      priceSmall: item.priceSmall != null ? item.priceSmall : "",
-      priceMedium: item.priceMedium != null ? item.priceMedium : "",
-      priceLarge: item.priceLarge != null ? item.priceLarge : "",
+      hasSizes: isPizza,
+      priceSmall: item.priceSmall != null ? item.priceSmall : (isPizza ? Number(item.price) : ""),
+      priceMedium: item.priceMedium != null ? item.priceMedium : (isPizza ? Number(item.price) : ""),
+      priceLarge: item.priceLarge != null ? item.priceLarge : (isPizza ? Number(item.price) : ""),
       isAvailable: item.isAvailable,
     });
     setFormError(null);
@@ -610,9 +619,17 @@ export const MenuPage: React.FC = () => {
             <Input
               label="Dish Name *"
               required
-              placeholder="e.g. Paneer Butter Masala"
+              placeholder="e.g. Farmhouse Pizza"
               value={itemFormData.name}
-              onChange={(e) => setItemFormData({ ...itemFormData, name: e.target.value })}
+              onChange={(e) => {
+                const val = e.target.value;
+                const isPizza = val.toLowerCase().includes("pizza");
+                setItemFormData((prev) => ({
+                  ...prev,
+                  name: val,
+                  hasSizes: isPizza ? true : prev.hasSizes,
+                }));
+              }}
             />
 
             <Input
@@ -629,7 +646,16 @@ export const MenuPage: React.FC = () => {
               label="Category *"
               options={categories.map((c) => ({ value: c.id, label: c.name }))}
               value={itemFormData.categoryId}
-              onChange={(e) => setItemFormData({ ...itemFormData, categoryId: e.target.value })}
+              onChange={(e) => {
+                const catId = e.target.value;
+                const catName = categories.find((c) => c.id === catId)?.name || "";
+                const isPizza = catName.toLowerCase().includes("pizza");
+                setItemFormData((prev) => ({
+                  ...prev,
+                  categoryId: catId,
+                  hasSizes: isPizza ? true : prev.hasSizes,
+                }));
+              }}
             />
 
             <Select
@@ -643,69 +669,115 @@ export const MenuPage: React.FC = () => {
             />
           </div>
 
-          {/* Portion / Sizing Options (e.g. Small / Medium / Large for Pizzas) */}
-          <div className="p-3.5 bg-indigo-50/60 border border-indigo-100 rounded-xl space-y-3">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={itemFormData.hasSizes}
-                onChange={(e) => setItemFormData({ ...itemFormData, hasSizes: e.target.checked })}
-                className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
-              />
+          {/* RATE & PRICING CONFIGURATION */}
+          <div className="p-4 bg-slate-50 border-2 border-indigo-100/90 rounded-2xl space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-gray-200">
               <div>
-                <span className="text-xs font-bold text-gray-900">
-                  Multiple Sizes (Small / Medium / Large Rates)
-                </span>
+                <label className="text-xs font-extrabold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>Rate / Pricing Section *</span>
+                  {itemFormData.hasSizes && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-amber-400 text-amber-950 uppercase">
+                      Pizza S/M/L
+                    </span>
+                  )}
+                </label>
                 <p className="text-[11px] text-gray-500">
-                  Enable to set different prices for Small, Medium, and Large portions (ideal for Pizzas)
+                  Select single standard rate or Small / Medium / Large rates (for Pizzas)
                 </p>
               </div>
-            </label>
+
+              {/* Segmented Switch */}
+              <div className="flex items-center bg-gray-200/80 p-1 rounded-xl shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setItemFormData((prev) => ({ ...prev, hasSizes: false }))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    !itemFormData.hasSizes
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  Standard Rate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setItemFormData((prev) => ({ ...prev, hasSizes: true }))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    itemFormData.hasSizes
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <span>🍕 Small, Medium, Large</span>
+                </button>
+              </div>
+            </div>
 
             {itemFormData.hasSizes ? (
-              <div className="grid grid-cols-3 gap-3 pt-2 border-t border-indigo-100">
-                <Input
-                  label="Small (₹) *"
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  required={itemFormData.hasSizes}
-                  placeholder="150.00"
-                  value={itemFormData.priceSmall}
-                  onChange={(e) => setItemFormData({ ...itemFormData, priceSmall: e.target.value })}
-                />
-                <Input
-                  label="Medium (₹) *"
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  required={itemFormData.hasSizes}
-                  placeholder="250.00"
-                  value={itemFormData.priceMedium}
-                  onChange={(e) => setItemFormData({ ...itemFormData, priceMedium: e.target.value })}
-                />
-                <Input
-                  label="Large (₹) *"
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  required={itemFormData.hasSizes}
-                  placeholder="350.00"
-                  value={itemFormData.priceLarge}
-                  onChange={(e) => setItemFormData({ ...itemFormData, priceLarge: e.target.value })}
-                />
+              <div className="space-y-2 pt-1">
+                <p className="text-xs font-bold text-indigo-900">
+                  Enter rates for all 3 pizza sizes:
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 bg-white rounded-xl border border-indigo-200 shadow-xs space-y-1">
+                    <span className="text-xs font-bold text-indigo-800 block">
+                      🍕 Small Rate (₹) *
+                    </span>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      required={itemFormData.hasSizes}
+                      placeholder="150.00"
+                      value={itemFormData.priceSmall}
+                      onChange={(e) => setItemFormData({ ...itemFormData, priceSmall: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="p-3 bg-white rounded-xl border-2 border-indigo-500 shadow-xs space-y-1 ring-1 ring-indigo-300">
+                    <span className="text-xs font-bold text-indigo-800 block">
+                      🍕 Medium Rate (₹) *
+                    </span>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      required={itemFormData.hasSizes}
+                      placeholder="250.00"
+                      value={itemFormData.priceMedium}
+                      onChange={(e) => setItemFormData({ ...itemFormData, priceMedium: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="p-3 bg-white rounded-xl border border-indigo-200 shadow-xs space-y-1">
+                    <span className="text-xs font-bold text-indigo-800 block">
+                      🍕 Large Rate (₹) *
+                    </span>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      required={itemFormData.hasSizes}
+                      placeholder="350.00"
+                      value={itemFormData.priceLarge}
+                      onChange={(e) => setItemFormData({ ...itemFormData, priceLarge: e.target.value })}
+                    />
+                  </div>
+                </div>
               </div>
             ) : (
-              <Input
-                label="Price (₹) *"
-                type="number"
-                min="1"
-                step="0.01"
-                required={!itemFormData.hasSizes}
-                placeholder="250.00"
-                value={itemFormData.price}
-                onChange={(e) => setItemFormData({ ...itemFormData, price: Number(e.target.value) })}
-              />
+              <div className="pt-1">
+                <Input
+                  label="Rate / Price (₹) *"
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  required={!itemFormData.hasSizes}
+                  placeholder="250.00"
+                  value={itemFormData.price}
+                  onChange={(e) => setItemFormData({ ...itemFormData, price: Number(e.target.value) })}
+                />
+              </div>
             )}
           </div>
 
