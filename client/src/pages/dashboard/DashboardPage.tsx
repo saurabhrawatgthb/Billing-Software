@@ -11,6 +11,8 @@ import {
   Banknote,
   TrendingUp,
   ArrowRight,
+  Clock,
+  Plus,
 } from "lucide-react";
 import { api } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
@@ -253,39 +255,167 @@ export const DashboardPage: React.FC = () => {
             </div>
           </Card>
 
+          {/* Franchise Staff & Team Section */}
           <Card
-            title="Shift & Workforce"
-            subtitle="Daily staff check-ins and attendance"
+            title="Franchise Staff & Active Team"
+            subtitle={`Showing registered employees and staff in ${user?.franchise?.name || "your outlet"}`}
             className="md:col-span-2"
             action={
-              <Link to="/attendance">
-                <Button variant="outline" size="sm">
-                  Attendance Sheet
-                </Button>
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link to="/attendance">
+                  <Button variant="outline" size="sm" icon={<Clock className="w-3.5 h-3.5" />}>
+                    Attendance Sheet
+                  </Button>
+                </Link>
+                <Link to="/employees">
+                  <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />}>
+                    Manage Staff
+                  </Button>
+                </Link>
+              </div>
             }
           >
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">
-                  {stats?.presentStaffCount || 0} Employees Active Today
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Track live attendance, shift rosters, and employee advance requests
-                </p>
+            <div className="space-y-4">
+              {/* Shift Attendance Snapshot Bar */}
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">
+                      {stats?.presentStaffCount || 0} of {stats?.totalEmployees || 0} Staff Present Today
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Total {stats?.totalEmployees || 0} registered employees • {stats?.activeUsersCount || 0} active login accounts
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Link to="/advances">
+                    <Button variant="secondary" size="sm">
+                      Advances
+                    </Button>
+                  </Link>
+                  <Link to="/attendance">
+                    <Button variant="primary" size="sm">
+                      Mark Attendance
+                    </Button>
+                  </Link>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Link to="/advances">
-                  <Button variant="secondary" size="sm">
-                    Advances
-                  </Button>
-                </Link>
-                <Link to="/attendance">
-                  <Button variant="primary" size="sm">
-                    Mark Attendance
-                  </Button>
-                </Link>
-              </div>
+
+              {/* Employees Table */}
+              {!stats?.employees || stats.employees.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 border border-dashed border-gray-200 rounded-xl">
+                  <Users className="w-10 h-10 mx-auto mb-2 opacity-40 text-indigo-400" />
+                  <p className="text-sm font-semibold text-gray-600">No employees registered yet</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Add staff members to track attendance and manage salary advances.
+                  </p>
+                  <Link to="/employees" className="mt-3 inline-block">
+                    <Button variant="outline" size="sm" icon={<Plus className="w-3.5 h-3.5" />}>
+                      Add Employee
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                      <tr>
+                        <th className="px-4 py-2.5">Employee</th>
+                        <th className="px-4 py-2.5">Code</th>
+                        <th className="px-4 py-2.5">Designation</th>
+                        <th className="px-4 py-2.5">Contact</th>
+                        <th className="px-4 py-2.5">Today's Shift</th>
+                        <th className="px-4 py-2.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {stats.employees.map((emp: any) => (
+                        <tr key={emp.id} className="hover:bg-gray-50/80 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                {emp.name?.charAt(0)?.toUpperCase() || "E"}
+                              </div>
+                              <span className="font-semibold text-gray-900 text-xs">{emp.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 font-mono font-bold text-xs text-indigo-600">
+                            {emp.employeeCode}
+                          </td>
+                          <td className="px-4 py-3 font-medium text-xs text-gray-700">
+                            {emp.designation || "Staff"}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600">
+                            {emp.phone || emp.email || "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                emp.todayAttendance === "PRESENT"
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : emp.todayAttendance === "HALF_DAY"
+                                  ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                  : "bg-amber-50 text-amber-700 border border-amber-200"
+                              }`}
+                            >
+                              {emp.todayAttendance === "PRESENT"
+                                ? "✓ Present Today"
+                                : emp.todayAttendance === "HALF_DAY"
+                                ? "Half Day"
+                                : "Not Marked Yet"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                emp.status === "ACTIVE"
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-gray-100 text-gray-600"
+                              }`}
+                            >
+                              {emp.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Login Accounts Row */}
+              {stats?.users && stats.users.length > 0 && (
+                <div className="pt-2 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Franchise System Accounts ({stats.users.length})
+                    </span>
+                    <Link to="/users" className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold">
+                      Manage Logins →
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {stats.users.map((u: any) => (
+                      <div
+                        key={u.id}
+                        className="p-2.5 rounded-lg border border-gray-200/80 bg-white flex items-center justify-between gap-2 shadow-2xs"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-gray-900 truncate">{u.name}</p>
+                          <p className="text-[11px] text-gray-400 font-mono truncate">{u.email}</p>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                          {u.role}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
         </div>

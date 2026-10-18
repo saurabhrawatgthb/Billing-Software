@@ -104,6 +104,7 @@ export interface Employee {
   status: EmployeeStatus;
   createdAt: string;
   salaryStructure?: SalaryStructure | null;
+  franchise?: Franchise | null;
   _count?: {
     attendance?: number;
     leaveRequests?: number;

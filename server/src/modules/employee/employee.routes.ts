@@ -6,8 +6,8 @@ const router = Router();
 
 router.use(authenticate);
 
-router.get("/", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "HR", "ACCOUNTANT"), list);
-router.get("/:id", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "HR", "ACCOUNTANT"), get);
+router.get("/", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "HR", "ACCOUNTANT", "CASHIER"), list);
+router.get("/:id", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "HR", "ACCOUNTANT", "CASHIER"), get);
 router.post("/", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "HR"), create);
 router.put("/:id", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "HR"), update);
 router.patch("/:id/status", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "HR"), updateStatus);

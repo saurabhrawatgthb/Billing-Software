@@ -1,4 +1,4 @@
-import { AttendanceStatus } from "@prisma/client";
+import { AttendanceStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 import prisma from "../../lib/prisma.js";
 import { AppError } from "../../middleware/error.js";
@@ -37,8 +37,6 @@ export async function listAttendance(
     year?: number;
   }
 ) {
-  if (!franchiseId) return [];
-
   let dateFilter: { gte?: Date; lte?: Date } | undefined;
 
   if (filters.startDate || filters.endDate) {
@@ -59,12 +57,14 @@ export async function listAttendance(
     dateFilter = { gte: startOfMonth, lte: endOfMonth };
   }
 
+  const where: Prisma.AttendanceWhereInput = {
+    ...(franchiseId && franchiseId !== "all" ? { franchiseId } : {}),
+    employeeId: filters.employeeId || undefined,
+    date: dateFilter,
+  };
+
   return prisma.attendance.findMany({
-    where: {
-      franchiseId,
-      employeeId: filters.employeeId || undefined,
-      date: dateFilter,
-    },
+    where,
     include: {
       employee: {
         select: {

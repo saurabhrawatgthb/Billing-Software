@@ -54,7 +54,7 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/dashboard"
           element={
-            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER"]}>
               <DashboardPage />
             </ProtectedRoute>
           }
@@ -171,7 +171,7 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/employees"
           element={
-            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER", "HR", "ACCOUNTANT"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER", "HR", "ACCOUNTANT"]}>
               <EmployeesPage />
             </ProtectedRoute>
           }

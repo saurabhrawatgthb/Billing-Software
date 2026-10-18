@@ -335,6 +335,8 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
       monthOrders,
       totalEmployees,
       pendingPayrolls,
+      employeesList,
+      usersList,
     ] = await Promise.all([
       prisma.franchise.count(),
       prisma.franchise.count({ where: { isActive: true } }),
@@ -346,6 +348,29 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
       }),
       prisma.employee.count({ where: { status: "ACTIVE" } }),
       prisma.payroll.count({ where: { status: "DRAFT" } }),
+      prisma.employee.findMany({
+        include: {
+          franchise: { select: { id: true, name: true, code: true } },
+          salaryStructure: true,
+          attendance: { where: { date: { gte: todayStart } }, take: 1 },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }),
+      prisma.user.findMany({
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          franchiseId: true,
+          isActive: true,
+          createdAt: true,
+          franchise: { select: { id: true, name: true, code: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }),
     ]);
 
     const todayRevenue = todayOrders.reduce((sum, o) => sum + Number(o.total), 0);
@@ -363,6 +388,23 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
       averageOrderValue: aov,
       totalEmployees,
       pendingPayrollCount: pendingPayrolls,
+      employees: employeesList.map((e) => ({
+        id: e.id,
+        name: `${e.firstName}${e.lastName ? " " + e.lastName : ""}`,
+        firstName: e.firstName,
+        lastName: e.lastName,
+        employeeCode: e.employeeCode,
+        designation: e.designation || "Staff",
+        phone: e.phone,
+        email: e.email,
+        status: e.status,
+        franchiseName: e.franchise?.name || null,
+        franchiseCode: e.franchise?.code || null,
+        basicSalary: e.salaryStructure?.basicSalary ? Number(e.salaryStructure.basicSalary) : 0,
+        todayAttendance: e.attendance[0]?.status || "NOT_MARKED",
+        checkInTime: e.attendance[0]?.checkIn ? e.attendance[0].checkIn.toISOString() : null,
+      })),
+      users: usersList,
     };
   }
 
@@ -376,6 +418,8 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
     todayAttendance,
     totalEmployees,
     activeUsers,
+    employeesList,
+    usersList,
   ] = await Promise.all([
     prisma.order.findMany({
       where: { franchiseId: fid, createdAt: { gte: todayStart }, status: { notIn: ["CANCELLED"] } },
@@ -392,6 +436,29 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
     }),
     prisma.employee.count({ where: { franchiseId: fid, status: "ACTIVE" } }),
     prisma.user.count({ where: { franchiseId: fid, isActive: true } }),
+    prisma.employee.findMany({
+      where: { franchiseId: fid },
+      include: {
+        salaryStructure: true,
+        attendance: {
+          where: { date: { gte: todayStart } },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.user.findMany({
+      where: { franchiseId: fid },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   const todayRevenue = todayOrders.reduce((sum, o) => sum + Number(o.total), 0);
@@ -411,5 +478,21 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
     totalEmployees,
     presentStaffCount: presentStaff,
     activeUsersCount: activeUsers,
+    employees: employeesList.map((e) => ({
+      id: e.id,
+      name: `${e.firstName}${e.lastName ? " " + e.lastName : ""}`,
+      firstName: e.firstName,
+      lastName: e.lastName,
+      employeeCode: e.employeeCode,
+      designation: e.designation || "Staff",
+      phone: e.phone,
+      email: e.email,
+      status: e.status,
+      basicSalary: e.salaryStructure?.basicSalary ? Number(e.salaryStructure.basicSalary) : 0,
+      todayAttendance: e.attendance[0]?.status || "NOT_MARKED",
+      checkInTime: e.attendance[0]?.checkIn ? e.attendance[0].checkIn.toISOString() : null,
+      checkOutTime: e.attendance[0]?.checkOut ? e.attendance[0].checkOut.toISOString() : null,
+    })),
+    users: usersList,
   };
 }

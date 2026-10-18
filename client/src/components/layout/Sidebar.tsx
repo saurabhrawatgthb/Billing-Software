@@ -44,7 +44,7 @@ const navItems: NavItem[] = [
     name: "Dashboard",
     to: "/dashboard",
     icon: <LayoutDashboard className="w-5 h-5" />,
-    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER"],
+    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER"],
   },
   {
     name: "Customer CRM",
@@ -116,13 +116,13 @@ const navItems: NavItem[] = [
     name: "Users & Staff Access",
     to: "/users",
     icon: <Users className="w-5 h-5" />,
-    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER"],
+    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER"],
   },
   {
     name: "Employees",
     to: "/employees",
     icon: <UserCheck className="w-5 h-5" />,
-    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "HR", "ACCOUNTANT"],
+    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER", "HR", "ACCOUNTANT"],
   },
   {
     name: "Attendance",

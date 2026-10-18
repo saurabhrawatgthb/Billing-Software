@@ -29,11 +29,19 @@ export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>;
 
 export async function listEmployees(franchiseId: string | null) {
-  if (!franchiseId) return [];
+  const where: Prisma.EmployeeWhereInput =
+    franchiseId && franchiseId !== "all" ? { franchiseId } : {};
 
   return prisma.employee.findMany({
-    where: { franchiseId },
+    where,
     include: {
+      franchise: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
       salaryStructure: true,
       _count: {
         select: {
