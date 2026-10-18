@@ -350,6 +350,10 @@ export interface MenuItem {
   code?: string;
   description?: string | null;
   price: number | string;
+  hasSizes?: boolean;
+  priceSmall?: number | string | null;
+  priceMedium?: number | string | null;
+  priceLarge?: number | string | null;
   isAvailable: boolean;
   category?: { id: string; name: string };
   station?: { id: string; name: string } | null;
@@ -385,6 +389,7 @@ export interface OrderItem {
   quantity: number;
   unitPrice: number | string;
   totalPrice: number | string;
+  selectedSize?: string | null;
   price?: number | string;
   subtotal?: number | string;
   notes?: string | null;

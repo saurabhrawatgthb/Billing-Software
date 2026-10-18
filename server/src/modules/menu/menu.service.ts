@@ -142,6 +142,10 @@ export const menuItemSchema = z.object({
   code: z.string().trim().min(1, "Dish code is required").transform((val) => val.toUpperCase()),
   description: z.string().trim().optional().nullable(),
   price: z.number().positive("Price must be greater than 0"),
+  hasSizes: z.boolean().optional(),
+  priceSmall: z.number().positive().optional().nullable(),
+  priceMedium: z.number().positive().optional().nullable(),
+  priceLarge: z.number().positive().optional().nullable(),
   isAvailable: z.boolean().default(true),
 });
 
@@ -226,6 +230,10 @@ export async function createMenuItem(
       code: data.code,
       description: data.description,
       price: Number(data.price),
+      hasSizes: Boolean(data.hasSizes),
+      priceSmall: data.priceSmall !== undefined && data.priceSmall !== null ? Number(data.priceSmall) : null,
+      priceMedium: data.priceMedium !== undefined && data.priceMedium !== null ? Number(data.priceMedium) : null,
+      priceLarge: data.priceLarge !== undefined && data.priceLarge !== null ? Number(data.priceLarge) : null,
       isAvailable: data.isAvailable,
     },
     include: {
@@ -294,6 +302,10 @@ export async function updateMenuItem(
       code: data.code,
       description: data.description,
       price: data.price !== undefined ? Number(data.price) : undefined,
+      hasSizes: data.hasSizes !== undefined ? Boolean(data.hasSizes) : undefined,
+      priceSmall: data.priceSmall !== undefined ? (data.priceSmall !== null ? Number(data.priceSmall) : null) : undefined,
+      priceMedium: data.priceMedium !== undefined ? (data.priceMedium !== null ? Number(data.priceMedium) : null) : undefined,
+      priceLarge: data.priceLarge !== undefined ? (data.priceLarge !== null ? Number(data.priceLarge) : null) : undefined,
       isAvailable: data.isAvailable,
     },
     include: {

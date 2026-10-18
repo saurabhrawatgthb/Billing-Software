@@ -625,6 +625,10 @@ model MenuItem {
   code        String  @default("")
   description String?
   price       Float
+  hasSizes    Boolean? @default(false)
+  priceSmall  Float?
+  priceMedium Float?
+  priceLarge  Float?
   isAvailable Boolean @default(true)
 
   createdAt DateTime @default(now())
@@ -742,6 +746,7 @@ model OrderItem {
   quantity          Int
   unitPrice         Float
   totalPrice        Float
+  selectedSize      String?
   notes             String?
   inventoryDeducted Boolean @default(false)
 

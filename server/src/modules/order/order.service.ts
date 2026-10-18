@@ -9,6 +9,8 @@ import { deductInventoryForOrder } from "../inventory/inventory.service.js";
 export const orderItemInputSchema = z.object({
   menuItemId: z.string().min(1, "Menu item ID is required"),
   quantity: z.number().int().positive("Quantity must be at least 1"),
+  selectedSize: z.string().trim().optional().nullable(),
+  unitPrice: z.number().nonnegative().optional(),
   notes: z.string().trim().optional().nullable(),
 });
 
@@ -217,13 +219,26 @@ export async function createOrder(
 
   const processedItems = data.items.map((item) => {
     const dbItem = itemMap.get(item.menuItemId)!;
-    const unitPriceNum = Number(dbItem.price);
+    let unitPriceNum = Number(dbItem.price);
+    if (dbItem.hasSizes && item.selectedSize) {
+      const sz = item.selectedSize.toLowerCase();
+      if ((sz === "small" || sz === "s") && dbItem.priceSmall != null) {
+        unitPriceNum = Number(dbItem.priceSmall);
+      } else if ((sz === "medium" || sz === "m") && dbItem.priceMedium != null) {
+        unitPriceNum = Number(dbItem.priceMedium);
+      } else if ((sz === "large" || sz === "l") && dbItem.priceLarge != null) {
+        unitPriceNum = Number(dbItem.priceLarge);
+      }
+    } else if (item.unitPrice !== undefined && !isNaN(item.unitPrice)) {
+      unitPriceNum = Number(item.unitPrice);
+    }
     const totalPriceNum = unitPriceNum * item.quantity;
     subtotalNum += totalPriceNum;
 
     return {
       menuItemId: item.menuItemId,
       quantity: item.quantity,
+      selectedSize: item.selectedSize || null,
       unitPrice: Number(unitPriceNum.toFixed(2)),
       totalPrice: Number(totalPriceNum.toFixed(2)),
       notes: item.notes || null,
@@ -336,13 +351,27 @@ export async function updateOrder(
       const dbItem = itemMap.get(item.menuItemId);
       if (!dbItem) throw new AppError(`Menu item ${item.menuItemId} not found`, 400);
 
-      const unitPriceNum = Number(dbItem.price);
+      let unitPriceNum = Number(dbItem.price);
+      if (dbItem.hasSizes && item.selectedSize) {
+        const sz = item.selectedSize.toLowerCase();
+        if ((sz === "small" || sz === "s") && dbItem.priceSmall != null) {
+          unitPriceNum = Number(dbItem.priceSmall);
+        } else if ((sz === "medium" || sz === "m") && dbItem.priceMedium != null) {
+          unitPriceNum = Number(dbItem.priceMedium);
+        } else if ((sz === "large" || sz === "l") && dbItem.priceLarge != null) {
+          unitPriceNum = Number(dbItem.priceLarge);
+        }
+      } else if (item.unitPrice !== undefined && !isNaN(item.unitPrice)) {
+        unitPriceNum = Number(item.unitPrice);
+      }
+
       const totalPriceNum = unitPriceNum * item.quantity;
       subtotalNum += totalPriceNum;
 
       return {
         menuItemId: item.menuItemId,
         quantity: item.quantity,
+        selectedSize: item.selectedSize || null,
         unitPrice: Number(unitPriceNum.toFixed(2)),
         totalPrice: Number(totalPriceNum.toFixed(2)),
         notes: item.notes || null,

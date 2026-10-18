@@ -78,6 +78,9 @@ export const POSPage: React.FC = () => {
   const [splitCashAmount, setSplitCashAmount] = useState<number>(0);
   const [splitUpiAmount, setSplitUpiAmount] = useState<number>(0);
 
+  // Portion / Size Selection for Pizza (Small / Medium / Large)
+  const [sizeSelectionItem, setSizeSelectionItem] = useState<MenuItem | null>(null);
+
   // Printer Paper Size (58mm vs 80mm) & Hardware Port Detection
   const [paperSize, setPaperSize] = useState<ThermalPaperSize>(getSavedPaperSize());
   const [isPrinterConfigOpen, setIsPrinterConfigOpen] = useState(false);
@@ -375,6 +378,8 @@ export const POSPage: React.FC = () => {
         items: cartItems.map((i) => ({
           menuItemId: i.menuItem.id,
           quantity: i.quantity,
+          selectedSize: i.selectedSize || undefined,
+          unitPrice: Number(i.price ?? i.menuItem.price),
           notes: i.notes || null,
         })),
       };
@@ -427,14 +432,18 @@ export const POSPage: React.FC = () => {
           : [{ method: payMode, amount: Number(total.toFixed(2)), status: "COMPLETED" }];
 
       // 4. Capture cart & checkout state snapshot
-      const itemsSnapshot = cartItems.map((i) => ({
-        name: i.menuItem.name,
-        quantity: i.quantity,
-        price: Number(i.menuItem.price),
-        totalPrice: Number(i.menuItem.price) * i.quantity,
-        menuItemId: i.menuItem.id,
-        notes: i.notes || null,
-      }));
+      const itemsSnapshot = cartItems.map((i) => {
+        const itemUnitPrice = Number(i.price ?? i.menuItem.price);
+        return {
+          name: i.selectedSize ? `${i.menuItem.name} (${i.selectedSize})` : i.menuItem.name,
+          quantity: i.quantity,
+          price: itemUnitPrice,
+          totalPrice: itemUnitPrice * i.quantity,
+          menuItemId: i.menuItem.id,
+          selectedSize: i.selectedSize || null,
+          notes: i.notes || null,
+        };
+      });
       const subtotalSnapshot = subtotal;
       const discountSnapshot = discount;
       const taxSnapshot = tax;
@@ -499,6 +508,8 @@ export const POSPage: React.FC = () => {
         items: itemsSnapshot.map((i) => ({
           menuItemId: i.menuItemId,
           quantity: i.quantity,
+          selectedSize: i.selectedSize || undefined,
+          unitPrice: i.price,
           notes: i.notes,
         })),
         ...(payModeSnapshot === "SPLIT"
@@ -827,7 +838,7 @@ export const POSPage: React.FC = () => {
                 <button
                   key={item.id}
                   disabled={!item.isAvailable}
-                  onClick={() => addItem(item)}
+                  onClick={() => (item.hasSizes ? setSizeSelectionItem(item) : addItem(item))}
                   className={`p-3.5 rounded-xl border text-left flex flex-col justify-between transition-all duration-150 cursor-pointer ${
                     item.isAvailable
                       ? "bg-white border-gray-200/90 hover:border-indigo-400 hover:shadow-md active:scale-98"
@@ -856,9 +867,15 @@ export const POSPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
-                    <span className="text-sm font-extrabold text-gray-900">
-                      ₹{Number(item.price).toFixed(2)}
-                    </span>
+                    {item.hasSizes ? (
+                      <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/60">
+                        S/M/L • ₹{Number(item.priceSmall || item.price).toFixed(0)}+
+                      </span>
+                    ) : (
+                      <span className="text-sm font-extrabold text-gray-900">
+                        ₹{Number(item.price).toFixed(2)}
+                      </span>
+                    )}
                     <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
                       +
                     </span>
@@ -1027,18 +1044,25 @@ export const POSPage: React.FC = () => {
             </div>
           ) : (
             cartItems.map((item) => (
-              <div key={item.menuItem.id} className="pt-3 first:pt-0 space-y-2">
+              <div key={item.cartItemId || item.menuItem.id} className="pt-3 first:pt-0 space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1">
-                    <p className="font-semibold text-gray-900 text-xs leading-tight">
-                      {item.menuItem.name}
-                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="font-semibold text-gray-900 text-xs leading-tight">
+                        {item.menuItem.name}
+                      </p>
+                      {item.selectedSize && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                          {item.selectedSize}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[11px] text-gray-500 font-mono mt-0.5">
-                      ₹{Number(item.menuItem.price).toFixed(2)} each
+                      ₹{Number(item.price ?? item.menuItem.price).toFixed(2)} each
                     </p>
                   </div>
                   <span className="font-bold text-gray-900 text-xs">
-                    ₹{(Number(item.menuItem.price) * item.quantity).toFixed(2)}
+                    ₹{(Number(item.price ?? item.menuItem.price) * item.quantity).toFixed(2)}
                   </span>
                 </div>
 
@@ -1048,14 +1072,14 @@ export const POSPage: React.FC = () => {
                     type="text"
                     placeholder="Notes (e.g. less spicy)..."
                     value={item.notes || ""}
-                    onChange={(e) => updateItemNotes(item.menuItem.id, e.target.value)}
+                    onChange={(e) => updateItemNotes(item.cartItemId, e.target.value)}
                     className="flex-1 text-[11px] bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
 
                   {/* Quantity controls */}
                   <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden shrink-0">
                     <button
-                      onClick={() => updateQuantity(item.menuItem.id, item.quantity - 1)}
+                      onClick={() => updateQuantity(item.cartItemId, item.quantity - 1)}
                       className="p-1 hover:bg-gray-100 text-gray-600 cursor-pointer"
                     >
                       <Minus className="w-3.5 h-3.5" />
@@ -1064,7 +1088,7 @@ export const POSPage: React.FC = () => {
                       {item.quantity}
                     </span>
                     <button
-                      onClick={() => updateQuantity(item.menuItem.id, item.quantity + 1)}
+                      onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)}
                       className="p-1 hover:bg-gray-100 text-gray-600 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -1694,6 +1718,102 @@ Thanks For Visiting Madrasi Dosa`;
           </div>
         </div>
       </Modal>
+
+      {/* Portion / Size Selection Modal for Pizza (Small / Medium / Large) */}
+      {sizeSelectionItem && (
+        <Modal
+          isOpen={Boolean(sizeSelectionItem)}
+          onClose={() => setSizeSelectionItem(null)}
+          title={`Select Size: ${sizeSelectionItem.name}`}
+          maxWidth="sm"
+        >
+          <div className="space-y-4 pt-1">
+            <p className="text-xs text-gray-500">
+              Select the desired pizza size to add to the order cart:
+            </p>
+
+            <div className="grid grid-cols-3 gap-3">
+              {/* Small */}
+              <button
+                type="button"
+                onClick={() => {
+                  addItem(
+                    sizeSelectionItem,
+                    "Small",
+                    Number(sizeSelectionItem.priceSmall || sizeSelectionItem.price)
+                  );
+                  setSizeSelectionItem(null);
+                }}
+                className="p-3.5 rounded-xl border-2 border-indigo-100 hover:border-indigo-600 bg-indigo-50/50 hover:bg-indigo-100/60 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs active:scale-95"
+              >
+                <span className="w-8 h-8 rounded-full bg-indigo-200 text-indigo-800 font-extrabold text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                  S
+                </span>
+                <span className="text-xs font-bold text-gray-800 group-hover:text-indigo-900">
+                  Small
+                </span>
+                <span className="text-sm font-extrabold text-emerald-700">
+                  ₹{Number(sizeSelectionItem.priceSmall || sizeSelectionItem.price).toFixed(2)}
+                </span>
+              </button>
+
+              {/* Medium */}
+              <button
+                type="button"
+                onClick={() => {
+                  addItem(
+                    sizeSelectionItem,
+                    "Medium",
+                    Number(sizeSelectionItem.priceMedium || sizeSelectionItem.price)
+                  );
+                  setSizeSelectionItem(null);
+                }}
+                className="p-3.5 rounded-xl border-2 border-indigo-200 hover:border-indigo-600 bg-indigo-50/80 hover:bg-indigo-100/80 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs active:scale-95 ring-1 ring-indigo-300/50"
+              >
+                <span className="w-8 h-8 rounded-full bg-indigo-600 text-white font-extrabold text-sm flex items-center justify-center">
+                  M
+                </span>
+                <span className="text-xs font-bold text-gray-800 group-hover:text-indigo-900">
+                  Medium
+                </span>
+                <span className="text-sm font-extrabold text-emerald-700">
+                  ₹{Number(sizeSelectionItem.priceMedium || sizeSelectionItem.price).toFixed(2)}
+                </span>
+              </button>
+
+              {/* Large */}
+              <button
+                type="button"
+                onClick={() => {
+                  addItem(
+                    sizeSelectionItem,
+                    "Large",
+                    Number(sizeSelectionItem.priceLarge || sizeSelectionItem.price)
+                  );
+                  setSizeSelectionItem(null);
+                }}
+                className="p-3.5 rounded-xl border-2 border-indigo-100 hover:border-indigo-600 bg-indigo-50/50 hover:bg-indigo-100/60 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs active:scale-95"
+              >
+                <span className="w-8 h-8 rounded-full bg-indigo-200 text-indigo-800 font-extrabold text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                  L
+                </span>
+                <span className="text-xs font-bold text-gray-800 group-hover:text-indigo-900">
+                  Large
+                </span>
+                <span className="text-sm font-extrabold text-emerald-700">
+                  ₹{Number(sizeSelectionItem.priceLarge || sizeSelectionItem.price).toFixed(2)}
+                </span>
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-gray-100">
+              <Button variant="outline" size="sm" onClick={() => setSizeSelectionItem(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

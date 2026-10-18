@@ -697,6 +697,8 @@ export const fastBillSchema = z.object({
       z.object({
         menuItemId: z.string().min(1, "Menu item ID is required"),
         quantity: z.number().int().positive("Quantity must be at least 1"),
+        selectedSize: z.string().trim().optional().nullable(),
+        unitPrice: z.number().nonnegative().optional(),
         notes: z.string().trim().optional().nullable(),
       })
     )
@@ -728,7 +730,15 @@ export async function fastBill(
       id: { in: menuItemIds },
       franchiseId,
     },
-    select: { id: true, name: true, price: true },
+    select: {
+      id: true,
+      name: true,
+      price: true,
+      hasSizes: true,
+      priceSmall: true,
+      priceMedium: true,
+      priceLarge: true,
+    },
   });
 
   const itemMap = new Map(menuItems.map((m) => [m.id, m]));
@@ -736,13 +746,27 @@ export async function fastBill(
 
   const processedItems = data.items.map((item) => {
     const dbItem = itemMap.get(item.menuItemId);
-    const unitPrice = dbItem ? Number(dbItem.price) : 0;
+    let unitPrice = dbItem ? Number(dbItem.price) : 0;
+    if (dbItem?.hasSizes && item.selectedSize) {
+      const sz = item.selectedSize.toLowerCase();
+      if ((sz === "small" || sz === "s") && dbItem.priceSmall != null) {
+        unitPrice = Number(dbItem.priceSmall);
+      } else if ((sz === "medium" || sz === "m") && dbItem.priceMedium != null) {
+        unitPrice = Number(dbItem.priceMedium);
+      } else if ((sz === "large" || sz === "l") && dbItem.priceLarge != null) {
+        unitPrice = Number(dbItem.priceLarge);
+      }
+    } else if (item.unitPrice !== undefined && !isNaN(item.unitPrice)) {
+      unitPrice = Number(item.unitPrice);
+    }
+
     const totalPrice = unitPrice * item.quantity;
     subtotalNum += totalPrice;
     return {
       menuItemId: item.menuItemId,
       name: dbItem?.name || "Dish Item",
       quantity: item.quantity,
+      selectedSize: item.selectedSize || null,
       unitPrice: Number(unitPrice.toFixed(2)),
       totalPrice: Number(totalPrice.toFixed(2)),
       notes: item.notes || null,
@@ -791,6 +815,7 @@ export async function fastBill(
           create: processedItems.map((p) => ({
             menuItemId: p.menuItemId,
             quantity: p.quantity,
+            selectedSize: p.selectedSize,
             unitPrice: p.unitPrice,
             totalPrice: p.totalPrice,
             notes: p.notes,

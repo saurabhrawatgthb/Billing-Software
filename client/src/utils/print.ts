@@ -184,10 +184,15 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
 
   for (const item of data.items) {
     const itemTotal = item.totalPrice !== undefined ? item.totalPrice : item.price * item.quantity;
-    const name = item.name.padEnd(16, " ").substring(0, 16);
     const qty = String(item.quantity).padStart(3, " ");
     const price = `${currSym}${itemTotal.toFixed(2)}`.padStart(11, " ");
-    lines.push(`${name} ${qty} ${price}`);
+    if (item.name.length > 16) {
+      lines.push(item.name);
+      lines.push(`${"".padEnd(16, " ")} ${qty} ${price}`);
+    } else {
+      const name = item.name.padEnd(16, " ");
+      lines.push(`${name} ${qty} ${price}`);
+    }
   }
 
   lines.push(thinDivider);
