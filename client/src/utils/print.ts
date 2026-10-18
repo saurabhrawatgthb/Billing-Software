@@ -31,29 +31,69 @@ function escapeHtml(text: string): string {
 
 /**
  * Mathematically centers a single line of text within a fixed column width (default 32 chars).
- * If the string exceeds the width (e.g. lengthy branch addresses), it word-wraps and centers each sub-line.
+ * If the string exceeds the width (e.g. lengthy branch addresses or unspaced tokens),
+ * it iteratively word-wraps, splits oversized words, and centers each sub-line with zero recursion.
  */
 export function centerLine(text: string, width = 32): string {
   const trimmed = text.trim();
   if (!trimmed) return "";
-  if (trimmed.length >= width) {
-    const words = trimmed.split(/\s+/);
-    const sublines: string[] = [];
-    let current = "";
-    for (const w of words) {
-      if ((current + (current ? " " : "") + w).length <= width) {
-        current += (current ? " " : "") + w;
-      } else {
-        if (current) sublines.push(centerLine(current, width));
-        current = w;
-      }
-    }
-    if (current) sublines.push(centerLine(current, width));
-    return sublines.join("\n");
+  if (width <= 0) return trimmed;
+
+  // If text contains newline characters, center each line independently
+  if (trimmed.includes("\n")) {
+    return trimmed
+      .split("\n")
+      .map((line) => centerLine(line, width))
+      .join("\n");
   }
-  const totalPad = width - trimmed.length;
-  const leftPad = Math.floor(totalPad / 2);
-  return " ".repeat(leftPad) + trimmed;
+
+  // If text fits completely within width, pad symmetrically
+  if (trimmed.length <= width) {
+    const totalPad = width - trimmed.length;
+    const leftPad = Math.floor(totalPad / 2);
+    return " ".repeat(leftPad) + trimmed;
+  }
+
+  // Word wrap iteratively (zero recursion to prevent call stack overflow on long words/addresses)
+  const words = trimmed.split(/\s+/);
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (let word of words) {
+    // If a single word or unspaced token is longer than width, chunk it
+    while (word.length > width) {
+      if (currentLine) {
+        lines.push(currentLine);
+        currentLine = "";
+      }
+      lines.push(word.slice(0, width));
+      word = word.slice(width);
+    }
+
+    if (!word) continue;
+
+    if (!currentLine) {
+      currentLine = word;
+    } else if ((currentLine + " " + word).length <= width) {
+      currentLine += " " + word;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  // Center each wrapped line
+  return lines
+    .map((l) => {
+      const pad = Math.max(0, width - l.length);
+      const left = Math.floor(pad / 2);
+      return " ".repeat(left) + l;
+    })
+    .join("\n");
 }
 
 export const MADRASI_DOSA_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 140" width="100%">
