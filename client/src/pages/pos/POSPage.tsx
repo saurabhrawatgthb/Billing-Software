@@ -28,7 +28,7 @@ import {
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
 import { useCartStore } from "../../store/cartStore.js";
-import type { Category, MenuItem, RestaurantTable, Customer, BrandSettings } from "../../types/index.js";
+import type { Category, MenuItem, RestaurantTable, Customer, BrandSettings, Franchise } from "../../types/index.js";
 import { Button } from "../../components/common/Button.js";
 import { Input } from "../../components/common/Input.js";
 import { Select } from "../../components/common/Select.js";
@@ -36,12 +36,13 @@ import { LoadingState } from "../../components/common/LoadingState.js";
 import { AggregatorOrderModal } from "../../components/pos/AggregatorOrderModal.js";
 import { AggregatorSettingsModal } from "../../components/pos/AggregatorSettingsModal.js";
 import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
-import { Globe, Bell, LayoutGrid } from "lucide-react";
+import { Globe, Bell, LayoutGrid, Store } from "lucide-react";
 
 export const POSPage: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { selectedFranchiseId } = useAuthStore();
+  const { selectedFranchiseId, user, setSelectedFranchise } = useAuthStore();
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
 
   const {
     items: cartItems,
@@ -110,6 +111,17 @@ export const POSPage: React.FC = () => {
       return res.data.data;
     },
   });
+
+  // Fetch active franchises for Super Admin outlet selection
+  const { data: franchises = [] } = useQuery<Franchise[]>({
+    queryKey: ["navbar-franchises"],
+    queryFn: async () => {
+      const res = await api.get("/franchises");
+      return res.data.data;
+    },
+    enabled: isSuperAdmin,
+  });
+  const activeFranchises = franchises.filter((f) => f.isActive);
 
   // Aggregator Online Orders (Swiggy / Zomato) State
   const [isAggregatorModalOpen, setIsAggregatorModalOpen] = useState(false);
@@ -417,6 +429,63 @@ export const POSPage: React.FC = () => {
   const tax = getTax();
   const total = getTotal();
 
+  // If Super Admin has not selected a specific franchise outlet yet, prompt to pick one
+  if (isSuperAdmin && !selectedFranchiseId) {
+    return (
+      <div className="h-[calc(100vh-6.5rem)] flex items-center justify-center p-6 bg-slate-50/50">
+        <div className="max-w-lg w-full bg-white rounded-3xl p-8 border border-gray-200 shadow-xl text-center space-y-6">
+          <div className="w-16 h-16 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+            <Store className="w-8 h-8" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-gray-950">Select POS Outlet</h2>
+            <p className="text-sm text-gray-500 mt-1.5">
+              You are signed in as <strong>Super Admin</strong>. POS billing, live table seating, and kitchen tickets require an active branch scope:
+            </p>
+          </div>
+
+          {activeFranchises.length === 0 ? (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 text-sm">
+              <p className="font-bold">No active franchise found</p>
+              <p className="text-xs text-amber-700 mt-1">Please create or activate an outlet under the Franchises tab first.</p>
+              <Button
+                variant="primary"
+                size="sm"
+                className="mt-3"
+                onClick={() => navigate("/franchises")}
+              >
+                Go to Franchises
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+              {activeFranchises.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setSelectedFranchise(f.id)}
+                  className="w-full flex items-center justify-between p-4 rounded-2xl border border-gray-200 hover:border-indigo-500 hover:bg-indigo-50/40 transition-all text-left cursor-pointer group shadow-2xs"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gray-100 group-hover:bg-indigo-100 text-gray-600 group-hover:text-indigo-600 flex items-center justify-center transition-colors">
+                      <Store className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900 group-hover:text-indigo-900">{f.name}</p>
+                      <p className="text-xs text-gray-500">{f.code} • {f.address || "Main Branch"}</p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold text-indigo-600 bg-indigo-50 group-hover:bg-indigo-600 group-hover:text-white px-3 py-1.5 rounded-xl transition-all">
+                    Open POS &rarr;
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-[calc(100vh-6.5rem)] flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto overflow-hidden">
       {/* LEFT COLUMN: Catalog & Item Selection */}
@@ -517,6 +586,21 @@ export const POSPage: React.FC = () => {
 
         {/* Top Control Bar */}
         <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row items-center gap-3">
+          {isSuperAdmin && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-50/80 border border-indigo-200 text-xs font-bold text-indigo-950 shrink-0 shadow-2xs">
+              <Store className="w-4 h-4 text-indigo-600" />
+              <span>{activeFranchises.find((f) => f.id === selectedFranchiseId)?.name || "Active Outlet"}</span>
+              <button
+                type="button"
+                onClick={() => setSelectedFranchise(null)}
+                className="text-[11px] text-indigo-600 hover:text-indigo-900 underline font-extrabold cursor-pointer ml-1"
+                title="Switch branch"
+              >
+                Change
+              </button>
+            </div>
+          )}
+
           <Input
             placeholder="Search dish by name..."
             value={searchTerm}

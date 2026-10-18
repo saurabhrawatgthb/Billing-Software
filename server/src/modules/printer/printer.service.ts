@@ -266,8 +266,7 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
   }
 
   lines.push("--------------------------------");
-  lines.push("    Thank you for dining with us!   ");
-  lines.push(`       Visit: ${invoice.franchise.name}      `);
+  lines.push("Thanks For Visiting Madrasi Dosa");
   lines.push("\n\n\n");
 
   return {

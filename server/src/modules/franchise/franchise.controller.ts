@@ -13,7 +13,8 @@ import {
 
 export async function list(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
-    const franchises = await listFranchises(req.user?.role, req.user?.franchiseId);
+    const includeInactive = req.query.includeInactive === "true";
+    const franchises = await listFranchises(req.user?.role, req.user?.franchiseId, includeInactive);
     return res.json({ success: true, data: franchises });
   } catch (error) {
     next(error);

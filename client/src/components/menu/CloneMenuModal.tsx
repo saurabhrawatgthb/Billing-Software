@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Copy, ArrowRight, CheckCircle2, AlertCircle, Percent, Sparkles } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
@@ -41,10 +41,12 @@ export const CloneMenuModal: React.FC<CloneMenuModalProps> = ({
   const [formError, setFormError] = useState<string | null>(null);
   const [cloneSuccess, setCloneSuccess] = useState<string | null>(null);
 
+  const activeFranchises = franchises.filter((f) => f.isActive);
+
   useEffect(() => {
     if (isOpen) {
-      setSourceId(initialSourceId || (franchises[0]?.id !== initialTargetId ? franchises[0]?.id : franchises[1]?.id) || "");
-      setTargetId(initialTargetId || (franchises[1]?.id !== initialSourceId ? franchises[1]?.id : franchises[0]?.id) || "");
+      setSourceId(initialSourceId || (activeFranchises[0]?.id !== initialTargetId ? activeFranchises[0]?.id : activeFranchises[1]?.id) || "");
+      setTargetId(initialTargetId || (activeFranchises[1]?.id !== initialSourceId ? activeFranchises[1]?.id : activeFranchises[0]?.id) || "");
       setPriceAdjustment(0);
       setCopyStations(true);
       setMode("MERGE");
@@ -152,7 +154,7 @@ export const CloneMenuModal: React.FC<CloneMenuModalProps> = ({
               required
             >
               <option value="">-- Select Source Franchise Outlet --</option>
-              {franchises.map((f) => (
+              {activeFranchises.map((f) => (
                 <option key={f.id} value={f.id} disabled={f.id === targetId}>
                   🏬 {f.name} ({f.code})
                 </option>
@@ -178,7 +180,7 @@ export const CloneMenuModal: React.FC<CloneMenuModalProps> = ({
               required
             >
               <option value="">-- Select Target Franchise Outlet --</option>
-              {franchises.map((f) => (
+              {activeFranchises.map((f) => (
                 <option key={f.id} value={f.id} disabled={f.id === sourceId}>
                   🏬 {f.name} ({f.code})
                 </option>

@@ -275,11 +275,13 @@ export const InventoryPage: React.FC = () => {
               className="text-xs font-semibold bg-white border border-indigo-300 rounded-lg px-3 py-1.5 text-gray-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
               <option value="">🏬 Consolidated (All Outlets)</option>
-              {franchises.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name} ({f.code})
-                </option>
-              ))}
+              {franchises
+                .filter((f) => f.isActive)
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name} ({f.code})
+                  </option>
+                ))}
             </select>
           </div>
         </div>
@@ -614,8 +616,8 @@ export const InventoryPage: React.FC = () => {
           {isSuperAdmin && !editingItem && (
             <Select
               label="Assigned Franchise Branch *"
-              options={franchises.map((f) => ({ value: f.id, label: `${f.name} (${f.code})` }))}
-              value={itemForm.franchiseId || effectiveFranchiseId || franchises[0]?.id || ""}
+              options={franchises.filter((f) => f.isActive).map((f) => ({ value: f.id, label: `${f.name} (${f.code})` }))}
+              value={itemForm.franchiseId || effectiveFranchiseId || franchises.find((f) => f.isActive)?.id || ""}
               onChange={(e) => setItemForm({ ...itemForm, franchiseId: e.target.value })}
             />
           )}

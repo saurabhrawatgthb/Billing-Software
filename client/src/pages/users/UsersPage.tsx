@@ -340,7 +340,9 @@ export const UsersPage: React.FC = () => {
               label="Assigned Franchise Branch *"
               options={[
                 { value: "", label: "Select a franchise" },
-                ...franchises.map((f) => ({ value: f.id, label: `${f.name} (${f.code})` })),
+                ...franchises
+                  .filter((f) => f.isActive)
+                  .map((f) => ({ value: f.id, label: `${f.name} (${f.code})` })),
               ]}
               value={formData.franchiseId}
               onChange={(e) => setFormData({ ...formData, franchiseId: e.target.value })}

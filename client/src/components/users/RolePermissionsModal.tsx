@@ -205,11 +205,13 @@ export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({
             className="text-xs font-bold bg-white border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
           >
             <option value="">🌐 Global Default (All Franchise Branches)</option>
-            {franchises.map((f) => (
-              <option key={f.id} value={f.id}>
-                🏬 {f.name} ({f.code})
-              </option>
-            ))}
+            {franchises
+              .filter((f) => f.isActive)
+              .map((f) => (
+                <option key={f.id} value={f.id}>
+                  🏬 {f.name} ({f.code})
+                </option>
+              ))}
           </select>
         </div>
 

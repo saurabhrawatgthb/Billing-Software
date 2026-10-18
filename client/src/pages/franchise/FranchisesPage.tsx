@@ -42,11 +42,11 @@ export const FranchisesPage: React.FC = () => {
   });
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Fetch franchises
+  // Fetch franchises (including deactivated ones for management)
   const { data: franchises = [], isLoading } = useQuery<Franchise[]>({
     queryKey: ["franchises"],
     queryFn: async () => {
-      const res = await api.get("/franchises");
+      const res = await api.get("/franchises?includeInactive=true");
       return res.data.data;
     },
   });
@@ -121,12 +121,22 @@ export const FranchisesPage: React.FC = () => {
     saveMutation.mutate(formData);
   };
 
-  const filtered = franchises.filter(
-    (f) =>
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ALL");
+
+  const activeCount = franchises.filter((f) => f.isActive).length;
+  const inactiveCount = franchises.filter((f) => !f.isActive).length;
+
+  const filtered = franchises.filter((f) => {
+    const matchesSearch =
       f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       f.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (f.address && f.address.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+      (f.address && f.address.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    if (!matchesSearch) return false;
+    if (statusFilter === "ACTIVE") return f.isActive;
+    if (statusFilter === "INACTIVE") return !f.isActive;
+    return true;
+  });
 
   const currSym = brandSettings?.currencySymbol || brandSettings?.currency || "₹";
   const brandName = brandSettings?.businessName || "My Restaurant Brand";
@@ -180,7 +190,7 @@ export const FranchisesPage: React.FC = () => {
       </div>
 
       {/* Filter & Search */}
-      <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-200/80 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200/80 shadow-xs">
         <Input
           placeholder="Search by franchise name, code, or branch address..."
           value={searchTerm}
@@ -188,6 +198,44 @@ export const FranchisesPage: React.FC = () => {
           leftIcon={<Search className="w-4 h-4 text-gray-400" />}
           className="max-w-md"
         />
+
+        <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl text-xs font-bold shrink-0">
+          <button
+            type="button"
+            onClick={() => setStatusFilter("ALL")}
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              statusFilter === "ALL"
+                ? "bg-white text-gray-950 shadow-2xs font-extrabold"
+                : "text-gray-500 hover:text-gray-900"
+            }`}
+          >
+            All Outlets ({franchises.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter("ACTIVE")}
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === "ACTIVE"
+                ? "bg-white text-emerald-800 shadow-2xs font-extrabold"
+                : "text-gray-500 hover:text-gray-900"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+            Active ({activeCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter("INACTIVE")}
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === "INACTIVE"
+                ? "bg-white text-rose-800 shadow-2xs font-extrabold"
+                : "text-gray-500 hover:text-gray-900"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
+            Deactivated ({inactiveCount})
+          </button>
+        </div>
       </div>
 
       {/* Grid */}
@@ -525,8 +573,7 @@ export const FranchisesPage: React.FC = () => {
               </div>
 
               <div className="text-center text-[10px] text-slate-500 pt-1">
-                <p className="font-bold text-slate-700">Thank you for visiting {previewBillFranchise.name}!</p>
-                <p>Please Visit Again</p>
+                <p className="font-bold text-slate-700">Thanks For Visiting Madrasi Dosa</p>
               </div>
             </div>
 

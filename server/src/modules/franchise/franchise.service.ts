@@ -16,7 +16,11 @@ export const franchiseUpdateSchema = franchiseInputSchema.partial();
 export type FranchiseInput = z.infer<typeof franchiseInputSchema>;
 export type FranchiseUpdate = z.infer<typeof franchiseUpdateSchema>;
 
-export async function listFranchises(userRole?: string, userFranchiseId?: string | null) {
+export async function listFranchises(
+  userRole?: string,
+  userFranchiseId?: string | null,
+  includeInactive = false
+) {
   const includeQuery = {
     users: {
       select: {
@@ -39,6 +43,7 @@ export async function listFranchises(userRole?: string, userFranchiseId?: string
 
   if (userRole === "SUPER_ADMIN") {
     return prisma.franchise.findMany({
+      where: includeInactive ? undefined : { isActive: true },
       include: includeQuery,
       orderBy: { createdAt: "desc" },
     });
@@ -49,7 +54,10 @@ export async function listFranchises(userRole?: string, userFranchiseId?: string
   }
 
   return prisma.franchise.findMany({
-    where: { id: userFranchiseId },
+    where: {
+      id: userFranchiseId,
+      ...(includeInactive ? {} : { isActive: true }),
+    },
     include: includeQuery,
   });
 }

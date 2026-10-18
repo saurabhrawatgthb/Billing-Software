@@ -39,6 +39,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // Super Admin has master authority to view and operate all terminals and modules
+  if (user.role === "SUPER_ADMIN") {
+    return <>{children}</>;
+  }
+
   if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
     const roleHome = getDefaultRoleHome(user.role);
     return <Navigate to={roleHome} replace />;

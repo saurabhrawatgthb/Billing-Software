@@ -93,9 +93,13 @@ export const Navbar: React.FC = () => {
     },
   });
 
+  // If selected franchise was deactivated or removed, reset scope to Global View
   useEffect(() => {
-    if (isSuperAdmin && franchises && franchises.length > 0 && !selectedFranchiseId) {
-      setSelectedFranchise(franchises[0].id);
+    if (isSuperAdmin && selectedFranchiseId && franchises) {
+      const match = franchises.find((f) => f.id === selectedFranchiseId);
+      if (!match || !match.isActive) {
+        setSelectedFranchise(null);
+      }
     }
   }, [isSuperAdmin, franchises, selectedFranchiseId, setSelectedFranchise]);
 
@@ -119,11 +123,13 @@ export const Navbar: React.FC = () => {
               className="text-sm font-semibold text-gray-900 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
               <option value="">🌐 All Franchises (Global View)</option>
-              {franchises?.map((f) => (
-                <option key={f.id} value={f.id}>
-                  🏬 {f.name} ({f.code})
-                </option>
-              ))}
+              {franchises
+                ?.filter((f) => f.isActive)
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    🏬 {f.name} ({f.code})
+                  </option>
+                ))}
             </select>
           </div>
         ) : (

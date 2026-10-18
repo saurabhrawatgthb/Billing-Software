@@ -1509,6 +1509,12 @@ export const BillingPage: React.FC = () => {
               </div>
             </div>
 
+            <div className="text-center py-2 border-t border-dashed border-gray-200">
+              <p className="text-xs font-black text-indigo-900 tracking-wide">
+                Thanks For Visiting Madrasi Dosa
+              </p>
+            </div>
+
             <div className="flex justify-between items-center pt-2">
               <Button
                 variant="outline"
