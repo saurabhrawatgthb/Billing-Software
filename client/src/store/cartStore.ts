@@ -30,7 +30,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   items: [],
   selectedTable: null,
   discount: 0,
-  taxRate: 5, // 5% default
+  taxRate: 0, // 0% default (only applied if business has a registered GSTIN)
   notes: "",
 
   addItem: (menuItem) => {

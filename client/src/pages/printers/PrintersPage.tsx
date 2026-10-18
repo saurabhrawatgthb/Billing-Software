@@ -1,9 +1,21 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Printer as PrinterIcon, Trash2, Edit2, Play } from "lucide-react";
+import { Plus, Printer as PrinterIcon, Trash2, Edit2, Play, Search, Cpu } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
 import type { Printer, PrinterType, PreparationStation } from "../../types/index.js";
+import {
+  printReceiptDirectly,
+  getSavedPaperSize,
+  setSavedPaperSize,
+  type ThermalPaperSize,
+} from "../../utils/print.js";
+import {
+  detectSerialPrinter,
+  detectUsbPrinter,
+  getLastDetectedPrinter,
+  type DetectedPrinterInfo,
+} from "../../utils/printerPortDetector.js";
 import { Card } from "../../components/common/Card.js";
 import { Button } from "../../components/common/Button.js";
 import { Input } from "../../components/common/Input.js";
@@ -31,6 +43,11 @@ export const PrintersPage: React.FC = () => {
   const [editingPrinter, setEditingPrinter] = useState<Printer | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [testPrintOutput, setTestPrintOutput] = useState<string | null>(null);
+
+  const [paperSize, setPaperSize] = useState<ThermalPaperSize>(getSavedPaperSize());
+  const [detectedPrinter, setDetectedPrinter] = useState<DetectedPrinterInfo | null>(getLastDetectedPrinter());
+  const [isDetectingPrinter, setIsDetectingPrinter] = useState(false);
+  const [printerDetectMsg, setPrinterDetectMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -118,7 +135,29 @@ export const PrintersPage: React.FC = () => {
   };
 
   const handleTestPrint = (p: Printer) => {
-    const raw = `[ESC/POS TEST PRINT]\nPrinter: ${p.name}\nType: ${p.type}\nIP: ${p.ipAddress || "Local Agent"}:${p.port || 9100}\nStatus: ONLINE OK\nTimestamp: ${new Date().toISOString()}\n---------------------------\n\n\n`;
+    const raw = `================================
+     MADRASI DOSA
+--- THERMAL PRINTER TEST ---
+================================
+Printer : ${p.name}
+Function: ${p.type}
+Endpoint: ${p.ipAddress || "Local USB/COM Spooler"}:${p.port || 9100}
+Status  : READY / ONLINE OK
+Paper   : ${paperSize}
+Time    : ${new Date().toLocaleString()}
+--------------------------------
+Item             Qty      Price
+--------------------------------
+Masala Dosa        1     ₹100.00
+Fanta              1      ₹30.00
+--------------------------------
+TOTAL:                   ₹130.00
+================================
+PAYMENTS:
+  CASH    : ₹130.00 [COMPLETED]
+--------------------------------
+Thanks For Visiting Madrasi Dosa`;
+    printReceiptDirectly(raw, `ESC-POS Test Print - ${p.name}`, paperSize);
     setTestPrintOutput(raw);
   };
 
@@ -129,13 +168,103 @@ export const PrintersPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Thermal & Network Printers</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Configure ESC/POS thermal printers, IP network routing, and kitchen station print dispatchers
+            Configure ESC/POS thermal printers, USB/Serial port scanning, and continuous receipt paper sizing
           </p>
         </div>
         {canManage && (
           <Button onClick={handleOpenCreate} variant="primary" icon={<Plus className="w-4 h-4" />}>
             Add Printer Device
           </Button>
+        )}
+      </div>
+
+      {/* Hardware Port Scanner & Paper Size Controls Banner */}
+      <div className="bg-white rounded-2xl border border-gray-200/80 p-5 shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Cpu className="w-5 h-5 text-indigo-600" />
+            <div>
+              <h3 className="font-bold text-gray-900 text-sm">Thermal Paper Roll Size & Port Detection</h3>
+              <p className="text-xs text-gray-500">Auto-detect connected USB/Serial printers and enforce continuous dynamic length</p>
+            </div>
+          </div>
+
+          {/* Paper Size Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-600">Paper Width:</span>
+            <div className="flex items-center gap-1.5">
+              {(["58mm", "80mm"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    setPaperSize(s);
+                    setSavedPaperSize(s);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    paperSize === s
+                      ? "bg-indigo-600 text-white shadow-2xs"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {s === "58mm" ? "58mm (Small 2\" Roll)" : "80mm (Standard 3\" Roll)"}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Port Analysis Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+          {detectedPrinter ? (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-bold text-gray-800">Detected:</span>
+              <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                {detectedPrinter.deviceName}
+              </span>
+              <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[10px]">
+                READY
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs text-gray-500">
+              Plug in your thermal receipt printer via USB or Serial port, then click Scan.
+            </span>
+          )}
+
+          <button
+            type="button"
+            disabled={isDetectingPrinter}
+            onClick={async () => {
+              setIsDetectingPrinter(true);
+              setPrinterDetectMsg(null);
+              try {
+                const dev = await detectSerialPrinter();
+                setDetectedPrinter(dev);
+                setPrinterDetectMsg({ text: `Detected: ${dev.deviceName}`, type: "success" });
+              } catch (err: any) {
+                try {
+                  const usbDev = await detectUsbPrinter();
+                  setDetectedPrinter(usbDev);
+                  setPrinterDetectMsg({ text: `Detected: ${usbDev.deviceName}`, type: "success" });
+                } catch (e2: any) {
+                  setPrinterDetectMsg({ text: extractErrorMessage(err) || extractErrorMessage(e2), type: "error" });
+                }
+              } finally {
+                setIsDetectingPrinter(false);
+              }
+            }}
+            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>{isDetectingPrinter ? "Scanning..." : "Scan & Identify Printer Port"}</span>
+          </button>
+        </div>
+
+        {printerDetectMsg && (
+          <p className={`text-xs font-semibold ${printerDetectMsg.type === "success" ? "text-emerald-700" : "text-rose-600"}`}>
+            {printerDetectMsg.text}
+          </p>
         )}
       </div>
 

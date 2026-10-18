@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   RotateCcw,
   LayoutGrid,
+  Trash2,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
@@ -29,6 +30,7 @@ import { Badge } from "../../components/common/Badge.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
 import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
+import { printReceiptDirectly } from "../../utils/print.js";
 
 export const BillingPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -243,7 +245,7 @@ export const BillingPage: React.FC = () => {
     },
   });
 
-  // Print Receipt Mutation
+  // Print Receipt Mutation - Direct Print Spooler
   const printMutation = useMutation({
     mutationFn: async (invoice: Invoice) => {
       const res = await api.post("/printers/print-job", {
@@ -253,7 +255,29 @@ export const BillingPage: React.FC = () => {
       return res.data.data;
     },
     onSuccess: (data) => {
-      setPrintPayload(data.rawText);
+      if (data?.rawText) {
+        printReceiptDirectly(data.rawText);
+      }
+    },
+    onError: (err) => alert(extractErrorMessage(err)),
+  });
+
+  // Super Admin Permanent Delete Bill Mutation
+  const [deleteModalInvoice, setDeleteModalInvoice] = useState<Invoice | null>(null);
+  const deleteBillMutation = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const res = await api.delete(`/billing/invoices/${invoiceId}`);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+      queryClient.invalidateQueries({ queryKey: ["gst-audit"] });
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
+      queryClient.invalidateQueries({ queryKey: ["daily-register"] });
+      setDeleteModalInvoice(null);
+      setSelectedInvoice(null);
     },
     onError: (err) => alert(extractErrorMessage(err)),
   });
@@ -697,6 +721,20 @@ export const BillingPage: React.FC = () => {
                                 title="Managers cannot delete bills. Click to mark dormant with mandatory reason for Super Admin audit."
                               >
                                 Void / Dormant
+                              </Button>
+                            )}
+
+                            {/* Super Admin Permanent Delete Bill Button (Cleanup / Testing) */}
+                            {isSuperAdmin && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setDeleteModalInvoice(inv)}
+                                className="text-rose-600 hover:bg-rose-50 hover:border-rose-300"
+                                icon={<Trash2 className="w-3.5 h-3.5 text-rose-500" />}
+                                title="Permanently delete bill (removes from database and updates revenue)"
+                              >
+                                Delete
                               </Button>
                             )}
                           </td>
@@ -1516,16 +1554,80 @@ export const BillingPage: React.FC = () => {
             </div>
 
             <div className="flex justify-between items-center pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => printMutation.mutate(selectedInvoice)}
-                icon={<Printer className="w-3.5 h-3.5" />}
-              >
-                Print Receipt
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => printMutation.mutate(selectedInvoice)}
+                  icon={<Printer className="w-3.5 h-3.5" />}
+                >
+                  Print Receipt
+                </Button>
+                {isSuperAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-rose-600 hover:bg-rose-50 hover:border-rose-300"
+                    onClick={() => {
+                      setDeleteModalInvoice(selectedInvoice);
+                    }}
+                    icon={<Trash2 className="w-3.5 h-3.5 text-rose-500" />}
+                  >
+                    Delete Bill
+                  </Button>
+                )}
+              </div>
               <Button variant="ghost" onClick={() => setSelectedInvoice(null)}>
                 Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ============================================================== */}
+      {/* MODAL: SUPER ADMIN PERMANENT DELETE BILL CONFIRMATION           */}
+      {/* ============================================================== */}
+      <Modal
+        isOpen={!!deleteModalInvoice}
+        onClose={() => setDeleteModalInvoice(null)}
+        title="Permanently Delete Bill"
+      >
+        {deleteModalInvoice && (
+          <div className="space-y-4">
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
+                <AlertTriangle className="w-5 h-5 text-rose-600" />
+                <span>Confirm Hard Bill Deletion (Super Admin Only)</span>
+              </div>
+              <p className="text-xs text-rose-700 leading-relaxed">
+                You are about to permanently delete invoice <strong>#{deleteModalInvoice.invoiceNumber}</strong> for <strong>{currSym}{Number(deleteModalInvoice.total).toFixed(2)}</strong>.
+              </p>
+              <ul className="text-xs text-rose-700 list-disc list-inside space-y-1 pt-1">
+                <li>Associated payment records will be completely deleted from the database.</li>
+                <li>The invoice will be removed from all sales, register, and GST revenue figures.</li>
+                <li>The underlying order will be marked as cancelled.</li>
+                <li>Database storage space will be reclaimed immediately.</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setDeleteModalInvoice(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-rose-600 hover:bg-rose-700 text-white border-rose-600"
+                onClick={() => deleteBillMutation.mutate(deleteModalInvoice.id)}
+                isLoading={deleteBillMutation.isPending}
+                icon={<Trash2 className="w-4 h-4" />}
+              >
+                Permanently Delete Bill
               </Button>
             </div>
           </div>

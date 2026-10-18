@@ -7,6 +7,7 @@ import {
   markDormant,
   verifyDormant,
   getGstAudit,
+  deleteInvoiceHandler,
 } from "./billing.controller.js";
 
 const router = Router();
@@ -26,5 +27,8 @@ router.post("/invoices/:id/dormant", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER
 
 // Super Admin dormant audit verification & reinstatement
 router.post("/invoices/:id/verify-dormant", authorize("SUPER_ADMIN"), verifyDormant);
+
+// Super Admin permanent bill deletion (testing & database cleanup)
+router.delete("/invoices/:id", authorize("SUPER_ADMIN"), deleteInvoiceHandler);
 
 export default router;

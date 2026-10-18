@@ -11,6 +11,7 @@ import {
   verifyDormantInvoice,
   verifyDormantSchema,
   getGstAuditReport,
+  deleteInvoice,
 } from "./billing.service.js";
 import { AppError } from "../../middleware/error.js";
 
@@ -127,3 +128,19 @@ export async function getGstAudit(req: AuthenticatedRequest, res: Response, next
     next(error);
   }
 }
+
+export async function deleteInvoiceHandler(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const id = req.params.id as string;
+    const franchiseId = req.user?.role === "SUPER_ADMIN" ? null : getFranchiseId(req);
+    const result = await deleteInvoice(id, franchiseId, req.user?.id || req.user?.userId);
+    return res.json({
+      success: true,
+      data: result,
+      message: result.message,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+

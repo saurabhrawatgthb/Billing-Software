@@ -6,7 +6,6 @@ import {
   ShoppingCart,
   Trash2,
   ChefHat,
-  Receipt,
   Plus,
   Minus,
   UtensilsCrossed,
@@ -24,19 +23,33 @@ import {
   Tag,
   Percent,
   BadgePercent,
+  Printer,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
 import { useCartStore } from "../../store/cartStore.js";
+import {
+  printReceiptDirectly,
+  getSavedPaperSize,
+  setSavedPaperSize,
+  type ThermalPaperSize,
+} from "../../utils/print.js";
+import {
+  detectSerialPrinter,
+  detectUsbPrinter,
+  getLastDetectedPrinter,
+  type DetectedPrinterInfo,
+} from "../../utils/printerPortDetector.js";
 import type { Category, MenuItem, RestaurantTable, Customer, BrandSettings, Franchise } from "../../types/index.js";
 import { Button } from "../../components/common/Button.js";
 import { Input } from "../../components/common/Input.js";
 import { Select } from "../../components/common/Select.js";
+import { Modal } from "../../components/common/Modal.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { AggregatorOrderModal } from "../../components/pos/AggregatorOrderModal.js";
 import { AggregatorSettingsModal } from "../../components/pos/AggregatorSettingsModal.js";
 import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
-import { Globe, Bell, LayoutGrid, Store } from "lucide-react";
+import { Globe, Bell, LayoutGrid, Store, Cpu, Check } from "lucide-react";
 
 export const POSPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -54,11 +67,25 @@ export const POSPage: React.FC = () => {
     updateItemNotes,
     setSelectedTable,
     setDiscount,
+    setTaxRate,
     clearCart,
     getSubtotal,
     getTax,
     getTotal,
   } = useCartStore();
+
+  // Bill & Pay Settlement Modal State (UPI / Cash / UPI+Cash)
+  const [isBillPayModalOpen, setIsBillPayModalOpen] = useState(false);
+  const [payMode, setPayMode] = useState<"CASH" | "UPI" | "SPLIT" | "CARD">("CASH");
+  const [splitCashAmount, setSplitCashAmount] = useState<number>(0);
+  const [splitUpiAmount, setSplitUpiAmount] = useState<number>(0);
+
+  // Printer Paper Size (58mm vs 80mm) & Hardware Port Detection
+  const [paperSize, setPaperSize] = useState<ThermalPaperSize>(getSavedPaperSize());
+  const [isPrinterConfigOpen, setIsPrinterConfigOpen] = useState(false);
+  const [detectedPrinter, setDetectedPrinter] = useState<DetectedPrinterInfo | null>(getLastDetectedPrinter());
+  const [isDetectingPrinter, setIsDetectingPrinter] = useState(false);
+  const [printerDetectMsg, setPrinterDetectMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("");
@@ -102,6 +129,15 @@ export const POSPage: React.FC = () => {
       return res.data.data;
     },
   });
+
+  // Synchronize tax rate with brand settings (0% if brand has no GSTIN or defaultGstRate is 0)
+  React.useEffect(() => {
+    if (brandSettings) {
+      const isGstRegistered = Boolean(brandSettings.taxNumber && brandSettings.taxNumber.trim());
+      const rate = isGstRegistered ? Number(brandSettings.defaultGstRate || 0) : 0;
+      setTaxRate(rate);
+    }
+  }, [brandSettings, setTaxRate]);
 
   // Fetch Active Campaigns to validate promo codes
   const { data: campaigns = [] } = useQuery<any[]>({
@@ -363,7 +399,7 @@ export const POSPage: React.FC = () => {
     },
   });
 
-  // Direct Bill & Ask KOT Decision Mutation
+  // Direct Bill & Ask KOT Decision Mutation - Auto Completed Payment & Direct Print Spooler
   const directBillMutation = useMutation({
     mutationFn: async () => {
       if (cartItems.length === 0) throw new Error("Order cart is empty");
@@ -385,14 +421,48 @@ export const POSPage: React.FC = () => {
       const orderRes = await api.post("/orders", payload);
       const createdOrder = orderRes.data.data;
 
-      // Generate Invoice
-      const invoiceRes = await api.post("/billing/invoices", { orderId: createdOrder.id });
-      return { order: createdOrder, invoice: invoiceRes.data.data };
+      // Prepare invoice & payment payload (Cash, UPI, Split UPI+Cash, Card)
+      const invoicePayload: any = {
+        orderId: createdOrder.id,
+        autoCompletePayment: true,
+      };
+
+      if (payMode === "SPLIT") {
+        invoicePayload.splitPayments = [
+          { method: "CASH", amount: Number(splitCashAmount.toFixed(2)) },
+          { method: "UPI", amount: Number(splitUpiAmount.toFixed(2)) },
+        ];
+      } else {
+        invoicePayload.paymentMethod = payMode;
+      }
+
+      // Generate Invoice with auto-completed payment at this point
+      const invoiceRes = await api.post("/billing/invoices", invoicePayload);
+      const createdInvoice = invoiceRes.data.data;
+
+      // Trigger Direct Thermal Print Spooler immediately
+      try {
+        const printJobRes = await api.post("/printers/print-job", {
+          type: "RECEIPT",
+          targetId: createdInvoice.id,
+        });
+        if (printJobRes.data?.data?.rawText) {
+          printReceiptDirectly(printJobRes.data.data.rawText, `Invoice #${createdInvoice.invoiceNumber}`, paperSize);
+        }
+      } catch (printErr) {
+        console.warn("Direct print failed or printer offline:", printErr);
+      }
+
+      return { order: createdOrder, invoice: createdInvoice };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["tables"] });
+      queryClient.invalidateQueries({ queryKey: ["gst-audit"] });
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
+      queryClient.invalidateQueries({ queryKey: ["daily-register"] });
+      setIsBillPayModalOpen(false);
       setPostPaymentOrder(data.order);
       setPostPaymentInvoice(data.invoice);
       setShowKotModal(true);
@@ -412,7 +482,9 @@ export const POSPage: React.FC = () => {
     } finally {
       setShowKotModal(false);
       clearCart();
-      navigate("/billing");
+      setSelectedCustomer(null);
+      setPartyName("");
+      setGuestCount(2);
     }
   };
 
@@ -618,6 +690,16 @@ export const POSPage: React.FC = () => {
             >
               <LayoutGrid className="w-4 h-4 text-indigo-600" />
               <span>🪑 Floor Plan ({tables.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsPrinterConfigOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 shadow-2xs transition-colors cursor-pointer"
+              title="Configure thermal printer port, 58mm / 80mm paper size, and test print"
+            >
+              <Printer className="w-4 h-4 text-slate-600" />
+              <span>🖨️ Printer ({paperSize})</span>
             </button>
 
             <div className="flex-1 min-w-[180px]">
@@ -1009,7 +1091,7 @@ export const POSPage: React.FC = () => {
             </div>
 
             <div className="flex justify-between">
-              <span>Tax (5% GST):</span>
+              <span>Tax ({taxRate > 0 ? `${taxRate}% GST` : "0% Non-GST"}):</span>
               <span className="font-semibold text-gray-900">₹{tax.toFixed(2)}</span>
             </div>
 
@@ -1019,8 +1101,8 @@ export const POSPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-2 pt-1">
+          {/* Action Buttons: 1. Send to KOT, 2. Bill & Pay */}
+          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200">
             <Button
               variant="secondary"
               size="md"
@@ -1028,19 +1110,26 @@ export const POSPage: React.FC = () => {
               onClick={() => placeOrderAndKOTMutation.mutate()}
               isLoading={placeOrderAndKOTMutation.isPending}
               icon={<ChefHat className="w-4 h-4 text-amber-600" />}
+              className="py-3 font-bold"
             >
-              Send KOT
+              1. Send KOT
             </Button>
 
             <Button
               variant="primary"
               size="md"
               disabled={cartItems.length === 0}
-              onClick={() => directBillMutation.mutate()}
-              isLoading={directBillMutation.isPending}
-              icon={<Receipt className="w-4 h-4" />}
+              onClick={() => {
+                const tot = getTotal();
+                setPayMode("CASH");
+                setSplitCashAmount(tot);
+                setSplitUpiAmount(0);
+                setIsBillPayModalOpen(true);
+              }}
+              icon={<Printer className="w-4 h-4" />}
+              className="py-3 font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20"
             >
-              Bill & Pay
+              2. Bill & Pay
             </Button>
           </div>
         </div>
@@ -1123,10 +1212,34 @@ export const POSPage: React.FC = () => {
               <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
                 <CheckCircle2 className="w-7 h-7" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Order & Invoice Generated!</h3>
+              <h3 className="text-lg font-bold text-gray-900">Payment Completed & Billed!</h3>
               <p className="text-xs text-gray-500">
-                Invoice #{postPaymentInvoice?.invoiceNumber || 'INV-001'} for ₹{postPaymentInvoice?.totalAmount || total} is ready.
+                Invoice #{postPaymentInvoice?.invoiceNumber || 'INV-001'} for ₹{postPaymentInvoice?.total || total} is marked as <strong>COMPLETED</strong> via {payMode === "SPLIT" ? "Cash + UPI" : payMode}. Receipt sent directly to printer.
               </p>
+            </div>
+
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!postPaymentInvoice?.id) return;
+                  try {
+                    const printJobRes = await api.post("/printers/print-job", {
+                      type: "RECEIPT",
+                      targetId: postPaymentInvoice.id,
+                    });
+                    if (printJobRes.data?.data?.rawText) {
+                      printReceiptDirectly(printJobRes.data.data.rawText, `Invoice #${postPaymentInvoice.invoiceNumber}`, paperSize);
+                    }
+                  } catch (e) {
+                    alert(extractErrorMessage(e));
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Reprint Bill Receipt
+              </button>
             </div>
 
             <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-xl space-y-1">
@@ -1145,7 +1258,7 @@ export const POSPage: React.FC = () => {
                 className="w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <XCircle className="w-4 h-4 text-gray-500" />
-                Don't Send (Prepared)
+                Done (Next Order)
               </button>
 
               <button
@@ -1153,7 +1266,22 @@ export const POSPage: React.FC = () => {
                 className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <ChefHat className="w-4 h-4" />
-                Send KOT to Kitchen
+                Send KOT & Next Order
+              </button>
+            </div>
+
+            <div className="text-center pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowKotModal(false);
+                  clearCart();
+                  setSelectedCustomer(null);
+                  navigate("/billing");
+                }}
+                className="text-[11px] text-gray-400 hover:text-indigo-600 font-medium underline cursor-pointer"
+              >
+                Go to Invoices & Bills page →
               </button>
             </div>
           </div>
@@ -1260,6 +1388,353 @@ export const POSPage: React.FC = () => {
         }}
         franchiseId={selectedFranchiseId}
       />
+
+      {/* ============================================================== */}
+      {/* MODAL: BILL & PAY SETTLEMENT (UPI / CASH / UPI+CASH)           */}
+      {/* ============================================================== */}
+      <Modal
+        isOpen={isBillPayModalOpen}
+        onClose={() => setIsBillPayModalOpen(false)}
+        title="Bill & Payment Settlement"
+      >
+        <div className="space-y-5">
+          {/* Amount Due Banner */}
+          <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-5 rounded-2xl shadow-md text-center space-y-1">
+            <span className="text-xs uppercase font-extrabold tracking-wider text-indigo-300">
+              Total Amount Payable
+            </span>
+            <div className="text-3xl font-black text-emerald-400 font-mono">
+              ₹{total.toFixed(2)}
+            </div>
+            <div className="flex items-center justify-center gap-4 text-xs text-slate-300 pt-2 border-t border-indigo-800/60">
+              <span>Subtotal: ₹{subtotal.toFixed(2)}</span>
+              {discount > 0 && <span className="text-rose-300">Discount: -₹{discount.toFixed(2)}</span>}
+              <span>Tax ({taxRate}%): ₹{tax.toFixed(2)}</span>
+            </div>
+          </div>
+
+          {/* Payment Method Selector */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">
+              Select Payment Method *
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { id: "CASH", label: "Cash", icon: "💵" },
+                { id: "UPI", label: "UPI", icon: "📱" },
+                { id: "SPLIT", label: "UPI + Cash", icon: "💵+📱" },
+                { id: "CARD", label: "Card", icon: "💳" },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    const mode = m.id as any;
+                    setPayMode(mode);
+                    if (mode === "SPLIT") {
+                      const half = Math.round((total / 2) * 100) / 100;
+                      setSplitCashAmount(half);
+                      setSplitUpiAmount(Number((total - half).toFixed(2)));
+                    }
+                  }}
+                  className={`p-3 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 ${
+                    payMode === m.id
+                      ? "bg-indigo-50 border-indigo-600 text-indigo-950 font-black shadow-sm ring-2 ring-indigo-400"
+                      : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50 font-bold"
+                  }`}
+                >
+                  <span className="text-xl">{m.icon}</span>
+                  <span className="text-xs">{m.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Split Payment Inputs when UPI + Cash is selected */}
+          {payMode === "SPLIT" && (
+            <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3 animate-in fade-in zoom-in-95">
+              <p className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                <span>⚡ Split Payment Breakdown</span>
+                <span className="text-[11px] font-normal text-amber-700">(Sum must equal ₹{total.toFixed(2)})</span>
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                    💵 Cash Portion (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max={total}
+                    step="0.01"
+                    value={splitCashAmount}
+                    onChange={(e) => {
+                      const val = Math.max(0, parseFloat(e.target.value) || 0);
+                      setSplitCashAmount(val);
+                      setSplitUpiAmount(Number(Math.max(0, total - val).toFixed(2)));
+                    }}
+                    className="w-full text-sm font-bold bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                    📱 UPI Portion (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max={total}
+                    step="0.01"
+                    value={splitUpiAmount}
+                    onChange={(e) => {
+                      const val = Math.max(0, parseFloat(e.target.value) || 0);
+                      setSplitUpiAmount(val);
+                      setSplitCashAmount(Number(Math.max(0, total - val).toFixed(2)));
+                    }}
+                    className="w-full text-sm font-bold bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="text-[11px] flex justify-between font-bold pt-1 border-t border-amber-200/80">
+                <span>Total Split: ₹{(splitCashAmount + splitUpiAmount).toFixed(2)}</span>
+                <span className={Math.abs((splitCashAmount + splitUpiAmount) - total) < 0.01 ? "text-emerald-700" : "text-rose-600"}>
+                  {Math.abs((splitCashAmount + splitUpiAmount) - total) < 0.01 ? "✓ Exact Match" : `Difference: ₹${(total - (splitCashAmount + splitUpiAmount)).toFixed(2)}`}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Paper Size Quick Check */}
+          <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs">
+            <div className="flex items-center gap-2">
+              <Printer className="w-4 h-4 text-indigo-600" />
+              <span className="font-bold text-gray-800">Thermal Paper Size:</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {(["58mm", "80mm"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    setPaperSize(s);
+                    setSavedPaperSize(s);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    paperSize === s
+                      ? "bg-indigo-600 text-white shadow-2xs"
+                      : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-100"
+                  }`}
+                >
+                  {s === "58mm" ? "58mm (Small)" : "80mm (Standard)"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => setIsBillPayModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => directBillMutation.mutate()}
+              isLoading={directBillMutation.isPending}
+              disabled={
+                payMode === "SPLIT" &&
+                Math.abs((splitCashAmount + splitUpiAmount) - total) > 0.05
+              }
+              icon={<Printer className="w-4 h-4" />}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/25 px-5 font-bold cursor-pointer"
+            >
+              Complete Payment & Print Bill
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ============================================================== */}
+      {/* MODAL: THERMAL PRINTER CONFIGURATION & HARDWARE PORT SCANNER    */}
+      {/* ============================================================== */}
+      <Modal
+        isOpen={isPrinterConfigOpen}
+        onClose={() => setIsPrinterConfigOpen(false)}
+        title="Thermal Receipt Printer Setup & Port Detection"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-gray-500">
+            Configure your POS thermal receipt printer paper size and auto-detect connected USB or Serial (COM) ports.
+          </p>
+
+          {/* Paper Size Configuration */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-gray-900">Receipt Paper Roll Width</h4>
+                <p className="text-[11px] text-gray-500">
+                  Continuous roll dynamic height stops printing right after footer text to prevent wasting paper.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setPaperSize("58mm");
+                  setSavedPaperSize("58mm");
+                }}
+                className={`p-3 text-left rounded-xl border transition-all cursor-pointer ${
+                  paperSize === "58mm"
+                    ? "bg-indigo-50 border-indigo-600 text-indigo-950 font-bold ring-2 ring-indigo-400"
+                    : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50 font-medium"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold">58mm (2-inch Small Roll)</span>
+                  {paperSize === "58mm" && <Check className="w-4 h-4 text-indigo-600" />}
+                </div>
+                <p className="text-[11px] text-gray-500 mt-1">Compact format for handheld and mini POS printers.</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPaperSize("80mm");
+                  setSavedPaperSize("80mm");
+                }}
+                className={`p-3 text-left rounded-xl border transition-all cursor-pointer ${
+                  paperSize === "80mm"
+                    ? "bg-indigo-50 border-indigo-600 text-indigo-950 font-bold ring-2 ring-indigo-400"
+                    : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50 font-medium"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold">80mm (3-inch Standard Roll)</span>
+                  {paperSize === "80mm" && <Check className="w-4 h-4 text-indigo-600" />}
+                </div>
+                <p className="text-[11px] text-gray-500 mt-1">Wide standard format for full restaurant billing.</p>
+              </button>
+            </div>
+          </div>
+
+          {/* Hardware Port Auto-Detection */}
+          <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-indigo-600" />
+                <h4 className="text-xs font-bold text-indigo-950">Hardware Port & Device Detection</h4>
+              </div>
+              <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">
+                USB / COM Serial
+              </span>
+            </div>
+
+            {detectedPrinter ? (
+              <div className="p-3 bg-white border border-indigo-200 rounded-xl text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-gray-900">{detectedPrinter.deviceName}</span>
+                  <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[10px]">
+                    READY
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-500">
+                  Manufacturer: {detectedPrinter.manufacturer} | Type: {detectedPrinter.type}
+                </p>
+                {detectedPrinter.vendorId && (
+                  <p className="text-[10px] font-mono text-gray-400">
+                    Vendor ID: {detectedPrinter.vendorId} | Product ID: {detectedPrinter.productId}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-indigo-700">
+                Connect your thermal printer via USB or Serial port, then click below to identify device.
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isDetectingPrinter}
+                onClick={async () => {
+                  setIsDetectingPrinter(true);
+                  setPrinterDetectMsg(null);
+                  try {
+                    const dev = await detectSerialPrinter();
+                    setDetectedPrinter(dev);
+                    setPrinterDetectMsg({ text: `Detected: ${dev.deviceName}`, type: "success" });
+                  } catch (err: any) {
+                    try {
+                      const usbDev = await detectUsbPrinter();
+                      setDetectedPrinter(usbDev);
+                      setPrinterDetectMsg({ text: `Detected: ${usbDev.deviceName}`, type: "success" });
+                    } catch (e2: any) {
+                      setPrinterDetectMsg({ text: extractErrorMessage(err) || extractErrorMessage(e2), type: "error" });
+                    }
+                  } finally {
+                    setIsDetectingPrinter(false);
+                  }
+                }}
+                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>{isDetectingPrinter ? "Scanning Ports..." : "Scan & Identify Printer Port"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const testBill = `================================
+     MADRASI DOSA
+--- MALYANA BRANCH ---
+================================
+Sample Test Receipt
+Date: ${new Date().toLocaleString()}
+Paper Size: ${paperSize}
+--------------------------------
+Item             Qty      Price
+--------------------------------
+Masala Dosa        1     ₹100.00
+Fanta              1      ₹30.00
+--------------------------------
+TOTAL:                   ₹130.00
+================================
+PAYMENTS:
+  CASH    : ₹130.00 [COMPLETED]
+--------------------------------
+Thanks For Visiting Madrasi Dosa`;
+                  printReceiptDirectly(testBill, "POS Test Print", paperSize);
+                }}
+                className="px-3 py-2 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Printer className="w-3.5 h-3.5 text-gray-500" />
+                <span>Test Print ({paperSize})</span>
+              </button>
+            </div>
+
+            {printerDetectMsg && (
+              <p className={`text-xs font-medium ${printerDetectMsg.type === "success" ? "text-emerald-700" : "text-rose-600"}`}>
+                {printerDetectMsg.text}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end pt-2 border-t border-gray-100">
+            <Button variant="primary" size="sm" onClick={() => setIsPrinterConfigOpen(false)}>
+              Done
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

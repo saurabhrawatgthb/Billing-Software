@@ -1,14 +1,27 @@
-import { OrderStatus, Prisma, TableStatus } from "@prisma/client";
+import { OrderStatus, PaymentMethod, PaymentStatus, Prisma, TableStatus } from "@prisma/client";
 import { z } from "zod";
 import prisma from "../../lib/prisma.js";
 import { AppError } from "../../middleware/error.js";
 import { logAudit } from "../../lib/audit.js";
 import { emitToFranchise } from "../../lib/socket.js";
+import { CRMService } from "../crm/crm.service.js";
 
 export const createInvoiceSchema = z.object({
   orderId: z.string().min(1, "Order ID is required"),
   discount: z.number().nonnegative().optional(),
   taxRate: z.number().nonnegative().optional(),
+  paymentMethod: z.nativeEnum(PaymentMethod).optional().default(PaymentMethod.CASH),
+  autoCompletePayment: z.boolean().optional().default(true),
+  transactionId: z.string().optional().nullable(),
+  splitPayments: z
+    .array(
+      z.object({
+        method: z.nativeEnum(PaymentMethod),
+        amount: z.number().positive(),
+        transactionId: z.string().optional().nullable(),
+      })
+    )
+    .optional(),
 });
 
 export const markDormantSchema = z.object({
@@ -135,12 +148,13 @@ export async function getInvoiceById(id: string, franchiseId: string | null, use
 }
 
 export async function createInvoiceForOrder(
-  data: z.infer<typeof createInvoiceSchema>,
+  data: z.input<typeof createInvoiceSchema>,
   franchiseId: string,
   currentUserId?: string
 ) {
+  const validated = createInvoiceSchema.parse(data);
   const order = await prisma.order.findUnique({
-    where: { id: data.orderId },
+    where: { id: validated.orderId },
     include: {
       items: true,
       invoice: true,
@@ -162,13 +176,19 @@ export async function createInvoiceForOrder(
 
   const brand = await prisma.brandSettings.findFirst();
 
-  // Recalculate if discount is overridden
-  let subtotalNum = Number(order.subtotal);
-  let discountNum = data.discount !== undefined ? data.discount : Number(order.discount);
-  let taxNum = Number(order.tax);
-  let gstRateUsed = data.taxRate !== undefined ? data.taxRate : (brand?.defaultGstRate ?? 5.0);
+  // Recalculate if discount is overridden. If business is non-GST (no taxNumber), GST rate is 0.
+  const isGstRegistered = Boolean(brand?.taxNumber && brand.taxNumber.trim().length > 0);
+  let defaultRate = isGstRegistered ? (brand?.defaultGstRate ?? 5.0) : 0.0;
+  let gstRateUsed = validated.taxRate !== undefined ? validated.taxRate : defaultRate;
+  if (!isGstRegistered && (validated.taxRate === undefined || validated.taxRate === 5)) {
+    gstRateUsed = 0.0;
+  }
 
-  if (data.discount !== undefined || data.taxRate !== undefined) {
+  let subtotalNum = Number(order.subtotal);
+  let discountNum = validated.discount !== undefined ? validated.discount : Number(order.discount);
+  let taxNum = Number(order.tax);
+
+  if (validated.discount !== undefined || validated.taxRate !== undefined || !isGstRegistered) {
     const taxable = Math.max(0, subtotalNum - discountNum);
     taxNum = (taxable * gstRateUsed) / 100;
   }
@@ -190,11 +210,14 @@ export async function createInvoiceForOrder(
   const datePrefix = `${now.getFullYear().toString().slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
   const invoiceNumber = `INV-${fCode}${datePrefix}-${String(countToday + 1).padStart(4, "0")}`;
 
-  const invoice = await prisma.$transaction(async (tx) => {
+  const shouldCompletePayment = validated.autoCompletePayment !== false;
+  const paymentMethod = validated.paymentMethod || PaymentMethod.CASH;
+
+  const invoiceResult = await prisma.$transaction(async (tx) => {
     const newInvoice = await tx.invoice.create({
       data: {
         franchiseId,
-        orderId: data.orderId,
+        orderId: validated.orderId,
         invoiceNumber,
         subtotal: Number(subtotalNum.toFixed(2)),
         discount: Number(discountNum.toFixed(2)),
@@ -223,8 +246,44 @@ export async function createInvoiceForOrder(
       },
     });
 
+    // Auto-record completed payment at the exact point of bill generation (single or split)
+    let paymentRecords: any[] = [];
+    if (shouldCompletePayment && totalNum > 0) {
+      if (validated.splitPayments && validated.splitPayments.length > 0) {
+        for (const s of validated.splitPayments) {
+          if (s.amount > 0) {
+            const p = await tx.payment.create({
+              data: {
+                franchiseId,
+                invoiceId: newInvoice.id,
+                amount: Number(s.amount.toFixed(2)),
+                method: s.method,
+                status: PaymentStatus.COMPLETED,
+                transactionId: s.transactionId || `AUTO-SPLIT-${Date.now().toString().slice(-6)}`,
+                paidAt: now,
+              },
+            });
+            paymentRecords.push(p);
+          }
+        }
+      } else {
+        const p = await tx.payment.create({
+          data: {
+            franchiseId,
+            invoiceId: newInvoice.id,
+            amount: Number(totalNum.toFixed(2)),
+            method: paymentMethod,
+            status: PaymentStatus.COMPLETED,
+            transactionId: validated.transactionId || `AUTO-PAID-${Date.now().toString().slice(-6)}`,
+            paidAt: now,
+          },
+        });
+        paymentRecords.push(p);
+      }
+    }
+
     await tx.order.update({
-      where: { id: data.orderId },
+      where: { id: validated.orderId },
       data: {
         status: OrderStatus.BILLED,
         discount: Number(discountNum.toFixed(2)),
@@ -236,33 +295,64 @@ export async function createInvoiceForOrder(
     if (order.tableSession?.tableId) {
       await tx.restaurantTable.update({
         where: { id: order.tableSession.tableId },
-        data: { status: TableStatus.BILLING },
+        data: {
+          status: shouldCompletePayment ? TableStatus.AVAILABLE : TableStatus.BILLING,
+          currentOccupancy: shouldCompletePayment ? 0 : undefined,
+        },
       });
+
+      if (shouldCompletePayment) {
+        await tx.tableSession.update({
+          where: { id: order.tableSession.id },
+          data: { endedAt: now },
+        });
+      }
     }
 
-    return newInvoice;
+    return { newInvoice, paymentRecords };
   });
 
   if (order.tableSession?.tableId) {
     emitToFranchise(franchiseId, "table:status_changed", {
       tableId: order.tableSession.tableId,
-      status: TableStatus.BILLING,
+      status: shouldCompletePayment ? TableStatus.AVAILABLE : TableStatus.BILLING,
     });
+    if (shouldCompletePayment) {
+      emitToFranchise(franchiseId, "table:session_closed", {
+        tableId: order.tableSession.tableId,
+        sessionId: order.tableSession.id,
+      });
+    }
+  }
+
+  for (const pr of invoiceResult.paymentRecords) {
+    emitToFranchise(franchiseId, "payment:received", pr);
   }
 
   emitToFranchise(franchiseId, "order:status_changed", { orderId: order.id, status: OrderStatus.BILLED });
-  emitToFranchise(franchiseId, "invoice:created", invoice);
+  emitToFranchise(franchiseId, "invoice:created", invoiceResult.newInvoice);
+
+  if (shouldCompletePayment && order.id) {
+    CRMService.recordCustomerTransaction(order.id).catch((err) => {
+      console.error("CRM transaction hook error in createInvoice:", err);
+    });
+  }
 
   await logAudit({
     franchiseId,
     userId: currentUserId,
     action: "CREATE_INVOICE",
     entity: "Invoice",
-    entityId: invoice.id,
-    newData: { invoiceNumber: invoice.invoiceNumber, total: invoice.total },
+    entityId: invoiceResult.newInvoice.id,
+    newData: {
+      invoiceNumber: invoiceResult.newInvoice.invoiceNumber,
+      total: invoiceResult.newInvoice.total,
+      paymentCompleted: shouldCompletePayment,
+      paymentMethod,
+    },
   });
 
-  return invoice;
+  return getInvoiceById(invoiceResult.newInvoice.id, franchiseId, "SUPER_ADMIN");
 }
 
 /**
@@ -533,3 +623,61 @@ export async function getGstAuditReport(
     invoices,
   };
 }
+
+/**
+ * Permanently Delete an Invoice (Super Admin testing / database cleanup)
+ * Completely deletes invoice, deletes its payments, and cancels order
+ * so database space is freed and sales revenue reports accurately reflect the removal.
+ */
+export async function deleteInvoice(id: string, franchiseId: string | null, userId?: string) {
+  const invoice = await prisma.invoice.findUnique({
+    where: { id },
+    include: { payments: true, order: true },
+  });
+
+  if (!invoice) {
+    throw new AppError("Invoice not found", 404);
+  }
+
+  if (franchiseId && invoice.franchiseId !== franchiseId) {
+    throw new AppError("Invoice not found in this franchise", 404);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Delete associated payments
+    await tx.payment.deleteMany({
+      where: { invoiceId: id },
+    });
+
+    // 2. Delete the invoice
+    await tx.invoice.delete({
+      where: { id },
+    });
+
+    // 3. Mark the order as CANCELLED so it is excluded from sales revenue reports
+    if (invoice.orderId) {
+      await tx.order.update({
+        where: { id: invoice.orderId },
+        data: { status: OrderStatus.CANCELLED },
+      });
+    }
+  });
+
+  emitToFranchise(invoice.franchiseId, "invoice:deleted", { invoiceId: id });
+
+  await logAudit({
+    franchiseId: invoice.franchiseId,
+    userId,
+    action: "DELETE_INVOICE",
+    entity: "Invoice",
+    entityId: id,
+    oldData: {
+      invoiceNumber: invoice.invoiceNumber,
+      total: invoice.total,
+      orderId: invoice.orderId,
+    },
+  });
+
+  return { success: true, message: `Invoice #${invoice.invoiceNumber} permanently deleted` };
+}
+
