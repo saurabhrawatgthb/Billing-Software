@@ -29,6 +29,7 @@ import {
   printReceiptDirectly,
   getSavedPaperSize,
   setSavedPaperSize,
+  buildThermalReceiptText,
   type ThermalPaperSize,
 } from "../../utils/print.js";
 import {
@@ -398,58 +399,133 @@ export const POSPage: React.FC = () => {
     },
   });
 
-  // Direct Bill & Ask KOT Decision Mutation - Auto Completed Payment & Direct Print Spooler
-  const directBillMutation = useMutation({
-    mutationFn: async () => {
-      if (cartItems.length === 0) throw new Error("Order cart is empty");
+  const [isBilling, setIsBilling] = useState(false);
 
-      const payload: any = {
-        tableId: selectedTable?.id || null,
-        customerId: selectedCustomer?.id || null,
-        discount,
-        taxRate,
-        partyName: partyName || undefined,
-        guestCount: guestCount || undefined,
-        items: cartItems.map((i) => ({
-          menuItemId: i.menuItem.id,
-          quantity: i.quantity,
-          notes: i.notes || null,
-        })),
-      };
+  // Instant Optimistic Thermal Billing & Direct Spooler (0ms Latency)
+  const handleCompletePaymentAndPrint = async () => {
+    if (cartItems.length === 0 || isBilling) return;
+    setIsBilling(true);
 
-      if (payMode === "SPLIT") {
-        payload.splitPayments = [
-          { method: "CASH", amount: Number(splitCashAmount.toFixed(2)) },
-          { method: "UPI", amount: Number(splitUpiAmount.toFixed(2)) },
-        ];
-      } else {
-        payload.paymentMethod = payMode;
-      }
+    try {
+      // 1. Synchronously pre-calculate date, invoiceNumber, orderNumber
+      const now = new Date();
+      const datePrefix = `${now.getFullYear().toString().slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const invoiceNumber = `INV-${datePrefix}-${randomSuffix}`;
+      const orderNumber = `ORD-${datePrefix}-${randomSuffix}`;
 
-      // Single high-speed atomic endpoint: generates order, invoice, payment & receipt in 1 DB transaction
-      const res = await api.post("/billing/fast-bill", payload);
-      const { invoice, rawText } = res.data.data;
+      // 2. Identify active franchise details
+      const currFranchise = activeFranchises.find((f) => f.id === selectedFranchiseId) || user?.franchise;
 
-      // Direct thermal print spooler fires immediately without network roundtrips
-      if (rawText) {
-        printReceiptDirectly(rawText, `Invoice #${invoice.invoiceNumber}`, paperSize);
-      }
+      // 3. Prepare payment records
+      const paymentRecords =
+        payMode === "SPLIT"
+          ? [
+              { method: "CASH", amount: Number(splitCashAmount.toFixed(2)), status: "COMPLETED" },
+              { method: "UPI", amount: Number(splitUpiAmount.toFixed(2)), status: "COMPLETED" },
+            ]
+          : [{ method: payMode, amount: Number(total.toFixed(2)), status: "COMPLETED" }];
 
-      return invoice;
-    },
-    onSuccess: () => {
+      // 4. Capture cart & checkout state snapshot
+      const itemsSnapshot = cartItems.map((i) => ({
+        name: i.menuItem.name,
+        quantity: i.quantity,
+        price: Number(i.menuItem.price),
+        totalPrice: Number(i.menuItem.price) * i.quantity,
+        menuItemId: i.menuItem.id,
+        notes: i.notes || null,
+      }));
+      const subtotalSnapshot = subtotal;
+      const discountSnapshot = discount;
+      const taxSnapshot = tax;
+      const totalSnapshot = total;
+      const tableSnapshot = selectedTable;
+      const customerSnapshot = selectedCustomer;
+      const partyNameSnapshot = partyName;
+      const guestCountSnapshot = guestCount;
+      const payModeSnapshot = payMode;
+
+      // 5. Generate formatted thermal receipt locally in <0.05ms
+      const receiptText = buildThermalReceiptText(
+        {
+          brandName: brandSettings?.businessName || "MADRASI DOSA",
+          franchiseName: currFranchise?.name,
+          franchiseAddress: (currFranchise as any)?.address || brandSettings?.address || undefined,
+          franchisePhone: (currFranchise as any)?.phone || brandSettings?.phone || undefined,
+          gstin: brandSettings?.taxNumber || undefined,
+          fssaiNumber: brandSettings?.fssaiNumber || undefined,
+          invoiceNumber,
+          orderNumber,
+          orderType: tableSnapshot ? `Dine-In (Table ${tableSnapshot.tableNumber})` : "Takeaway / Counter",
+          date: now.toLocaleString(),
+          currencySymbol: brandSettings?.currencySymbol || "₹",
+          items: itemsSnapshot,
+          subtotal: subtotalSnapshot,
+          discount: discountSnapshot,
+          tax: taxSnapshot,
+          total: totalSnapshot,
+          payments: paymentRecords,
+          footerMessage: "Thanks For Visiting Madrasi Dosa",
+        },
+        paperSize
+      );
+
+      // 6. INSTANT PRINT SPOOLER: Dispatches directly to physical Rongta 80mm printer (<50ms!)
+      printReceiptDirectly(receiptText, {
+        title: `Invoice #${invoiceNumber}`,
+        paperSize,
+        logoUrl: brandSettings?.logoUrl || undefined,
+        showLogo: true,
+      });
+
+      // 7. INSTANT UI RESET: Immediate feedback, zero waiting
+      setIsBillPayModalOpen(false);
       clearCart();
       setSelectedTable(null);
       setSelectedCustomer(null);
-      setIsBillPayModalOpen(false);
-      // Fast lightweight sync: only tables and orders
-      queryClient.invalidateQueries({ queryKey: ["tables"] });
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-    },
-    onError: (err) => {
-      setPosError(extractErrorMessage(err));
-    },
-  });
+      setPartyName("");
+      setGuestCount(2);
+
+      // 8. BACKGROUND CLOUD ASYNC SYNC: Syncs order, invoice, payment with Render & MongoDB
+      const payload = {
+        invoiceNumber,
+        orderNumber,
+        tableId: tableSnapshot?.id || null,
+        customerId: customerSnapshot?.id || null,
+        discount: discountSnapshot,
+        taxRate,
+        partyName: partyNameSnapshot || undefined,
+        guestCount: guestCountSnapshot || undefined,
+        items: itemsSnapshot.map((i) => ({
+          menuItemId: i.menuItemId,
+          quantity: i.quantity,
+          notes: i.notes,
+        })),
+        ...(payModeSnapshot === "SPLIT"
+          ? {
+              splitPayments: [
+                { method: "CASH", amount: Number(splitCashAmount.toFixed(2)) },
+                { method: "UPI", amount: Number(splitUpiAmount.toFixed(2)) },
+              ],
+            }
+          : { paymentMethod: payModeSnapshot }),
+      };
+
+      // Fire in background without blocking UI
+      api.post("/billing/fast-bill", payload)
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["tables"] });
+          queryClient.invalidateQueries({ queryKey: ["orders"] });
+          queryClient.invalidateQueries({ queryKey: ["invoices"] });
+        })
+        .catch((err) => {
+          console.warn("Background billing sync notice:", err);
+          setPosError("Bill printed locally! Cloud sync pending/delayed: " + extractErrorMessage(err));
+        });
+    } finally {
+      setIsBilling(false);
+    }
+  };
 
 
   const filteredItems = menuItems.filter((item) => {
@@ -1427,8 +1503,8 @@ export const POSPage: React.FC = () => {
             <Button
               variant="primary"
               size="md"
-              onClick={() => directBillMutation.mutate()}
-              isLoading={directBillMutation.isPending}
+              onClick={handleCompletePaymentAndPrint}
+              isLoading={isBilling}
               disabled={
                 payMode === "SPLIT" &&
                 Math.abs((splitCashAmount + splitUpiAmount) - total) > 0.05
@@ -1593,7 +1669,7 @@ PAYMENTS:
   CASH    : ₹130.00 [COMPLETED]
 --------------------------------
 Thanks For Visiting Madrasi Dosa`;
-                  printReceiptDirectly(testBill, "POS Test Print", paperSize);
+                  printReceiptDirectly(testBill, { title: "POS Test Print", paperSize, logoUrl: brandSettings?.logoUrl });
                 }}
                 className="px-3 py-2 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
               >

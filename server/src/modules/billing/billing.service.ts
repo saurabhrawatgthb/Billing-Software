@@ -702,6 +702,8 @@ export const fastBillSchema = z.object({
     )
     .min(1, "At least one item is required"),
   paymentMethod: z.nativeEnum(PaymentMethod).default(PaymentMethod.CASH),
+  invoiceNumber: z.string().trim().optional(),
+  orderNumber: z.string().trim().optional(),
   splitPayments: z
     .array(
       z.object({
@@ -766,8 +768,8 @@ export async function fastBill(
   const now = new Date();
   const datePrefix = `${now.getFullYear().toString().slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  const orderNumber = `ORD-${datePrefix}-${randomSuffix}`;
-  const invoiceNumber = `INV-${datePrefix}-${randomSuffix}`;
+  const orderNumber = data.orderNumber || `ORD-${datePrefix}-${randomSuffix}`;
+  const invoiceNumber = data.invoiceNumber || `INV-${datePrefix}-${randomSuffix}`;
 
   // 4. Atomic single transaction
   const result = await prisma.$transaction(async (tx) => {
