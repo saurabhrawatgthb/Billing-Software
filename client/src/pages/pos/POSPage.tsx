@@ -11,9 +11,6 @@ import {
   UtensilsCrossed,
   AlertCircle,
   Users,
-  CheckCircle2,
-  XCircle,
-  HelpCircle,
   UserCheck,
   UserPlus,
   Sparkles,
@@ -99,10 +96,6 @@ export const POSPage: React.FC = () => {
   const [suggestedTables, setSuggestedTables] = useState<RestaurantTable[]>([]);
   const [pendingTableSelection, setPendingTableSelection] = useState<RestaurantTable | null>(null);
 
-  // Post-Payment KOT Modal State
-  const [postPaymentOrder, setPostPaymentOrder] = useState<any | null>(null);
-  const [postPaymentInvoice, setPostPaymentInvoice] = useState<any | null>(null);
-  const [showKotModal, setShowKotModal] = useState(false);
 
   // Customer CRM Recognition State
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -179,7 +172,6 @@ export const POSPage: React.FC = () => {
       return res.data.data;
     },
     enabled: !!selectedFranchiseId,
-    refetchInterval: 5000,
   });
 
   // Fetch Aggregator Settings
@@ -411,7 +403,7 @@ export const POSPage: React.FC = () => {
     mutationFn: async () => {
       if (cartItems.length === 0) throw new Error("Order cart is empty");
 
-      const payload = {
+      const payload: any = {
         tableId: selectedTable?.id || null,
         customerId: selectedCustomer?.id || null,
         discount,
@@ -425,75 +417,40 @@ export const POSPage: React.FC = () => {
         })),
       };
 
-      const orderRes = await api.post("/orders", payload);
-      const createdOrder = orderRes.data.data;
-
-      // Prepare invoice & payment payload (Cash, UPI, Split UPI+Cash, Card)
-      const invoicePayload: any = {
-        orderId: createdOrder.id,
-        autoCompletePayment: true,
-      };
-
       if (payMode === "SPLIT") {
-        invoicePayload.splitPayments = [
+        payload.splitPayments = [
           { method: "CASH", amount: Number(splitCashAmount.toFixed(2)) },
           { method: "UPI", amount: Number(splitUpiAmount.toFixed(2)) },
         ];
       } else {
-        invoicePayload.paymentMethod = payMode;
+        payload.paymentMethod = payMode;
       }
 
-      // Generate Invoice with auto-completed payment at this point
-      const invoiceRes = await api.post("/billing/invoices", invoicePayload);
-      const createdInvoice = invoiceRes.data.data;
+      // Single high-speed atomic endpoint: generates order, invoice, payment & receipt in 1 DB transaction
+      const res = await api.post("/billing/fast-bill", payload);
+      const { invoice, rawText } = res.data.data;
 
-      // Trigger Direct Thermal Print Spooler immediately
-      try {
-        const printJobRes = await api.post("/printers/print-job", {
-          type: "RECEIPT",
-          targetId: createdInvoice.id,
-        });
-        if (printJobRes.data?.data?.rawText) {
-          printReceiptDirectly(printJobRes.data.data.rawText, `Invoice #${createdInvoice.invoiceNumber}`, paperSize);
-        }
-      } catch (printErr) {
-        console.warn("Direct print failed or printer offline:", printErr);
+      // Direct thermal print spooler fires immediately without network roundtrips
+      if (rawText) {
+        printReceiptDirectly(rawText, `Invoice #${invoice.invoiceNumber}`, paperSize);
       }
 
-      return { order: createdOrder, invoice: createdInvoice };
+      return invoice;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-      queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["tables"] });
-      queryClient.invalidateQueries({ queryKey: ["gst-audit"] });
-      queryClient.invalidateQueries({ queryKey: ["reports"] });
-      queryClient.invalidateQueries({ queryKey: ["daily-register"] });
+    onSuccess: () => {
+      clearCart();
+      setSelectedTable(null);
+      setSelectedCustomer(null);
       setIsBillPayModalOpen(false);
-      setPostPaymentOrder(data.order);
-      setPostPaymentInvoice(data.invoice);
-      setShowKotModal(true);
+      // Fast lightweight sync: only tables and orders
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
     onError: (err) => {
       setPosError(extractErrorMessage(err));
     },
   });
 
-  const handleKotDecision = async (sendKot: boolean) => {
-    try {
-      if (sendKot && postPaymentOrder) {
-        await api.post("/kot/generate", { orderId: postPaymentOrder.id });
-      }
-    } catch (err) {
-      console.error("KOT decision error:", err);
-    } finally {
-      setShowKotModal(false);
-      clearCart();
-      setSelectedCustomer(null);
-      setPartyName("");
-      setGuestCount(2);
-    }
-  };
 
   const filteredItems = menuItems.filter((item) => {
     const matchesCategory = activeCategory ? item.categoryId === activeCategory : true;
@@ -1211,89 +1168,6 @@ export const POSPage: React.FC = () => {
         </div>
       )}
 
-      {/* Post-Payment KOT Prompt Modal */}
-      {showKotModal && postPaymentOrder && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-7 h-7" />
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">Payment Completed & Billed!</h3>
-              <p className="text-xs text-gray-500">
-                Invoice #{postPaymentInvoice?.invoiceNumber || 'INV-001'} for ₹{postPaymentInvoice?.total || total} is marked as <strong>COMPLETED</strong> via {payMode === "SPLIT" ? "Cash + UPI" : payMode}. Receipt sent directly to printer.
-              </p>
-            </div>
-
-            <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!postPaymentInvoice?.id) return;
-                  try {
-                    const printJobRes = await api.post("/printers/print-job", {
-                      type: "RECEIPT",
-                      targetId: postPaymentInvoice.id,
-                    });
-                    if (printJobRes.data?.data?.rawText) {
-                      printReceiptDirectly(printJobRes.data.data.rawText, `Invoice #${postPaymentInvoice.invoiceNumber}`, paperSize);
-                    }
-                  } catch (e) {
-                    alert(extractErrorMessage(e));
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors cursor-pointer"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                Reprint Bill Receipt
-              </button>
-            </div>
-
-            <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-xl space-y-1">
-              <div className="flex items-center gap-2 text-amber-800 font-bold text-sm">
-                <HelpCircle className="w-4 h-4" />
-                <span>Send KOT to Kitchen?</span>
-              </div>
-              <p className="text-xs text-amber-700">
-                Would you like to dispatch this ticket directly to the Kitchen Display System (KOT)?
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button
-                onClick={() => handleKotDecision(false)}
-                className="w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <XCircle className="w-4 h-4 text-gray-500" />
-                Done (Next Order)
-              </button>
-
-              <button
-                onClick={() => handleKotDecision(true)}
-                className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <ChefHat className="w-4 h-4" />
-                Send KOT & Next Order
-              </button>
-            </div>
-
-            <div className="text-center pt-2 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowKotModal(false);
-                  clearCart();
-                  setSelectedCustomer(null);
-                  navigate("/billing");
-                }}
-                className="text-[11px] text-gray-400 hover:text-indigo-600 font-medium underline cursor-pointer"
-              >
-                Go to Invoices & Bills page →
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Quick Add Customer Modal */}
       {showQuickAddCustomer && (

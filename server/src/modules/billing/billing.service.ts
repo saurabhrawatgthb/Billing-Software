@@ -681,3 +681,260 @@ export async function deleteInvoice(id: string, franchiseId: string | null, user
   return { success: true, message: `Invoice #${invoice.invoiceNumber} permanently deleted` };
 }
 
+// ========================
+// HIGH-SPEED POS FAST BILL
+// ========================
+
+export const fastBillSchema = z.object({
+  tableId: z.string().optional().nullable(),
+  customerId: z.string().optional().nullable(),
+  discount: z.number().nonnegative().default(0),
+  taxRate: z.number().nonnegative().optional(),
+  partyName: z.string().trim().optional(),
+  guestCount: z.number().int().positive().default(1),
+  items: z
+    .array(
+      z.object({
+        menuItemId: z.string().min(1, "Menu item ID is required"),
+        quantity: z.number().int().positive("Quantity must be at least 1"),
+        notes: z.string().trim().optional().nullable(),
+      })
+    )
+    .min(1, "At least one item is required"),
+  paymentMethod: z.nativeEnum(PaymentMethod).default(PaymentMethod.CASH),
+  splitPayments: z
+    .array(
+      z.object({
+        method: z.nativeEnum(PaymentMethod),
+        amount: z.number().positive(),
+      })
+    )
+    .optional(),
+});
+
+export async function fastBill(
+  input: z.input<typeof fastBillSchema>,
+  franchiseId: string,
+  _currentUserId?: string
+) {
+  const data = fastBillSchema.parse(input);
+
+  // 1. Fetch menu items in single query
+  const menuItemIds = data.items.map((i) => i.menuItemId);
+  const menuItems = await prisma.menuItem.findMany({
+    where: {
+      id: { in: menuItemIds },
+      franchiseId,
+    },
+    select: { id: true, name: true, price: true },
+  });
+
+  const itemMap = new Map(menuItems.map((m) => [m.id, m]));
+  let subtotalNum = 0;
+
+  const processedItems = data.items.map((item) => {
+    const dbItem = itemMap.get(item.menuItemId);
+    const unitPrice = dbItem ? Number(dbItem.price) : 0;
+    const totalPrice = unitPrice * item.quantity;
+    subtotalNum += totalPrice;
+    return {
+      menuItemId: item.menuItemId,
+      name: dbItem?.name || "Dish Item",
+      quantity: item.quantity,
+      unitPrice: Number(unitPrice.toFixed(2)),
+      totalPrice: Number(totalPrice.toFixed(2)),
+      notes: item.notes || null,
+    };
+  });
+
+  // 2. Compute tax and discounts
+  const brand = await prisma.brandSettings.findFirst();
+  const isGstRegistered = Boolean(brand?.taxNumber && brand.taxNumber.trim().length > 0);
+  const defaultRate = isGstRegistered ? (brand?.defaultGstRate ?? 5.0) : 0.0;
+  let gstRateUsed = data.taxRate !== undefined ? data.taxRate : defaultRate;
+  if (!isGstRegistered) gstRateUsed = 0.0;
+
+  const discountNum = Math.min(data.discount || 0, subtotalNum);
+  const taxableNum = Math.max(0, subtotalNum - discountNum);
+  const taxNum = (taxableNum * gstRateUsed) / 100;
+  const totalNum = Math.max(0, taxableNum + taxNum);
+
+  const halfRate = Number((gstRateUsed / 2).toFixed(2));
+  const halfTax = Number((taxNum / 2).toFixed(2));
+
+  // 3. Fast generation of order and invoice numbers
+  const now = new Date();
+  const datePrefix = `${now.getFullYear().toString().slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+  const orderNumber = `ORD-${datePrefix}-${randomSuffix}`;
+  const invoiceNumber = `INV-${datePrefix}-${randomSuffix}`;
+
+  // 4. Atomic single transaction
+  const result = await prisma.$transaction(async (tx) => {
+    // A. Create Order
+    const order = await tx.order.create({
+      data: {
+        franchiseId,
+        customerId: data.customerId || null,
+        orderNumber,
+        partyName: data.partyName,
+        guestCount: data.guestCount || 1,
+        status: OrderStatus.BILLED,
+        kotDecision: "COMPLETED",
+        subtotal: Number(subtotalNum.toFixed(2)),
+        discount: Number(discountNum.toFixed(2)),
+        tax: Number(taxNum.toFixed(2)),
+        total: Number(totalNum.toFixed(2)),
+        items: {
+          create: processedItems.map((p) => ({
+            menuItemId: p.menuItemId,
+            quantity: p.quantity,
+            unitPrice: p.unitPrice,
+            totalPrice: p.totalPrice,
+            notes: p.notes,
+          })),
+        },
+      },
+    });
+
+    // B. Free Table if selected
+    if (data.tableId) {
+      await tx.restaurantTable.update({
+        where: { id: data.tableId },
+        data: { status: TableStatus.AVAILABLE, currentOccupancy: 0 },
+      });
+      await tx.tableSession.updateMany({
+        where: { tableId: data.tableId, endedAt: null },
+        data: { endedAt: now },
+      });
+    }
+
+    // C. Create Invoice
+    const invoice = await tx.invoice.create({
+      data: {
+        franchiseId,
+        orderId: order.id,
+        invoiceNumber,
+        subtotal: Number(subtotalNum.toFixed(2)),
+        discount: Number(discountNum.toFixed(2)),
+        tax: Number(taxNum.toFixed(2)),
+        total: Number(totalNum.toFixed(2)),
+        taxableAmount: Number(taxableNum.toFixed(2)),
+        cgstRate: halfRate,
+        cgstAmount: halfTax,
+        sgstRate: halfRate,
+        sgstAmount: halfTax,
+        igstRate: 0,
+        igstAmount: 0,
+        gstin: brand?.taxNumber || null,
+        isDormant: false,
+        dormantStatus: "ACTIVE",
+      },
+      include: {
+        franchise: { select: { name: true, address: true, phone: true } },
+      },
+    });
+
+    // D. Create Payment Records
+    const paymentRecords: { method: string; amount: number }[] = [];
+    if (data.splitPayments && data.splitPayments.length > 0) {
+      for (const sp of data.splitPayments) {
+        if (sp.amount > 0) {
+          await tx.payment.create({
+            data: {
+              franchiseId,
+              invoiceId: invoice.id,
+              amount: Number(sp.amount.toFixed(2)),
+              method: sp.method,
+              status: PaymentStatus.COMPLETED,
+            },
+          });
+          paymentRecords.push({ method: sp.method, amount: sp.amount });
+        }
+      }
+    } else {
+      await tx.payment.create({
+        data: {
+          franchiseId,
+          invoiceId: invoice.id,
+          amount: Number(totalNum.toFixed(2)),
+          method: data.paymentMethod,
+          status: PaymentStatus.COMPLETED,
+        },
+      });
+      paymentRecords.push({ method: data.paymentMethod, amount: totalNum });
+    }
+
+    return { order, invoice, paymentRecords };
+  });
+
+  // 5. Generate formatted thermal receipt string
+  const currSym = brand?.currencySymbol || "₹";
+  const brandName = brand?.businessName?.trim().toUpperCase() || "MADRASI DOSA";
+  const franchiseName = result.invoice.franchise.name.toUpperCase();
+  const franchiseAddress = result.invoice.franchise.address?.trim() || "";
+  const franchisePhone = result.invoice.franchise.phone?.trim() || "";
+  const dateStr = now.toLocaleString();
+  const tableStr = data.tableId ? "Dine-In" : "Takeaway";
+
+  const lines = [
+    "================================",
+    `     ${brandName}     `,
+    `--- ${franchiseName} ---`,
+  ];
+  if (franchiseAddress) lines.push(`  ${franchiseAddress}  `);
+  if (franchisePhone) lines.push(`  Phone: ${franchisePhone}  `);
+  if (brand?.taxNumber) lines.push(`  GSTIN: ${brand.taxNumber}  `);
+  lines.push("================================");
+  lines.push(`Invoice: ${result.invoice.invoiceNumber}`);
+  lines.push(`Order  : ${result.order.orderNumber}`);
+  lines.push(`${tableStr}`);
+  lines.push(`Date   : ${dateStr}`);
+  lines.push("--------------------------------");
+  lines.push("Item             Qty      Price");
+  lines.push("--------------------------------");
+
+  for (const item of processedItems) {
+    const name = item.name.padEnd(16, " ").substring(0, 16);
+    const qty = String(item.quantity).padStart(3, " ");
+    const price = `${currSym}${item.totalPrice.toFixed(2)}`.padStart(11, " ");
+    lines.push(`${name} ${qty} ${price}`);
+  }
+
+  lines.push("--------------------------------");
+  lines.push(`Subtotal:             ${currSym}${subtotalNum.toFixed(2)}`);
+  if (discountNum > 0) {
+    lines.push(`Discount:            -${currSym}${discountNum.toFixed(2)}`);
+  }
+  lines.push(`Tax:                  ${currSym}${taxNum.toFixed(2)}`);
+  lines.push("================================");
+  lines.push(`TOTAL:                ${currSym}${totalNum.toFixed(2)}`);
+  lines.push("================================");
+  lines.push("PAYMENTS:");
+  for (const p of result.paymentRecords) {
+    lines.push(`  ${p.method.padEnd(8, " ")}: ${currSym}${p.amount.toFixed(2)} [COMPLETED]`);
+  }
+  lines.push("--------------------------------");
+  lines.push("Thanks For Visiting Madrasi Dosa");
+
+  const rawText = lines.join("\n");
+
+  // Asynchronous non-blocking events
+  setImmediate(() => {
+    emitToFranchise(franchiseId, "order:created", result.order);
+    emitToFranchise(franchiseId, "invoice:created", result.invoice);
+    if (data.tableId) {
+      emitToFranchise(franchiseId, "table:status_changed", {
+        tableId: data.tableId,
+        status: TableStatus.AVAILABLE,
+      });
+    }
+  });
+
+  return {
+    invoice: result.invoice,
+    rawText,
+    orderId: result.order.id,
+  };
+}
+

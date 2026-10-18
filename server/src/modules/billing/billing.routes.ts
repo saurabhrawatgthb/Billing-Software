@@ -8,11 +8,15 @@ import {
   verifyDormant,
   getGstAudit,
   deleteInvoiceHandler,
+  fastBillHandler,
 } from "./billing.controller.js";
 
 const router = Router();
 
 router.use(authenticate);
+
+// High-speed POS atomic fast billing & printing
+router.post("/fast-bill", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER"), fastBillHandler);
 
 // Super Admin & Accountant GST Tax Audit Center
 router.get("/gst-audit", authorize("SUPER_ADMIN", "ACCOUNTANT"), getGstAudit);

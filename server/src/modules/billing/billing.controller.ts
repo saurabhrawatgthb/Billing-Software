@@ -12,8 +12,20 @@ import {
   verifyDormantSchema,
   getGstAuditReport,
   deleteInvoice,
+  fastBill,
 } from "./billing.service.js";
 import { AppError } from "../../middleware/error.js";
+
+export async function fastBillHandler(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const franchiseId = getFranchiseId(req);
+    if (!franchiseId) throw new AppError("Franchise ID is required", 400);
+    const result = await fastBill(req.body, franchiseId, req.user?.userId);
+    return res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
 
 export async function list(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {

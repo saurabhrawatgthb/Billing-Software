@@ -61,7 +61,7 @@ export const Navbar: React.FC = () => {
       return res.data.data;
     },
     enabled: !!activeFranchiseId,
-    refetchInterval: 10000,
+    refetchInterval: 60000,
   });
 
   const isRegisterOpen = currentRegister?.status === "OPEN";
