@@ -24,21 +24,32 @@ async function runEndToEndTests() {
   console.log("🚀 STARTING E2E BACKEND SUITE...");
 
   // 1. Super Admin Check
-  const adminLogin = await loginUser("admin@restaurant.local", "Admin@123").catch(async () => {
+  const adminLoginResult = await loginUser("admin@restaurant.local", "Admin@123").catch(async () => {
     // If admin password is unknown, upsert a known password
     const passwordHash = await bcrypt.hash("Admin@123", 12);
-    await prisma.user.upsert({
-      where: { email: "admin@restaurant.local" },
-      create: {
-        email: "admin@restaurant.local",
-        name: "System Administrator",
-        role: "SUPER_ADMIN",
-        passwordHash,
-      },
-      update: { passwordHash },
-    });
+    const existing = await prisma.user.findFirst({ where: { email: "admin@restaurant.local" } });
+    if (existing) {
+      await prisma.user.update({
+        where: { id: existing.id },
+        data: { passwordHash },
+      });
+    } else {
+      await prisma.user.create({
+        data: {
+          email: "admin@restaurant.local",
+          name: "System Administrator",
+          role: "SUPER_ADMIN",
+          passwordHash,
+        },
+      });
+    }
     return loginUser("admin@restaurant.local", "Admin@123");
   });
+
+  if (!("user" in adminLoginResult) || !adminLoginResult.user) {
+    throw new Error("Admin login requires account selection unexpected in test");
+  }
+  const adminLogin = adminLoginResult as { token: string; user: NonNullable<typeof adminLoginResult["user"]> };
   console.log("✅ 1. Super Admin authenticated:", adminLogin.user.email);
 
   // 2. Franchise Creation

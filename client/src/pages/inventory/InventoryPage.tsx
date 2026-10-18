@@ -12,10 +12,11 @@ import {
   Truck,
   Edit2,
   Filter,
+  Building,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
-import type { InventoryItem, InventoryTransaction, InventoryStats } from "../../types/index.js";
+import type { InventoryItem, InventoryTransaction, InventoryStats, Franchise } from "../../types/index.js";
 import { Card } from "../../components/common/Card.js";
 import { StatCard } from "../../components/common/StatCard.js";
 import { Button } from "../../components/common/Button.js";
@@ -29,8 +30,10 @@ import { EmptyState } from "../../components/common/EmptyState.js";
 export const InventoryPage: React.FC = () => {
   const queryClient = useQueryClient();
   const { selectedFranchiseId, user } = useAuthStore();
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const canManage = ["SUPER_ADMIN", "FRANCHISE_MANAGER"].includes(user?.role || "");
 
+  const [targetFranchiseId, setTargetFranchiseId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "low" | "critical">("all");
   const [isStockInModalOpen, setIsStockInModalOpen] = useState(false);
@@ -40,8 +43,31 @@ export const InventoryPage: React.FC = () => {
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [itemModalError, setItemModalError] = useState<string | null>(null);
 
+  // Fetch Franchises for Super Admin
+  const { data: franchises = [] } = useQuery<Franchise[]>({
+    queryKey: ["inventory-franchises"],
+    queryFn: async () => {
+      const res = await api.get("/franchises");
+      return res.data.data;
+    },
+    enabled: isSuperAdmin,
+  });
+
+  const effectiveFranchiseId = selectedFranchiseId || targetFranchiseId || "";
+
   // Forms state
-  const [itemForm, setItemForm] = useState({
+  const [itemForm, setItemForm] = useState<{
+    name: string;
+    code: string;
+    category?: string;
+    unit: string;
+    currentStock: number;
+    minimumStock: number;
+    reorderLevel: number;
+    purchasePrice: number;
+    supplier?: string;
+    franchiseId?: string;
+  }>({
     name: "",
     code: "",
     category: "",
@@ -51,59 +77,84 @@ export const InventoryPage: React.FC = () => {
     reorderLevel: 10,
     purchasePrice: 0,
     supplier: "",
+    franchiseId: "",
   });
 
-  const [stockInForm, setStockInForm] = useState({
+  const [stockInForm, setStockInForm] = useState<{
+    supplier: string;
+    invoiceNumber: string;
+    notes?: string;
+    franchiseId?: string;
+    items: { inventoryItemId: string; quantity: number; unitPrice: number }[];
+  }>({
     supplier: "",
     invoiceNumber: "",
     notes: "",
+    franchiseId: "",
     items: [{ inventoryItemId: "", quantity: 1, unitPrice: 0 }],
   });
 
-  const [adjustForm, setAdjustForm] = useState({
+  const [adjustForm, setAdjustForm] = useState<{
+    inventoryItemId: string;
+    type: "WASTAGE" | "ADJUSTMENT" | "RETURN";
+    quantity: number;
+    notes: string;
+    franchiseId?: string;
+  }>({
     inventoryItemId: "",
-    type: "WASTAGE" as "WASTAGE" | "ADJUSTMENT" | "RETURN",
+    type: "WASTAGE",
     quantity: 0,
     notes: "",
+    franchiseId: "",
   });
 
   // Queries
   const { data: statsData } = useQuery<{ success: boolean; data: InventoryStats }>({
-    queryKey: ["inventory-stats", selectedFranchiseId],
+    queryKey: ["inventory-stats", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/inventory/stats");
+      const url = effectiveFranchiseId ? `/inventory/stats?franchiseId=${effectiveFranchiseId}` : "/inventory/stats";
+      const res = await api.get(url);
       return res.data;
     },
-    enabled: !!selectedFranchiseId,
   });
 
   const { data: itemsData, isLoading } = useQuery<{ success: boolean; data: InventoryItem[] }>({
-    queryKey: ["inventory-items", selectedFranchiseId, filterStatus, searchTerm],
+    queryKey: ["inventory-items", effectiveFranchiseId, filterStatus, searchTerm],
     queryFn: async () => {
       const res = await api.get("/inventory", {
-        params: { status: filterStatus, search: searchTerm },
+        params: {
+          franchiseId: effectiveFranchiseId || undefined,
+          status: filterStatus,
+          search: searchTerm,
+        },
       });
       return res.data;
     },
-    enabled: !!selectedFranchiseId,
   });
 
   const { data: ledgerData } = useQuery<{ success: boolean; data: InventoryTransaction[] }>({
-    queryKey: ["inventory-transactions", selectedFranchiseId],
+    queryKey: ["inventory-transactions", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/inventory/transactions", { params: { limit: 50 } });
+      const res = await api.get("/inventory/transactions", {
+        params: {
+          franchiseId: effectiveFranchiseId || undefined,
+          limit: 50,
+        },
+      });
       return res.data;
     },
-    enabled: isLedgerModalOpen && !!selectedFranchiseId,
+    enabled: isLedgerModalOpen,
   });
 
   // Mutations
   const itemMutation = useMutation({
     mutationFn: async () => {
+      const fId = itemForm.franchiseId || effectiveFranchiseId || franchises[0]?.id;
+      const payload = { ...itemForm, franchiseId: fId };
       if (editingItem) {
-        await api.put(`/inventory/${editingItem.id}`, itemForm);
+        await api.put(`/inventory/${editingItem.id}`, payload);
       } else {
-        await api.post("/inventory", itemForm);
+        await api.post("/inventory", payload);
       }
     },
     onSuccess: () => {
@@ -204,6 +255,36 @@ export const InventoryPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Super Admin Outlet Selector Banner */}
+      {isSuperAdmin && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-indigo-50/70 border border-indigo-200/80 rounded-xl shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
+              <Building className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-indigo-950 uppercase tracking-wider">Inventory Outlet Scope</p>
+              <p className="text-xs text-indigo-700">Filter stock, raw material levels, and transactions by branch</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={targetFranchiseId}
+              onChange={(e) => setTargetFranchiseId(e.target.value)}
+              className="text-xs font-semibold bg-white border border-indigo-300 rounded-lg px-3 py-1.5 text-gray-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+            >
+              <option value="">🏬 Consolidated (All Outlets)</option>
+              {franchises.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name} ({f.code})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
@@ -290,6 +371,7 @@ export const InventoryPage: React.FC = () => {
               <thead className="bg-gray-50 text-gray-600 border-b border-gray-100 font-semibold text-xs uppercase tracking-wider">
                 <tr>
                   <th className="py-3 px-4">Item Name</th>
+                  {isSuperAdmin && !targetFranchiseId && <th className="py-3 px-4">Branch</th>}
                   <th className="py-3 px-4">Category</th>
                   <th className="py-3 px-4">Current Stock</th>
                   <th className="py-3 px-4">Min Stock Limit</th>
@@ -311,6 +393,14 @@ export const InventoryPage: React.FC = () => {
                         <span className="font-bold text-gray-900">{item.name}</span>
                         {item.code && <span className="block text-xs text-gray-400 font-mono">{item.code}</span>}
                       </td>
+                      {isSuperAdmin && !targetFranchiseId && (
+                        <td className="py-3 px-4">
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700 bg-gray-100 px-2 py-0.5 rounded">
+                            <Building className="w-3 h-3 text-gray-400" />
+                            {(item as any).franchise?.name || "Global"}
+                          </span>
+                        </td>
+                      )}
                       <td className="py-3 px-4 text-gray-600">{item.category || "General"}</td>
                       <td className="py-3 px-4">
                         <span
@@ -520,6 +610,16 @@ export const InventoryPage: React.FC = () => {
               {itemModalError}
             </div>
           )}
+
+          {isSuperAdmin && !editingItem && (
+            <Select
+              label="Assigned Franchise Branch *"
+              options={franchises.map((f) => ({ value: f.id, label: `${f.name} (${f.code})` }))}
+              value={itemForm.franchiseId || effectiveFranchiseId || franchises[0]?.id || ""}
+              onChange={(e) => setItemForm({ ...itemForm, franchiseId: e.target.value })}
+            />
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Item Name *"

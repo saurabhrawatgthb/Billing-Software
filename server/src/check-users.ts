@@ -1,4 +1,4 @@
-﻿import bcrypt from "bcryptjs";
+import bcrypt from "bcryptjs";
 import prisma from "./lib/prisma.js";
 
 async function main() {
@@ -10,7 +10,7 @@ async function main() {
     console.log(`- [${u.role}] ${u.email} (${u.name})`);
   }
 
-  const admin = await prisma.user.findUnique({ where: { email: "admin@restaurant.local" } });
+  const admin = await prisma.user.findFirst({ where: { email: "admin@restaurant.local" } });
   if (admin) {
     const is12345 = await bcrypt.compare("Admin@12345", admin.passwordHash);
     const is123 = await bcrypt.compare("Admin@123", admin.passwordHash);

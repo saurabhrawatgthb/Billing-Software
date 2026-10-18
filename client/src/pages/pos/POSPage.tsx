@@ -35,7 +35,8 @@ import { Select } from "../../components/common/Select.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { AggregatorOrderModal } from "../../components/pos/AggregatorOrderModal.js";
 import { AggregatorSettingsModal } from "../../components/pos/AggregatorSettingsModal.js";
-import { Globe, Bell } from "lucide-react";
+import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
+import { Globe, Bell, LayoutGrid } from "lucide-react";
 
 export const POSPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -63,6 +64,7 @@ export const POSPage: React.FC = () => {
   const [posError, setPosError] = useState<string | null>(null);
 
   // Table Seating & Party Size State
+  const [isFloorPlanOpen, setIsFloorPlanOpen] = useState(false);
   const [partyName, setPartyName] = useState("");
   const [guestCount, setGuestCount] = useState<number>(2);
   const [showCapacityWarning, setShowCapacityWarning] = useState(false);
@@ -525,6 +527,15 @@ export const POSPage: React.FC = () => {
 
           {/* Table Selector & Guests */}
           <div className="w-full sm:w-auto flex-1 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsFloorPlanOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-xs font-bold text-indigo-700 shadow-2xs transition-colors cursor-pointer"
+            >
+              <LayoutGrid className="w-4 h-4 text-indigo-600" />
+              <span>🪑 Floor Plan ({tables.length})</span>
+            </button>
+
             <div className="flex-1 min-w-[180px]">
               <Select
                 options={[
@@ -1150,6 +1161,20 @@ export const POSPage: React.FC = () => {
         isOpen={isAggregatorSettingsOpen}
         onClose={() => setIsAggregatorSettingsOpen(false)}
         onSimulateOrder={(platform) => simulateOrderMutation.mutate(platform)}
+      />
+
+      {/* Visual Dine-In Floor Plan & Table Structure Modal */}
+      <TableLayoutModal
+        isOpen={isFloorPlanOpen}
+        onClose={() => setIsFloorPlanOpen(false)}
+        selectedTableId={selectedTable?.id}
+        onSelectTable={(table) => {
+          setSelectedTable(table);
+          if (table) {
+            setGuestCount(table.capacity || 2);
+          }
+        }}
+        franchiseId={selectedFranchiseId}
       />
     </div>
   );

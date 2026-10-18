@@ -217,6 +217,8 @@ model Franchise {
   customerVisits        CustomerVisit[]
   campaigns             Campaign[]
   aggregatorIntegrations AggregatorIntegration[]
+  registers             DailyRegister[]
+  rolePermissions       RolePermission[]
 }
 
 // =========================
@@ -228,7 +230,7 @@ model User {
   franchiseId String?  @db.ObjectId
 
   name         String
-  email        String   @unique
+  email        String
   passwordHash String
   role         UserRole
   isActive     Boolean  @default(true)
@@ -238,9 +240,12 @@ model User {
 
   franchise Franchise? @relation(fields: [franchiseId], references: [id])
 
-  auditLogs     AuditLog[]
-  notifications Notification[]
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+  registersOpened DailyRegister[] @relation("RegisterOpenedBy")
+  registersClosed DailyRegister[] @relation("RegisterClosedBy")
 
+  @@index([email])
   @@index([franchiseId])
 }
 
@@ -1126,5 +1131,82 @@ model AggregatorIntegration {
 
   @@unique([franchiseId, platform])
   @@index([franchiseId])
+}
+
+// ==========================================================
+// DAILY REGISTER & SHIFT CLOSING (DAY OPEN & DAY CLOSE)
+// ==========================================================
+
+enum RegisterStatus {
+  OPEN
+  CLOSED
+}
+
+model DailyRegister {
+  id                String         @id @default(auto()) @map("_id") @db.ObjectId
+  franchiseId       String         @db.ObjectId
+  openedById        String         @db.ObjectId
+  closedById        String?        @db.ObjectId
+
+  openedAt          DateTime       @default(now())
+  closedAt          DateTime?
+  status            RegisterStatus @default(OPEN)
+
+  openingFloat      Float          @default(0)
+  closingCash       Float?
+  expectedCash      Float?
+  cashDifference    Float?
+
+  totalSales        Float          @default(0)
+  cashSales         Float          @default(0)
+  upiSales          Float          @default(0)
+  cardSales         Float          @default(0)
+  aggregatorSales   Float          @default(0)
+  totalOrdersCount  Int            @default(0)
+  totalTaxCollected Float          @default(0)
+  totalDiscounts    Float          @default(0)
+
+  openingNotes      String?
+  closingNotes      String?
+
+  franchise         Franchise      @relation(fields: [franchiseId], references: [id])
+  openedBy          User           @relation("RegisterOpenedBy", fields: [openedById], references: [id])
+  closedBy          User?          @relation("RegisterClosedBy", fields: [closedById], references: [id])
+
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([franchiseId])
+  @@index([status])
+}
+
+// ==========================================================
+// SUPER ADMIN ROLE PERMISSION MODULE FOR MANAGERS
+// ==========================================================
+
+model RolePermission {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  franchiseId        String?  @db.ObjectId
+  role               UserRole @default(FRANCHISE_MANAGER)
+
+  canEditMenu        Boolean  @default(true)
+  canEditPrices      Boolean  @default(true)
+  canVoidBills       Boolean  @default(false)
+  canManageInventory Boolean  @default(true)
+  canManageEmployees Boolean  @default(true)
+  canViewReports     Boolean  @default(true)
+  canManageCRM       Boolean  @default(true)
+  canManagePrinters  Boolean  @default(true)
+  canManageTables    Boolean  @default(true)
+  canApplyDiscounts  Boolean  @default(true)
+  maxDiscountPercent Float    @default(20.0)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  franchise          Franchise? @relation(fields: [franchiseId], references: [id])
+
+  @@unique([franchiseId, role])
+  @@index([role])
 }
 

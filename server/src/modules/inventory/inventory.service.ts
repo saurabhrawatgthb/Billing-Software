@@ -43,14 +43,17 @@ export async function listInventoryItems(
   franchiseId: string | null,
   filters: { category?: string; search?: string; status?: "all" | "low" | "critical" }
 ) {
-  if (!franchiseId) return [];
-
   const items = await prisma.inventoryItem.findMany({
     where: {
-      franchiseId,
+      ...(franchiseId ? { franchiseId } : {}),
       isActive: true,
       category: filters.category || undefined,
       name: filters.search ? { contains: filters.search, mode: "insensitive" } : undefined,
+    },
+    include: {
+      franchise: {
+        select: { id: true, name: true, code: true },
+      },
     },
     orderBy: { name: "asc" },
   });
@@ -404,27 +407,30 @@ export async function listInventoryTransactions(
   franchiseId: string | null,
   filters: { inventoryItemId?: string; type?: InventoryTxType; limit?: number }
 ) {
-  if (!franchiseId) return [];
-
   return prisma.inventoryTransaction.findMany({
     where: {
-      franchiseId,
+      ...(franchiseId ? { franchiseId } : {}),
       inventoryItemId: filters.inventoryItemId || undefined,
       type: filters.type || undefined,
     },
-    include: { inventoryItem: true },
+    include: {
+      inventoryItem: {
+        include: {
+          franchise: { select: { id: true, name: true, code: true } },
+        },
+      },
+    },
     orderBy: { createdAt: "desc" },
     take: filters.limit || 100,
   });
 }
 
 export async function getInventoryStats(franchiseId: string | null) {
-  if (!franchiseId) {
-    return { totalItems: 0, totalValue: 0, lowStockCount: 0, criticalStockCount: 0 };
-  }
-
   const items = await prisma.inventoryItem.findMany({
-    where: { franchiseId, isActive: true },
+    where: {
+      ...(franchiseId ? { franchiseId } : {}),
+      isActive: true,
+    },
   });
 
   let totalValue = 0;

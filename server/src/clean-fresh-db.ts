@@ -86,24 +86,31 @@ async function main() {
   // 8. Ensure clean Super Admin account exists
   console.log("Ensuring platform super admin (admin@restaurant.local) is ready...");
   const hashedPassword = await bcrypt.hash("Admin@12345", 10);
-  const superAdmin = await prisma.user.upsert({
-    where: { email: "admin@restaurant.local" },
-    update: {
-      name: "Super Admin",
-      role: "SUPER_ADMIN",
-      passwordHash: hashedPassword,
-      isActive: true,
-      franchiseId: null,
-    },
-    create: {
-      email: "admin@restaurant.local",
-      name: "Super Admin",
-      role: "SUPER_ADMIN",
-      passwordHash: hashedPassword,
-      isActive: true,
-      franchiseId: null,
-    },
-  });
+  const existingAdmin = await prisma.user.findFirst({ where: { email: "admin@restaurant.local" } });
+  let superAdmin;
+  if (existingAdmin) {
+    superAdmin = await prisma.user.update({
+      where: { id: existingAdmin.id },
+      data: {
+        name: "Super Admin",
+        role: "SUPER_ADMIN",
+        passwordHash: hashedPassword,
+        isActive: true,
+        franchiseId: null,
+      },
+    });
+  } else {
+    superAdmin = await prisma.user.create({
+      data: {
+        email: "admin@restaurant.local",
+        name: "Super Admin",
+        role: "SUPER_ADMIN",
+        passwordHash: hashedPassword,
+        isActive: true,
+        franchiseId: null,
+      },
+    });
+  }
 
   // 9. Reset Brand Settings to clean state
   console.log("Resetting brand settings to clean starting state...");

@@ -14,7 +14,7 @@ async function runTest() {
   try {
     // 1. Check Brand Owner bootstrap account
     console.log("\n[1/7] Verifying Brand Owner Account...");
-    const brandOwner = await prisma.user.findUnique({
+    const brandOwner = await prisma.user.findFirst({
       where: { email: "admin@restaurant.local" },
     });
     if (!brandOwner || brandOwner.role !== "SUPER_ADMIN") {

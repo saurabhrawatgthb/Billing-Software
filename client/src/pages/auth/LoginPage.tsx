@@ -16,6 +16,27 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectableAccounts, setSelectableAccounts] = useState<any[] | null>(null);
+
+  const handleSelectAccount = async (accountId: string) => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const response = await api.post("/auth/login", {
+        email,
+        password,
+        selectedAccountId: accountId,
+      });
+      const { user, token } = response.data.data;
+      login(user, token);
+      const targetHome = getDefaultRoleHome(user.role);
+      navigate(targetHome);
+    } catch (err) {
+      setErrorMessage(extractErrorMessage(err));
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,7 +45,14 @@ export const LoginPage: React.FC = () => {
 
     try {
       const response = await api.post("/auth/login", { email, password });
-      const { user, token } = response.data.data;
+      const data = response.data.data;
+
+      if (data?.requiresAccountSelection && Array.isArray(data.accounts)) {
+        setSelectableAccounts(data.accounts);
+        return;
+      }
+
+      const { user, token } = data;
       login(user, token);
       const targetHome = getDefaultRoleHome(user.role);
       navigate(targetHome);
@@ -61,53 +89,101 @@ export const LoginPage: React.FC = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Input
-                label="Email Address"
-                type="email"
-                required
-                variant="dark"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@restaurant.com"
-                leftIcon={<Mail className="w-4 h-4" />}
-              />
-            </div>
+          {selectableAccounts ? (
+            <div className="space-y-4">
+              <div className="text-center pb-2 border-b border-slate-800">
+                <h3 className="text-base font-bold text-white">Select Account Profile</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  This email is linked to multiple roles or outlets. Choose which account you want to access:
+                </p>
+              </div>
 
-            <div>
-              <Input
-                label="Password"
-                type={showPassword ? "text" : "password"}
-                required
-                variant="dark"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                leftIcon={<Lock className="w-4 h-4" />}
-                rightIcon={
+              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                {selectableAccounts.map((account) => (
                   <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="hover:text-white transition-colors cursor-pointer p-1"
-                    tabIndex={-1}
+                    key={account.id}
+                    onClick={() => handleSelectAccount(account.id)}
+                    disabled={isLoading}
+                    className="w-full p-3.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-indigo-600/20 hover:border-indigo-500 text-left transition-all cursor-pointer group flex items-center justify-between gap-3"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                }
-              />
-            </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-white group-hover:text-indigo-300">
+                          {account.name}
+                        </span>
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+                          {account.role.replace("_", " ")}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {account.franchise ? `🏬 ${account.franchise.name} (${account.franchise.code})` : "🌐 Global Admin"}
+                      </p>
+                    </div>
 
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              className="w-full mt-2 font-semibold shadow-lg shadow-indigo-600/20"
-              isLoading={isLoading}
-            >
-              Sign In
-            </Button>
-          </form>
+                    <span className="text-xs font-bold text-indigo-400 group-hover:translate-x-1 transition-transform">
+                      Sign In →
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectableAccounts(null)}
+                className="w-full text-center text-xs text-slate-400 hover:text-white pt-2 cursor-pointer"
+              >
+                ← Back to Login
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Input
+                  label="Email Address"
+                  type="email"
+                  required
+                  variant="dark"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@restaurant.com"
+                  leftIcon={<Mail className="w-4 h-4" />}
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  variant="dark"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  leftIcon={<Lock className="w-4 h-4" />}
+                  rightIcon={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="hover:text-white transition-colors cursor-pointer p-1"
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  }
+                />
+              </div>
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                className="w-full mt-2 font-semibold shadow-lg shadow-indigo-600/20"
+                isLoading={isLoading}
+              >
+                Sign In
+              </Button>
+            </form>
+          )}
         </div>
       </div>
     </div>

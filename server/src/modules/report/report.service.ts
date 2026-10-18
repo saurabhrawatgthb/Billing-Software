@@ -272,6 +272,9 @@ export async function getGlobalFranchiseReport(filters: ReportDateFilter) {
   const franchises = await prisma.franchise.findMany({
     include: {
       _count: { select: { employees: true, tables: true, users: true } },
+      users: {
+        select: { id: true, name: true, email: true, role: true, isActive: true },
+      },
       orders: {
         where: {
           status: { notIn: ["CANCELLED"] },
@@ -286,6 +289,7 @@ export async function getGlobalFranchiseReport(filters: ReportDateFilter) {
     const ordersCount = f.orders.length;
     const revenue = f.orders.reduce((sum, o) => sum + Number(o.total), 0);
     const aov = ordersCount > 0 ? revenue / ordersCount : 0;
+    const managers = f.users.filter((u) => u.role === "FRANCHISE_MANAGER");
 
     return {
       id: f.id,
@@ -294,6 +298,8 @@ export async function getGlobalFranchiseReport(filters: ReportDateFilter) {
       isActive: f.isActive,
       employeesCount: f._count.employees,
       tablesCount: f._count.tables,
+      usersCount: f._count.users,
+      managers: managers.map((m) => ({ id: m.id, name: m.name, email: m.email })),
       ordersCount,
       revenue,
       averageOrderValue: aov,

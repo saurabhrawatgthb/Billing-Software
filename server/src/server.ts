@@ -27,6 +27,8 @@ import notificationRoutes from "./modules/notification/notification.routes.js";
 import crmRoutes from "./modules/crm/crm.routes.js";
 import brandRoutes from "./modules/brand/brand.routes.js";
 import aggregatorRoutes from "./modules/aggregator/aggregator.routes.js";
+import permissionRoutes from "./modules/permission/permission.routes.js";
+import registerRoutes from "./modules/register/register.routes.js";
 
 import { initSocket } from "./lib/socket.js";
 import { errorHandler } from "./middleware/error.js";
@@ -103,6 +105,8 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/crm", crmRoutes);
 app.use("/api/brand-settings", brandRoutes);
 app.use("/api/aggregators", aggregatorRoutes);
+app.use("/api/permissions", permissionRoutes);
+app.use("/api/registers", registerRoutes);
 
 // Centralized error handler
 app.use(errorHandler);

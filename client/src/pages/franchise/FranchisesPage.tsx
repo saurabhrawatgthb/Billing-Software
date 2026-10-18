@@ -266,8 +266,31 @@ export const FranchisesPage: React.FC = () => {
                   )}
                 </div>
 
+                {/* Assigned Franchise Manager */}
+                <div className="p-2.5 rounded-lg bg-indigo-50/60 border border-indigo-100 text-xs">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 block mb-1">
+                    Franchise Manager
+                  </span>
+                  {(franchise as any).users && (franchise as any).users.filter((u: any) => u.role === "FRANCHISE_MANAGER").length > 0 ? (
+                    (franchise as any).users
+                      .filter((u: any) => u.role === "FRANCHISE_MANAGER")
+                      .map((m: any) => (
+                        <div key={m.id} className="flex items-center justify-between">
+                          <span className="font-semibold text-gray-900">{m.name}</span>
+                          <span className="text-[11px] text-gray-500 font-mono">{m.email}</span>
+                        </div>
+                      ))
+                  ) : (
+                    <span className="text-[11px] text-amber-700 italic">No manager account assigned yet</span>
+                  )}
+                </div>
+
                 {/* Counts */}
-                <div className="grid grid-cols-3 gap-2 py-2 px-3 bg-gray-50 rounded-xl text-center text-xs">
+                <div className="grid grid-cols-4 gap-1.5 py-2 px-2.5 bg-gray-50 rounded-xl text-center text-xs">
+                  <div>
+                    <p className="font-bold text-gray-900">{(franchise as any)._count?.users || 0}</p>
+                    <p className="text-[10px] text-gray-500 uppercase">Logins</p>
+                  </div>
                   <div>
                     <p className="font-bold text-gray-900">{franchise._count?.employees || 0}</p>
                     <p className="text-[10px] text-gray-500 uppercase">Staff</p>

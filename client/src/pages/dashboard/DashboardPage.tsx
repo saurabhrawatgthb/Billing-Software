@@ -160,11 +160,12 @@ export const DashboardPage: React.FC = () => {
                 <tr>
                   <th className="px-6 py-3">Franchise</th>
                   <th className="px-6 py-3">Code</th>
+                  <th className="px-6 py-3">Franchise Manager</th>
                   <th className="px-6 py-3">Status</th>
                   <th className="px-6 py-3">Orders</th>
                   <th className="px-6 py-3">Revenue</th>
                   <th className="px-6 py-3">Avg Order Value</th>
-                  <th className="px-6 py-3">Employees</th>
+                  <th className="px-6 py-3">Staff / Users</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -172,6 +173,22 @@ export const DashboardPage: React.FC = () => {
                   <tr key={f.id} className="hover:bg-gray-50/80 transition-colors">
                     <td className="px-6 py-4 font-semibold text-gray-900">{f.name}</td>
                     <td className="px-6 py-4 text-gray-600 font-mono text-xs">{f.code}</td>
+                    <td className="px-6 py-4">
+                      {f.managers && f.managers.length > 0 ? (
+                        <div className="flex flex-col gap-1">
+                          {f.managers.map((m: any) => (
+                            <div key={m.id} className="flex flex-col">
+                              <span className="font-semibold text-gray-900 text-xs">{m.name}</span>
+                              <span className="text-[11px] text-gray-500 font-mono">{m.email}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
+                          No Manager Assigned
+                        </span>
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -190,7 +207,9 @@ export const DashboardPage: React.FC = () => {
                     <td className="px-6 py-4 text-gray-700">
                       ₹{Math.round(f.averageOrderValue).toLocaleString("en-IN")}
                     </td>
-                    <td className="px-6 py-4 text-gray-600">{f.employeesCount} Staff</td>
+                    <td className="px-6 py-4 text-gray-600 text-xs">
+                      {f.employeesCount} Staff • {f.usersCount || 0} Logins
+                    </td>
                   </tr>
                 ))}
               </tbody>

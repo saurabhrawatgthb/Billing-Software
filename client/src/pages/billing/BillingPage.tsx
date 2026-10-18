@@ -16,6 +16,7 @@ import {
   Calendar,
   AlertTriangle,
   RotateCcw,
+  LayoutGrid,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
@@ -27,6 +28,7 @@ import { Modal } from "../../components/common/Modal.js";
 import { Badge } from "../../components/common/Badge.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
+import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
 
 export const BillingPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -39,6 +41,7 @@ export const BillingPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("");
   const [dormantViewFilter, setDormantViewFilter] = useState<string>("all"); // "all" | "active" | "dormant"
+  const [isFloorPlanOpen, setIsFloorPlanOpen] = useState(false);
 
   // Selected Invoices & View Modals
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -401,6 +404,15 @@ export const BillingPage: React.FC = () => {
 
         {/* Global Action Buttons */}
         <div className="flex items-center gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsFloorPlanOpen(true)}
+            icon={<LayoutGrid className="w-3.5 h-3.5 text-indigo-600" />}
+          >
+            🪑 Dine-In Floor Plan
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -1513,6 +1525,39 @@ export const BillingPage: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* Dine-In Floor Plan & Table Layout Modal */}
+      <TableLayoutModal
+        isOpen={isFloorPlanOpen}
+        onClose={() => setIsFloorPlanOpen(false)}
+        mode="BILLING"
+        franchiseId={selectedFranchiseId}
+        onSelectTable={(table) => {
+          if (!table) return;
+          const match = invoices.find(
+            (inv) =>
+              ((inv.order as any)?.tableSession?.tableId === table.id || (inv.order as any)?.tableId === table.id) &&
+              !inv.isDormant
+          );
+          if (match) {
+            handleOpenPayment(match);
+          } else {
+            alert(`Table ${table.tableNumber} does not have an active unsettled invoice.`);
+          }
+        }}
+        onSettleBillForTable={(table) => {
+          const match = invoices.find(
+            (inv) =>
+              ((inv.order as any)?.tableSession?.tableId === table.id || (inv.order as any)?.tableId === table.id) &&
+              !inv.isDormant
+          );
+          if (match) {
+            handleOpenPayment(match);
+          } else {
+            alert(`Table ${table.tableNumber} does not have an active unsettled invoice.`);
+          }
+        }}
+      />
     </div>
   );
 };

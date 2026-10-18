@@ -86,15 +86,10 @@ export async function createUser(
   requestingUserFranchiseId?: string | null,
   currentUserId?: string
 ) {
-  const existing = await prisma.user.findUnique({ where: { email: data.email } });
-  if (existing) {
-    throw new AppError("A user with this email already exists", 409);
-  }
-
   let finalFranchiseId = data.franchiseId;
 
   if (requestingUserRole !== "SUPER_ADMIN") {
-    if (data.role === UserRole.SUPER_ADMIN || data.role === UserRole.FRANCHISE_MANAGER) {
+    if (data.role === UserRole.SUPER_ADMIN) {
       throw new AppError("You do not have permission to create this role", 403);
     }
     finalFranchiseId = requestingUserFranchiseId;
@@ -102,6 +97,19 @@ export async function createUser(
 
   if (data.role !== UserRole.SUPER_ADMIN && !finalFranchiseId) {
     throw new AppError("Franchise ID is required for non-super admin users", 400);
+  }
+
+  // Check if an account with identical email AND role AND franchise already exists
+  const existing = await prisma.user.findFirst({
+    where: {
+      email: data.email,
+      role: data.role,
+      franchiseId: data.role === UserRole.SUPER_ADMIN ? null : finalFranchiseId,
+    },
+  });
+
+  if (existing) {
+    throw new AppError("A user with this email and role already exists for this outlet", 409);
   }
 
   const passwordHash = await bcrypt.hash(data.password, 12);
@@ -141,14 +149,27 @@ export async function updateUser(
     throw new AppError("User not found", 404);
   }
 
-  if (requestingUserRole !== "SUPER_ADMIN" && existing.franchiseId !== requestingUserFranchiseId) {
+  const isSelf = currentUserId === id;
+  const isSuperAdmin = requestingUserRole === "SUPER_ADMIN";
+  const isSameFranchise = Boolean(
+    requestingUserFranchiseId && existing.franchiseId === requestingUserFranchiseId
+  );
+
+  if (!isSuperAdmin && !isSelf && !isSameFranchise) {
     throw new AppError("Access denied", 403);
   }
 
   if (data.email && data.email !== existing.email) {
-    const emailConflict = await prisma.user.findUnique({ where: { email: data.email } });
+    const emailConflict = await prisma.user.findFirst({
+      where: {
+        id: { not: id },
+        email: data.email,
+        role: data.role || existing.role,
+        franchiseId: existing.franchiseId,
+      },
+    });
     if (emailConflict) {
-      throw new AppError("A user with this email already exists", 409);
+      throw new AppError("An account with this email and role already exists for this outlet", 409);
     }
   }
 
@@ -163,8 +184,8 @@ export async function updateUser(
       name: data.name,
       email: data.email,
       passwordHash,
-      role: requestingUserRole === "SUPER_ADMIN" ? data.role : undefined,
-      franchiseId: requestingUserRole === "SUPER_ADMIN" ? data.franchiseId : undefined,
+      role: isSuperAdmin ? data.role : undefined,
+      franchiseId: isSuperAdmin ? data.franchiseId : undefined,
     },
     select: publicUserSelect,
   });

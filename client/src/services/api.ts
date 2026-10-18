@@ -13,11 +13,17 @@ export const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("rms_token");
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    if (typeof (config.headers as any).set === "function") {
+      (config.headers as any).set("Authorization", `Bearer ${token}`);
+    }
+    config.headers["Authorization"] = `Bearer ${token}`;
   }
 
   const selectedFranchiseId = localStorage.getItem("rms_selected_franchise");
   if (selectedFranchiseId) {
+    if (typeof (config.headers as any).set === "function") {
+      (config.headers as any).set("x-franchise-id", selectedFranchiseId);
+    }
     config.headers["x-franchise-id"] = selectedFranchiseId;
   }
 
