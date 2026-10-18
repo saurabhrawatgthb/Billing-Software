@@ -68,7 +68,10 @@ export const MenuPage: React.FC = () => {
   const { data: categories = [], isFetching: isFetchingCats } = useQuery<Category[]>({
     queryKey: ["categories", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/menu/categories");
+      const url = effectiveFranchiseId
+        ? `/menu/categories?franchiseId=${effectiveFranchiseId}`
+        : "/menu/categories";
+      const res = await api.get(url);
       return res.data.data;
     },
   });
@@ -77,7 +80,10 @@ export const MenuPage: React.FC = () => {
   const { data: stations = [] } = useQuery<PreparationStation[]>({
     queryKey: ["stations", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/menu/stations");
+      const url = effectiveFranchiseId
+        ? `/menu/stations?franchiseId=${effectiveFranchiseId}`
+        : "/menu/stations";
+      const res = await api.get(url);
       return res.data.data;
     },
   });
@@ -86,9 +92,10 @@ export const MenuPage: React.FC = () => {
   const { data: menuItems = [], isLoading, isFetching: isFetchingItems } = useQuery<MenuItem[]>({
     queryKey: ["menu-items", effectiveFranchiseId, selectedCategoryFilter],
     queryFn: async () => {
-      const url = selectedCategoryFilter
-        ? `/menu/items?categoryId=${selectedCategoryFilter}`
-        : "/menu/items";
+      const params = new URLSearchParams();
+      if (effectiveFranchiseId) params.append("franchiseId", effectiveFranchiseId);
+      if (selectedCategoryFilter) params.append("categoryId", selectedCategoryFilter);
+      const url = params.toString() ? `/menu/items?${params.toString()}` : "/menu/items";
       const res = await api.get(url);
       return res.data.data;
     },
@@ -234,7 +241,25 @@ export const MenuPage: React.FC = () => {
         </div>
 
         {isBrandOwner ? (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {franchises.length > 0 && (
+              <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-100 rounded-lg px-2.5 py-1 text-xs text-indigo-900">
+                <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span className="font-semibold text-gray-700">Outlet:</span>
+                <select
+                  value={selectedFranchiseId || ""}
+                  onChange={(e) => setSelectedFranchise(e.target.value || null)}
+                  className="bg-white border border-indigo-200 rounded px-2 py-0.5 text-xs font-bold text-gray-800 cursor-pointer focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="">All Outlets (Consolidated)</option>
+                  {franchises.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name} ({f.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <Button
               variant="outline"
               disabled={isMenuSyncing}

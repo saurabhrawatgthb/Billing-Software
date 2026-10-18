@@ -159,6 +159,13 @@ export const POSPage: React.FC = () => {
   });
   const activeFranchises = franchises.filter((f) => f.isActive);
 
+  // Auto-select first active franchise if Super Admin enters POS with no franchise selected
+  React.useEffect(() => {
+    if (isSuperAdmin && !selectedFranchiseId && activeFranchises.length > 0) {
+      setSelectedFranchise(activeFranchises[0].id);
+    }
+  }, [isSuperAdmin, selectedFranchiseId, activeFranchises, setSelectedFranchise]);
+
   // Aggregator Online Orders (Swiggy / Zomato) State
   const [isAggregatorModalOpen, setIsAggregatorModalOpen] = useState(false);
   const [isAggregatorSettingsOpen, setIsAggregatorSettingsOpen] = useState(false);

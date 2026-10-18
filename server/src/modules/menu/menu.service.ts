@@ -15,9 +15,9 @@ export const categorySchema = z.object({
 });
 
 export async function listCategories(franchiseId: string | null) {
-  if (!franchiseId) return [];
+  const where = franchiseId && franchiseId !== "all" ? { franchiseId } : {};
   return prisma.category.findMany({
-    where: { franchiseId },
+    where,
     include: {
       _count: { select: { menuItems: true } },
     },
@@ -151,15 +151,15 @@ export async function listMenuItems(
   franchiseId: string | null,
   filters: { categoryId?: string; isAvailable?: boolean; stationId?: string }
 ) {
-  if (!franchiseId) return [];
+  const where: Prisma.MenuItemWhereInput = {
+    ...(franchiseId && franchiseId !== "all" ? { franchiseId } : {}),
+    categoryId: filters.categoryId || undefined,
+    stationId: filters.stationId || undefined,
+    isAvailable: filters.isAvailable !== undefined ? filters.isAvailable : undefined,
+  };
 
   return prisma.menuItem.findMany({
-    where: {
-      franchiseId,
-      categoryId: filters.categoryId || undefined,
-      stationId: filters.stationId || undefined,
-      isAvailable: filters.isAvailable !== undefined ? filters.isAvailable : undefined,
-    },
+    where,
     include: {
       category: {
         select: { id: true, name: true },
@@ -350,10 +350,10 @@ export async function setMenuItemAvailability(
 // ========================
 
 export async function listStations(franchiseId: string | null) {
-  if (!franchiseId) return [];
+  const where = franchiseId && franchiseId !== "all" ? { franchiseId } : {};
 
   return prisma.preparationStation.findMany({
-    where: { franchiseId },
+    where,
     include: {
       printers: true,
       _count: { select: { menuItems: true, kots: true } },

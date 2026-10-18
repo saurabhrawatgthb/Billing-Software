@@ -174,7 +174,6 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
     }
 
     lines.push("--------------------------------");
-    lines.push("\n\n\n");
 
     return {
       type: "KOT",
@@ -267,7 +266,6 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
 
   lines.push("--------------------------------");
   lines.push("Thanks For Visiting Madrasi Dosa");
-  lines.push("\n\n\n");
 
   return {
     type: "RECEIPT",

@@ -43,27 +43,54 @@ export function printReceiptDirectly(
   // Strip excess trailing blank newlines so continuous thermal paper feeds stop immediately after the footer
   const cleanedText = rawText.replace(/\n{3,}$/, "\n").trimEnd();
 
-  // CSS for exact paper dimensions and zero wastage
+  // CSS for exact paper dimensions, forced portrait orientation, and zero blank paper wastage
   const is58mm = paperSize === "58mm";
-  const contentWidth = is58mm ? "50mm" : "74mm";
-  const fontSize = is58mm ? "10.5px" : "12px";
-  const bodyPadding = is58mm ? "1mm 1.5mm" : "2mm 3mm";
+  const rollWidth = is58mm ? "58mm" : "80mm";
+  const contentWidth = is58mm ? "48mm" : "72mm";
+  const fontSize = is58mm ? "8.5px" : "11.5px";
+  const lineHeight = is58mm ? "1.2" : "1.25";
 
   const printStyles = `
     @page {
-      size: ${paperSize} auto;
+      size: portrait;
       margin: 0mm;
     }
+    @media print {
+      html, body {
+        width: ${rollWidth} !important;
+        max-width: ${rollWidth} !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        overflow: hidden !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .thermal-receipt {
+        width: ${contentWidth} !important;
+        max-width: ${contentWidth} !important;
+        box-sizing: border-box;
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+        font-size: ${fontSize};
+        line-height: ${lineHeight};
+        font-weight: 700;
+        letter-spacing: -0.25px;
+        margin: 0 auto;
+        padding: 2mm 0;
+        white-space: pre;
+        word-break: normal;
+        page-break-after: avoid;
+        break-after: avoid;
+      }
+    }
     html, body {
-      width: ${paperSize};
-      height: auto !important;
-      min-height: 0 !important;
-      max-height: max-content !important;
+      width: ${rollWidth};
+      max-width: ${rollWidth};
       margin: 0;
       padding: 0;
       background: #ffffff;
       color: #000000;
-      overflow: visible !important;
     }
     .thermal-receipt {
       width: ${contentWidth};
@@ -71,12 +98,13 @@ export function printReceiptDirectly(
       box-sizing: border-box;
       font-family: 'Courier New', Courier, monospace, 'Lucida Console';
       font-size: ${fontSize};
-      line-height: 1.28;
-      font-weight: 600;
-      margin: ${bodyPadding};
-      padding: 0;
-      white-space: pre-wrap;
-      word-break: break-word;
+      line-height: ${lineHeight};
+      font-weight: 700;
+      letter-spacing: -0.25px;
+      margin: 0 auto;
+      padding: 2mm 0;
+      white-space: pre;
+      word-break: normal;
       page-break-after: avoid;
       break-after: avoid;
     }

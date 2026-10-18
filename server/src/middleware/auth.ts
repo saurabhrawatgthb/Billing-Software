@@ -77,10 +77,39 @@ export const authorizeRole = authorize;
 
 export function getFranchiseId(req: AuthenticatedRequest): string | null {
   if (req.user?.role === "SUPER_ADMIN") {
+    const queryFranchise = req.query.franchiseId;
+    if (
+      typeof queryFranchise === "string" &&
+      queryFranchise.trim() !== "" &&
+      queryFranchise !== "all" &&
+      queryFranchise !== "null" &&
+      queryFranchise !== "undefined"
+    ) {
+      return queryFranchise;
+    }
+
     const headerFranchise = req.headers["x-franchise-id"];
-    if (typeof headerFranchise === "string") return headerFranchise;
-    if (typeof req.query.franchiseId === "string") return req.query.franchiseId;
-    if (typeof (req.body as any)?.franchiseId === "string") return (req.body as any).franchiseId;
+    if (
+      typeof headerFranchise === "string" &&
+      headerFranchise.trim() !== "" &&
+      headerFranchise !== "all" &&
+      headerFranchise !== "null" &&
+      headerFranchise !== "undefined"
+    ) {
+      return headerFranchise;
+    }
+
+    const bodyFranchise = (req.body as any)?.franchiseId;
+    if (
+      typeof bodyFranchise === "string" &&
+      bodyFranchise.trim() !== "" &&
+      bodyFranchise !== "all" &&
+      bodyFranchise !== "null" &&
+      bodyFranchise !== "undefined"
+    ) {
+      return bodyFranchise;
+    }
+
     return req.user.franchiseId ?? null;
   }
   return req.user?.franchiseId ?? null;
