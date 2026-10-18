@@ -27,10 +27,14 @@ import { useAuthStore } from "../../store/authStore.js";
 import { useCartStore } from "../../store/cartStore.js";
 import {
   printReceiptDirectly,
+  printKOTDirectly,
+  printCombinedKOTAndBillDirectly,
   getSavedPaperSize,
   setSavedPaperSize,
   buildThermalReceiptText,
   type ThermalPaperSize,
+  type BuildKOTParams,
+  type BuildReceiptParams,
 } from "../../utils/print.js";
 import {
   detectSerialPrinter,
@@ -77,6 +81,7 @@ export const POSPage: React.FC = () => {
   const [payMode, setPayMode] = useState<"CASH" | "UPI" | "SPLIT" | "CARD">("CASH");
   const [splitCashAmount, setSplitCashAmount] = useState<number>(0);
   const [splitUpiAmount, setSplitUpiAmount] = useState<number>(0);
+  const [printKOT, setPrintKOT] = useState<boolean>(true);
 
   // Portion / Size Selection for Pizza (Small / Medium / Large)
   const [sizeSelectionItem, setSizeSelectionItem] = useState<MenuItem | null>(null);
@@ -448,8 +453,13 @@ export const POSPage: React.FC = () => {
   const [isBilling, setIsBilling] = useState(false);
 
   // Instant Optimistic Thermal Billing & Direct Spooler (0ms Latency)
+  // Automatically prints KOT FIRST (items + table no only) and then BILL!
   const handleCompletePaymentAndPrint = async () => {
-    if (cartItems.length === 0 || isBilling) return;
+    if (cartItems.length === 0) {
+      setPosError("Cart is empty! Please add items before completing payment.");
+      return;
+    }
+    if (isBilling) return;
     setIsBilling(true);
 
     try {
@@ -460,8 +470,11 @@ export const POSPage: React.FC = () => {
       const invoiceNumber = `INV-${datePrefix}-${randomSuffix}`;
       const orderNumber = `ORD-${datePrefix}-${randomSuffix}`;
 
-      // 2. Identify active franchise details
-      const currFranchise = activeFranchises.find((f) => f.id === selectedFranchiseId) || user?.franchise;
+      // 2. Identify active franchise details with safety fallbacks
+      const currFranchise =
+        (activeFranchises && activeFranchises.find((f) => f.id === selectedFranchiseId)) ||
+        user?.franchise ||
+        undefined;
 
       // 3. Prepare payment records
       const paymentRecords =
@@ -477,6 +490,7 @@ export const POSPage: React.FC = () => {
         const itemUnitPrice = Number(i.price ?? i.menuItem.price);
         return {
           name: i.selectedSize ? `${i.menuItem.name} (${i.selectedSize})` : i.menuItem.name,
+          rawName: i.menuItem.name,
           quantity: i.quantity,
           price: itemUnitPrice,
           totalPrice: itemUnitPrice * i.quantity,
@@ -495,40 +509,62 @@ export const POSPage: React.FC = () => {
       const guestCountSnapshot = guestCount;
       const payModeSnapshot = payMode;
 
-      // 5. Generate formatted thermal receipt locally in <0.05ms
-      const receiptText = buildThermalReceiptText(
-        {
-          brandName: brandSettings?.businessName || "MADRASI DOSA",
-          franchiseName: currFranchise?.name,
-          franchiseAddress: (currFranchise as any)?.address || brandSettings?.address || undefined,
-          franchisePhone: (currFranchise as any)?.phone || brandSettings?.phone || undefined,
-          gstin: brandSettings?.taxNumber || undefined,
-          fssaiNumber: brandSettings?.fssaiNumber || undefined,
-          invoiceNumber,
-          orderNumber,
-          orderType: tableSnapshot ? `Dine-In (Table ${tableSnapshot.tableNumber})` : "Takeaway / Counter",
-          date: now.toLocaleString(),
-          currencySymbol: brandSettings?.currencySymbol || "₹",
-          items: itemsSnapshot,
-          subtotal: subtotalSnapshot,
-          discount: discountSnapshot,
-          tax: taxSnapshot,
-          total: totalSnapshot,
-          payments: paymentRecords,
-          footerMessage: "Thanks For Visiting Madrasi Dosa",
-        },
-        paperSize
-      );
+      // 5. Build KOT parameters (Strictly Table Number & Items only, NO prices)
+      const kotParams: BuildKOTParams = {
+        tableNumber: tableSnapshot?.tableNumber || null,
+        orderNumber,
+        orderType: tableSnapshot ? `Dine-In (Table ${tableSnapshot.tableNumber})` : "Takeaway / Counter",
+        date: now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        items: itemsSnapshot.map((i) => ({
+          name: i.rawName,
+          quantity: i.quantity,
+          selectedSize: i.selectedSize,
+          notes: i.notes,
+        })),
+        instructions: partyNameSnapshot ? `Party: ${partyNameSnapshot}` : undefined,
+      };
 
-      // 6. INSTANT PRINT SPOOLER: Dispatches directly to physical Rongta 80mm printer (<50ms!)
-      printReceiptDirectly(receiptText, {
-        title: `Invoice #${invoiceNumber}`,
-        paperSize,
-        logoUrl: brandSettings?.logoUrl || undefined,
-        showLogo: true,
-      });
+      // 6. Build Bill parameters (Madrasi Dosa branding, item prices, subtotal, tax, total, payments)
+      const billParams: BuildReceiptParams = {
+        brandName: brandSettings?.businessName || "MADRASI DOSA",
+        franchiseName: currFranchise?.name,
+        franchiseAddress: (currFranchise as any)?.address || brandSettings?.address || undefined,
+        franchisePhone: (currFranchise as any)?.phone || brandSettings?.phone || undefined,
+        gstin: brandSettings?.taxNumber || undefined,
+        fssaiNumber: brandSettings?.fssaiNumber || undefined,
+        invoiceNumber,
+        orderNumber,
+        orderType: tableSnapshot ? `Dine-In (Table ${tableSnapshot.tableNumber})` : "Takeaway / Counter",
+        date: now.toLocaleString(),
+        currencySymbol: brandSettings?.currencySymbol || "₹",
+        items: itemsSnapshot,
+        subtotal: subtotalSnapshot,
+        discount: discountSnapshot,
+        tax: taxSnapshot,
+        total: totalSnapshot,
+        payments: paymentRecords,
+        footerMessage: "Thanks For Visiting Madrasi Dosa",
+      };
 
-      // 7. INSTANT UI RESET: Immediate feedback, zero waiting
+      // 7. INSTANT PRINT SPOOLER: Dispatches KOT FIRST, followed immediately by Customer Bill
+      if (printKOT) {
+        printCombinedKOTAndBillDirectly({
+          kotParams,
+          billParams,
+          paperSize,
+          logoUrl: brandSettings?.logoUrl || undefined,
+        });
+      } else {
+        const receiptText = buildThermalReceiptText(billParams, paperSize);
+        printReceiptDirectly(receiptText, {
+          title: `Invoice #${invoiceNumber}`,
+          paperSize,
+          logoUrl: brandSettings?.logoUrl || undefined,
+          showLogo: true,
+        });
+      }
+
+      // 8. INSTANT UI RESET: Immediate feedback, zero waiting
       setIsBillPayModalOpen(false);
       clearCart();
       setSelectedTable(null);
@@ -536,7 +572,7 @@ export const POSPage: React.FC = () => {
       setPartyName("");
       setGuestCount(2);
 
-      // 8. BACKGROUND CLOUD ASYNC SYNC: Syncs order, invoice, payment with Render & MongoDB
+      // 9. BACKGROUND CLOUD ASYNC SYNC: Syncs order, invoice, payment with Render & MongoDB
       const payload = {
         invoiceNumber,
         orderNumber,
@@ -572,8 +608,11 @@ export const POSPage: React.FC = () => {
         })
         .catch((err) => {
           console.warn("Background billing sync notice:", err);
-          setPosError("Bill printed locally! Cloud sync pending/delayed: " + extractErrorMessage(err));
+          setPosError("Bill printed locally! Cloud sync delayed: " + extractErrorMessage(err));
         });
+    } catch (err: any) {
+      console.error("Billing print error:", err);
+      setPosError("Billing error: " + (err?.message || "Failed to complete payment and print bill"));
     } finally {
       setIsBilling(false);
     }
@@ -1212,7 +1251,23 @@ export const POSPage: React.FC = () => {
               variant="secondary"
               size="md"
               disabled={cartItems.length === 0}
-              onClick={() => placeOrderAndKOTMutation.mutate()}
+              onClick={() => {
+                const now = new Date();
+                const kotParams: BuildKOTParams = {
+                  tableNumber: selectedTable?.tableNumber || null,
+                  orderType: selectedTable ? `Dine-In (Table ${selectedTable.tableNumber})` : "Takeaway / Counter",
+                  date: now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                  items: cartItems.map((i) => ({
+                    name: i.menuItem.name,
+                    quantity: i.quantity,
+                    selectedSize: i.selectedSize || null,
+                    notes: i.notes || null,
+                  })),
+                  instructions: partyName ? `Party: ${partyName}` : undefined,
+                };
+                printKOTDirectly(kotParams, { paperSize });
+                placeOrderAndKOTMutation.mutate();
+              }}
               isLoading={placeOrderAndKOTMutation.isPending}
               icon={<ChefHat className="w-4 h-4 text-amber-600" />}
               className="py-3 font-bold"
@@ -1529,6 +1584,22 @@ export const POSPage: React.FC = () => {
             </div>
           )}
 
+          {/* Print KOT First Toggle */}
+          <div className="flex items-center justify-between p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs">
+            <label className="flex items-center gap-2 font-bold text-emerald-950 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={printKOT}
+                onChange={(e) => setPrintKOT(e.target.checked)}
+                className="w-4 h-4 text-emerald-600 rounded border-emerald-300 focus:ring-emerald-500 cursor-pointer"
+              />
+              <span>🍳 Print KOT First (Kitchen Slip with Table & Items)</span>
+            </label>
+            <span className="text-[11px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-md">
+              KOT ➔ Bill
+            </span>
+          </div>
+
           {/* Paper Size Quick Check */}
           <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs">
             <div className="flex items-center gap-2">
@@ -1571,13 +1642,14 @@ export const POSPage: React.FC = () => {
               onClick={handleCompletePaymentAndPrint}
               isLoading={isBilling}
               disabled={
-                payMode === "SPLIT" &&
-                Math.abs((splitCashAmount + splitUpiAmount) - total) > 0.05
+                isBilling ||
+                (payMode === "SPLIT" &&
+                  Math.abs((splitCashAmount + splitUpiAmount) - total) > 0.05)
               }
               icon={<Printer className="w-4 h-4" />}
               className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/25 px-5 font-bold cursor-pointer"
             >
-              Complete Payment & Print Bill
+              Complete Payment & Print {printKOT ? "KOT + Bill" : "Bill"}
             </Button>
           </div>
         </div>

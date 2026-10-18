@@ -1,4 +1,4 @@
-import { OrderStatus, PaymentMethod, PaymentStatus, Prisma, TableStatus } from "@prisma/client";
+import { KOTStatus, OrderStatus, PaymentMethod, PaymentStatus, Prisma, TableStatus } from "@prisma/client";
 import { z } from "zod";
 import prisma from "../../lib/prisma.js";
 import { AppError } from "../../middleware/error.js";
@@ -728,7 +728,6 @@ export async function fastBill(
   const menuItems = await prisma.menuItem.findMany({
     where: {
       id: { in: menuItemIds },
-      franchiseId,
     },
     select: {
       id: true,
@@ -794,6 +793,7 @@ export async function fastBill(
   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
   const orderNumber = data.orderNumber || `ORD-${datePrefix}-${randomSuffix}`;
   const invoiceNumber = data.invoiceNumber || `INV-${datePrefix}-${randomSuffix}`;
+  const kotNumber = `KOT-${datePrefix}-${randomSuffix}`;
 
   // 4. Atomic single transaction
   const result = await prisma.$transaction(async (tx) => {
@@ -822,9 +822,35 @@ export async function fastBill(
           })),
         },
       },
+      include: {
+        items: true,
+      },
     });
 
-    // B. Free Table if selected
+    // B. Create KOT record for kitchen order synchronization
+    try {
+      await tx.kOT.create({
+        data: {
+          franchiseId,
+          orderId: order.id,
+          kotNumber,
+          status: KOTStatus.PRINTED,
+          printedAt: now,
+          items: {
+            create: order.items.map((oi) => ({
+              orderItemId: oi.id,
+              menuItemId: oi.menuItemId,
+              quantity: oi.quantity,
+              notes: oi.notes,
+            })),
+          },
+        },
+      });
+    } catch (kotErr) {
+      console.warn("KOT generation note in fastBill:", kotErr);
+    }
+
+    // C. Free Table if selected
     if (data.tableId) {
       await tx.restaurantTable.update({
         where: { id: data.tableId },

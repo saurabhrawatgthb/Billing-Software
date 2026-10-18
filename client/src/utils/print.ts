@@ -1,10 +1,8 @@
 /**
- * Direct Thermal Receipt & Invoice Printing Utility
- * Sends raw text and Madrasi Dosa brand logo directly to the system/browser print spooler
- * formatted for 58mm (2-inch) or 80mm (3-inch) thermal POS printers without modal friction.
- *
- * Designed with dynamic continuous roll height so short bills ONLY print
- * their exact height and never spit out extra blank paper.
+ * Direct Thermal Receipt & KOT Printing Utility
+ * Sends raw text, Madrasi Dosa brand logo, and Kitchen Order Tickets (KOT)
+ * directly to the system/browser print spooler formatted for 58mm (2-inch) or 80mm (3-inch)
+ * thermal POS printers with zero latency and robust browser spooling.
  */
 
 export type ThermalPaperSize = "58mm" | "80mm";
@@ -139,6 +137,78 @@ export interface BuildReceiptParams {
     status?: string;
   }>;
   footerMessage?: string;
+}
+
+export interface BuildKOTItem {
+  name: string;
+  quantity: number;
+  selectedSize?: string | null;
+  notes?: string | null;
+}
+
+export interface BuildKOTParams {
+  tableNumber?: string | number | null;
+  orderNumber?: string;
+  orderType?: string;
+  date?: string;
+  items: BuildKOTItem[];
+  instructions?: string | null;
+}
+
+/**
+ * Builds minimal, clean KOT raw text containing strictly Table Number and Items (with Quantities & Notes).
+ * NO prices, NO subtotal, NO tax, NO payments.
+ */
+export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPaperSize = "80mm"): string {
+  const divider = "================================";
+  const thinDivider = "--------------------------------";
+  const lines: string[] = [];
+
+  lines.push(divider);
+  lines.push(centerLine("KITCHEN ORDER TICKET (KOT)", 32));
+  lines.push(divider);
+
+  const tableLabel = data.tableNumber
+    ? `TABLE: ${String(data.tableNumber).toUpperCase().startsWith("TABLE") ? data.tableNumber : `Table ${data.tableNumber}`}`
+    : `ORDER: ${data.orderType || "TAKEAWAY / COUNTER"}`;
+  lines.push(tableLabel);
+
+  if (data.orderNumber) {
+    lines.push(`Token: ${data.orderNumber}`);
+  }
+  lines.push(`Time : ${data.date || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+  lines.push(thinDivider);
+  lines.push("Item                         Qty");
+  lines.push(thinDivider);
+
+  for (const item of data.items) {
+    const displayName = item.selectedSize ? `${item.name} (${item.selectedSize})` : item.name;
+    const qtyStr = String(item.quantity).padStart(3, " ");
+
+    if (displayName.length > 28) {
+      lines.push(displayName);
+      lines.push(`${"".padEnd(28, " ")} ${qtyStr}`);
+    } else {
+      lines.push(`${displayName.padEnd(28, " ")} ${qtyStr}`);
+    }
+
+    if (item.notes && item.notes.trim()) {
+      lines.push(`  * Note: ${item.notes.trim()}`);
+    }
+  }
+
+  if (data.instructions && data.instructions.trim()) {
+    lines.push(thinDivider);
+    lines.push(`Instructions: ${data.instructions.trim()}`);
+  }
+
+  lines.push(divider);
+  lines.push(centerLine("*** KITCHEN COPY ***", 32));
+  lines.push("--------------------------------");
+  lines.push(centerLine("✂   TEAR HERE FOR KITCHEN   ✂", 32));
+  lines.push("--------------------------------");
+
+  return lines.join("\n");
 }
 
 /**
@@ -278,12 +348,10 @@ function formatReceiptBodyHtml(bodyLines: string[]): string {
           inItemsTable = false;
           return `<div class="receipt-divider-line">${escapeHtml(line)}</div>`;
         }
-        // Item row (Item name, quantity, price) -> BOLD!
         return `<div class="receipt-item-row">${escapeHtml(line)}</div>`;
       }
 
       if (/^TOTAL:/i.test(trimmed)) {
-        // Grand Total -> EXTRA BOLD!
         return `<div class="receipt-total-row">${escapeHtml(line)}</div>`;
       }
 
@@ -305,200 +373,107 @@ function formatReceiptBodyHtml(bodyLines: string[]): string {
 }
 
 /**
- * Direct thermal printer spooler
- * Dispatches the receipt directly to the printer in <50ms with a compact Madrasi Dosa Logo header,
- * small clean header lines, bold item rows, extra bold total bill, and centered footer.
+ * Formats KOT items into a bold, high-contrast slip for the kitchen.
  */
-export function printReceiptDirectly(
-  rawText: string,
-  titleOrOptions: string | PrintReceiptOptions = "Madrasi Dosa Bill Receipt",
-  paperSizeOverride?: ThermalPaperSize,
-  customLogoUrl?: string | null
-): void {
-  if (typeof window === "undefined" || !rawText) return;
+function formatKOTBodyHtml(kotData: BuildKOTParams, _is58mm?: boolean): string {
+  const tableStr = kotData.tableNumber
+    ? String(kotData.tableNumber).toUpperCase().startsWith("TABLE")
+      ? String(kotData.tableNumber)
+      : `TABLE ${kotData.tableNumber}`
+    : (kotData.orderType || "TAKEAWAY / COUNTER").toUpperCase();
 
-  let title = "Madrasi Dosa Bill Receipt";
-  let paperSize: ThermalPaperSize = getSavedPaperSize();
-  let logoUrl: string | null = null;
-  let showLogo = true;
+  const itemsHtml = kotData.items
+    .map((item) => {
+      const displayName = item.selectedSize ? `${item.name} (${item.selectedSize})` : item.name;
+      return `
+        <div class="kot-item-row">
+          <span class="kot-item-name">${escapeHtml(displayName)}</span>
+          <span class="kot-item-qty">x${escapeHtml(String(item.quantity))}</span>
+        </div>
+        ${item.notes && item.notes.trim() ? `<div class="kot-item-notes">↳ * ${escapeHtml(item.notes.trim())}</div>` : ""}
+      `;
+    })
+    .join("");
 
-  if (typeof titleOrOptions === "object" && titleOrOptions !== null) {
-    if (titleOrOptions.title) title = titleOrOptions.title;
-    if (titleOrOptions.paperSize) paperSize = titleOrOptions.paperSize;
-    if (titleOrOptions.logoUrl !== undefined) logoUrl = titleOrOptions.logoUrl;
-    if (titleOrOptions.showLogo !== undefined) showLogo = titleOrOptions.showLogo;
-  } else {
-    if (typeof titleOrOptions === "string") title = titleOrOptions;
-    if (paperSizeOverride) paperSize = paperSizeOverride;
-    if (customLogoUrl !== undefined) logoUrl = customLogoUrl;
-  }
+  return `
+    <div class="kot-container">
+      <div class="kot-header-badge">KITCHEN ORDER TICKET (KOT)</div>
+      <div class="kot-table-banner">${escapeHtml(tableStr)}</div>
+      <div class="kot-meta-row">
+        ${kotData.orderNumber ? `<span>Token: ${escapeHtml(kotData.orderNumber)}</span>` : ""}
+        <span>Time: ${escapeHtml(kotData.date || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>
+      </div>
+      <div class="kot-divider">================================</div>
+      <div class="kot-table-head">
+        <span>ITEM</span>
+        <span>QTY</span>
+      </div>
+      <div class="kot-divider">--------------------------------</div>
+      <div class="kot-items-list">
+        ${itemsHtml}
+      </div>
+      ${
+        kotData.instructions && kotData.instructions.trim()
+          ? `<div class="kot-divider">--------------------------------</div>
+             <div class="kot-special-note">Special: ${escapeHtml(kotData.instructions.trim())}</div>`
+          : ""
+      }
+      <div class="kot-divider">================================</div>
+      <div class="kot-footer">*** KITCHEN COPY ***</div>
+    </div>
+  `;
+}
 
-  // Strip excess trailing blank newlines so continuous thermal paper feeds stop immediately after the footer
-  const cleanedText = rawText.replace(/\n{3,}$/, "\n").trimEnd();
-
-  const is58mm = paperSize === "58mm";
-  const rollWidth = is58mm ? "58mm" : "80mm";
-  const contentWidth = is58mm ? "48mm" : "72mm";
-  const lineHeight = is58mm ? "1.2" : "1.25";
-
-  // Compute exact physical height needed: line count * line height + small logo + padding
-  const lines = cleanedText.split("\n");
-  const lineCount = lines.length;
-  const mmPerLine = is58mm ? 3.6 : 4.1;
-  // Small logo height: ~7mm for 80mm roll, ~5.5mm for 58mm roll
-  const logoHeightMm = showLogo ? (is58mm ? 5.5 : 7) : 0;
-  const dynamicHeightMm = Math.max(40, Math.ceil(lineCount * mmPerLine + logoHeightMm + 8));
-
-  const printStyles = `
+/**
+ * Shared printer styles generator for consistent 58mm / 80mm roll layout
+ */
+function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm: boolean, lineHeight: string): string {
+  return `
     @page {
-      size: ${rollWidth} ${dynamicHeightMm}mm;
+      size: ${rollWidth} auto;
       margin: 0mm;
     }
     @media print {
       html, body {
         width: ${rollWidth} !important;
         max-width: ${rollWidth} !important;
-        height: ${dynamicHeightMm}mm !important;
-        max-height: ${dynamicHeightMm}mm !important;
         margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
         color: #000000 !important;
-        overflow: hidden !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
-      .thermal-receipt-container {
+      .thermal-printable-wrapper {
         width: ${contentWidth} !important;
         max-width: ${contentWidth} !important;
         box-sizing: border-box;
         margin: 0 auto;
-        padding: 0.5mm 0 1mm 0;
+        padding: 0.5mm 0 1.5mm 0;
         text-align: center !important;
-        page-break-after: avoid;
-        break-after: avoid;
       }
-      /* Small, refined logo - much smaller compared to the font */
-      .receipt-logo-wrap {
-        text-align: center !important;
-        margin: 0 auto 0.5mm auto !important;
-        padding: 0 !important;
-        display: block !important;
+      .kot-page-section {
         width: 100% !important;
+        page-break-after: always;
+        break-after: page;
+        padding-bottom: 2mm;
       }
-      .receipt-logo-wrap svg,
-      .receipt-logo-wrap img {
-        width: ${is58mm ? "13mm" : "16mm"} !important;
-        max-width: ${is58mm ? "13mm" : "16mm"} !important;
-        height: auto !important;
-        margin: 0 auto !important;
-        display: block !important;
-        filter: grayscale(100%) contrast(250%);
-        -webkit-filter: grayscale(100%) contrast(250%);
-      }
-      /* Compact, refined header lines - smaller font */
-      .receipt-header-block {
-        text-align: center !important;
+      .bill-page-section {
         width: 100% !important;
-        margin: 0 auto !important;
+        page-break-before: always;
+        break-before: page;
+        padding-top: 1mm;
       }
-      .receipt-header-line {
+      .tear-separator-block {
         text-align: center !important;
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${is58mm ? "8px" : "9.5px"} !important;
-        line-height: 1.2 !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.2px !important;
-        word-break: break-word !important;
-      }
-      .receipt-divider {
-        text-align: center !important;
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${is58mm ? "8px" : "9.5px"} !important;
-        line-height: 1.15 !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.2px !important;
-      }
-      .thermal-receipt-body-wrap {
-        text-align: center !important;
-        width: 100% !important;
-        margin: 0 auto !important;
-      }
-      .thermal-receipt-body {
-        text-align: left !important;
-        display: inline-block !important;
-        margin: 0 auto !important;
-      }
-      /* BOLD Item Header & Item Rows */
-      .receipt-items-header {
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${is58mm ? "9.5px" : "11.5px"} !important;
+        margin: 4mm 0 !important;
+        padding: 1.5mm 0 !important;
+        font-family: 'Courier New', Courier, monospace !important;
+        font-size: ${is58mm ? "9px" : "11px"} !important;
         font-weight: 800 !important;
-        line-height: ${lineHeight} !important;
-        white-space: pre !important;
-        letter-spacing: -0.2px !important;
-      }
-      .receipt-item-row {
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${is58mm ? "9.5px" : "11.5px"} !important;
-        font-weight: 800 !important; /* BOLD as requested! */
-        line-height: ${lineHeight} !important;
-        white-space: pre !important;
-        letter-spacing: -0.2px !important;
-      }
-      /* EXTRA BOLD TOTAL ROW */
-      .receipt-total-row {
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${is58mm ? "11px" : "13.5px"} !important;
-        font-weight: 900 !important; /* EXTRA BOLD */
-        line-height: 1.35 !important;
-        white-space: pre !important;
-        letter-spacing: 0.1px !important;
-      }
-      .receipt-summary-row {
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${is58mm ? "9px" : "10.5px"} !important;
-        font-weight: 600 !important;
-        line-height: ${lineHeight} !important;
-        white-space: pre !important;
-        letter-spacing: -0.2px !important;
-      }
-      .receipt-meta-row {
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${is58mm ? "8.5px" : "10px"} !important;
-        font-weight: 600 !important;
-        line-height: 1.25 !important;
-        white-space: pre !important;
-        letter-spacing: -0.2px !important;
-      }
-      .receipt-divider-line {
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${is58mm ? "8.5px" : "10px"} !important;
-        font-weight: 700 !important;
-        line-height: 1.1 !important;
-        white-space: pre !important;
-      }
-      .receipt-default-row {
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${is58mm ? "9px" : "10.5px"} !important;
-        font-weight: 600 !important;
-        line-height: ${lineHeight} !important;
-        white-space: pre !important;
-        letter-spacing: -0.2px !important;
-      }
-      /* Centered Footer */
-      .receipt-footer-block {
-        text-align: center !important;
-        width: 100% !important;
-        margin: 0.5mm auto 0 auto !important;
-      }
-      .receipt-footer-line {
-        text-align: center !important;
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${is58mm ? "8.5px" : "10px"} !important;
-        line-height: 1.25 !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.2px !important;
+        letter-spacing: 0.5px !important;
+        border-top: 1.5px dashed #000 !important;
+        border-bottom: 1.5px dashed #000 !important;
       }
     }
     html, body {
@@ -509,16 +484,109 @@ export function printReceiptDirectly(
       background: #ffffff;
       color: #000000;
     }
-    .thermal-receipt-container {
+    .thermal-printable-wrapper {
       width: ${contentWidth};
       max-width: ${contentWidth};
       box-sizing: border-box;
       margin: 0 auto;
-      padding: 0.5mm 0 1mm 0;
+      padding: 0.5mm 0 1.5mm 0;
       text-align: center;
-      page-break-after: avoid;
-      break-after: avoid;
     }
+    /* KOT Styling */
+    .kot-container {
+      width: 100%;
+      text-align: center;
+      margin: 0 auto;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    .kot-header-badge {
+      font-size: ${is58mm ? "10px" : "12px"};
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      padding: 0.5mm 0;
+    }
+    .kot-table-banner {
+      font-size: ${is58mm ? "15px" : "18px"};
+      font-weight: 900;
+      letter-spacing: 1px;
+      padding: 1.5mm 0;
+      margin: 0.5mm 0;
+      border-top: 1.5px solid #000;
+      border-bottom: 1.5px solid #000;
+    }
+    .kot-meta-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: ${is58mm ? "8.5px" : "10px"};
+      font-weight: 700;
+      padding: 1mm 0;
+    }
+    .kot-table-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: ${is58mm ? "10px" : "12px"};
+      font-weight: 900;
+      padding: 0.5mm 0;
+    }
+    .kot-items-list {
+      text-align: left;
+    }
+    .kot-item-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 1mm 0;
+      font-size: ${is58mm ? "11px" : "13.5px"};
+      font-weight: 900;
+      line-height: 1.25;
+    }
+    .kot-item-name {
+      text-align: left;
+      flex: 1;
+      padding-right: 2mm;
+      word-break: break-word;
+    }
+    .kot-item-qty {
+      text-align: right;
+      font-size: ${is58mm ? "13px" : "16px"};
+      font-weight: 900;
+    }
+    .kot-item-notes {
+      font-size: ${is58mm ? "9px" : "10.5px"};
+      font-weight: 700;
+      font-style: italic;
+      padding-left: 2mm;
+      padding-bottom: 0.5mm;
+    }
+    .kot-special-note {
+      font-size: ${is58mm ? "9.5px" : "11px"};
+      font-weight: 800;
+      text-align: left;
+      padding: 1mm 0;
+    }
+    .kot-divider {
+      font-size: ${is58mm ? "8px" : "9.5px"};
+      font-weight: 700;
+      line-height: 1.1;
+      white-space: pre;
+    }
+    .kot-footer {
+      font-size: ${is58mm ? "9.5px" : "11px"};
+      font-weight: 800;
+      padding: 1mm 0;
+    }
+    .tear-separator-block {
+      text-align: center;
+      margin: 4mm 0;
+      padding: 1.5mm 0;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: ${is58mm ? "9px" : "11px"};
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      border-top: 1.5px dashed #000;
+      border-bottom: 1.5px dashed #000;
+    }
+    /* Bill Styling */
     .receipt-logo-wrap {
       text-align: center;
       margin: 0 auto 0.5mm auto;
@@ -637,14 +705,98 @@ export function printReceiptDirectly(
       letter-spacing: -0.2px;
     }
   `;
+}
+
+/**
+ * Dispatches an HTML document directly to the printer using an off-screen iframe.
+ * Never sets visibility: hidden (which causes Chromium to suppress window.print()).
+ */
+function dispatchDirectPrint(fullHtml: string, rollWidth: string): void {
+  if (typeof window === "undefined") return;
+
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.left = "-9999px";
+  iframe.style.top = "-9999px";
+  iframe.style.width = rollWidth;
+  iframe.style.height = "500mm";
+  iframe.style.border = "none";
+  iframe.style.opacity = "0";
+  iframe.style.pointerEvents = "none";
+  iframe.style.zIndex = "-9999";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document;
+  if (!doc) {
+    const winFallback = window.open("", "_blank", "width=380,height=600");
+    if (winFallback) {
+      winFallback.document.write(fullHtml);
+      winFallback.document.close();
+      winFallback.focus();
+      setTimeout(() => {
+        try {
+          winFallback.print();
+        } catch {}
+      }, 80);
+    }
+    return;
+  }
+
+  doc.open();
+  doc.write(fullHtml);
+  doc.close();
+
+  const win = iframe.contentWindow;
+  if (win) {
+    win.addEventListener("afterprint", () => {
+      setTimeout(() => {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      }, 1500);
+    });
+
+    setTimeout(() => {
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    }, 120000);
+
+    setTimeout(() => {
+      try {
+        win.focus();
+        win.print();
+      } catch (err) {
+        console.error("Direct thermal print error:", err);
+        try {
+          const winFallback = window.open("", "_blank", "width=380,height=600");
+          if (winFallback) {
+            winFallback.document.write(fullHtml);
+            winFallback.document.close();
+            winFallback.focus();
+            winFallback.print();
+          }
+        } catch (fbErr) {
+          console.error("Popup fallback print error:", fbErr);
+        }
+      }
+    }, 70);
+  }
+}
+
+/**
+ * Builds HTML for the Bill portion
+ */
+function buildBillHtml(
+  rawText: string,
+  showLogo: boolean,
+  logoUrl?: string | null
+): string {
+  const cleanedText = rawText.replace(/\n{3,}$/, "\n").trimEnd();
+  const parsed = parseReceiptSections(cleanedText);
+  const lines = cleanedText.split("\n");
 
   const logoMarkup = showLogo
     ? logoUrl && logoUrl.trim()
       ? `<div class="receipt-logo-wrap"><img src="${escapeHtml(logoUrl.trim())}" alt="Madrasi Dosa Logo" /></div>`
       : `<div class="receipt-logo-wrap">${MADRASI_DOSA_LOGO_SVG}</div>`
     : "";
-
-  const parsed = parseReceiptSections(cleanedText);
 
   let innerContentHtml = "";
   if (parsed.hasStructure && parsed.headerLines) {
@@ -671,231 +823,159 @@ export function printReceiptDirectly(
     innerContentHtml = `<div class="thermal-receipt-body-wrap"><div class="thermal-receipt-body">${formatReceiptBodyHtml(lines)}</div></div>`;
   }
 
+  return `
+    <div class="thermal-receipt-container">
+      ${logoMarkup}
+      ${innerContentHtml}
+    </div>
+  `;
+}
+
+/**
+ * Direct thermal printer spooler for single receipt/bill
+ */
+export function printReceiptDirectly(
+  rawText: string,
+  titleOrOptions: string | PrintReceiptOptions = "Madrasi Dosa Bill Receipt",
+  paperSizeOverride?: ThermalPaperSize,
+  customLogoUrl?: string | null
+): void {
+  if (typeof window === "undefined" || !rawText) return;
+
+  let title = "Madrasi Dosa Bill Receipt";
+  let paperSize: ThermalPaperSize = getSavedPaperSize();
+  let logoUrl: string | null = null;
+  let showLogo = true;
+
+  if (typeof titleOrOptions === "object" && titleOrOptions !== null) {
+    if (titleOrOptions.title) title = titleOrOptions.title;
+    if (titleOrOptions.paperSize) paperSize = titleOrOptions.paperSize;
+    if (titleOrOptions.logoUrl !== undefined) logoUrl = titleOrOptions.logoUrl;
+    if (titleOrOptions.showLogo !== undefined) showLogo = titleOrOptions.showLogo;
+  } else {
+    if (typeof titleOrOptions === "string") title = titleOrOptions;
+    if (paperSizeOverride) paperSize = paperSizeOverride;
+    if (customLogoUrl !== undefined) logoUrl = customLogoUrl;
+  }
+
+  const is58mm = paperSize === "58mm";
+  const rollWidth = is58mm ? "58mm" : "80mm";
+  const contentWidth = is58mm ? "48mm" : "72mm";
+  const lineHeight = is58mm ? "1.2" : "1.25";
+
+  const printStyles = getThermalPrinterStyles(rollWidth, contentWidth, is58mm, lineHeight);
+  const billHtml = buildBillHtml(rawText, showLogo, logoUrl);
+
   const receiptHtml = `
     <!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8" />
         <title>${escapeHtml(title)}</title>
-        <style id="thermal-print-styles">${printStyles}</style>
+        <style>${printStyles}</style>
       </head>
       <body>
-        <div id="receipt-container" class="thermal-receipt-container">
-          ${logoMarkup}
-          ${innerContentHtml}
+        <div class="thermal-printable-wrapper">
+          ${billHtml}
         </div>
       </body>
     </html>
   `;
 
-  // Use a hidden iframe with matching viewport for accurate layout calculation
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = rollWidth;
-  iframe.style.height = `${dynamicHeightMm}mm`;
-  iframe.style.border = "none";
-  iframe.style.zIndex = "-9999";
-  iframe.style.visibility = "hidden";
-  document.body.appendChild(iframe);
+  dispatchDirectPrint(receiptHtml, rollWidth);
+}
 
-  const doc = iframe.contentWindow?.document;
-  if (!doc) {
-    // Fallback popup if iframe execution is restricted
-    const win = window.open("", "_blank", `width=${is58mm ? 300 : 380},height=${dynamicHeightMm * 4}`);
-    if (win) {
-      win.document.write(receiptHtml);
-      win.document.close();
-      win.focus();
-      setTimeout(() => {
-        try {
-          win.print();
-        } catch {}
-      }, 50);
-    }
-    return;
-  }
+/**
+ * Direct thermal printer spooler for standalone KOT
+ */
+export function printKOTDirectly(
+  kotData: BuildKOTParams,
+  options?: { paperSize?: ThermalPaperSize; title?: string }
+): void {
+  if (typeof window === "undefined") return;
 
-  doc.open();
-  doc.write(receiptHtml);
-  doc.close();
+  const paperSize: ThermalPaperSize = options?.paperSize || getSavedPaperSize();
+  const is58mm = paperSize === "58mm";
+  const rollWidth = is58mm ? "58mm" : "80mm";
+  const contentWidth = is58mm ? "48mm" : "72mm";
+  const lineHeight = is58mm ? "1.2" : "1.25";
 
-  const win = iframe.contentWindow;
-  if (win) {
-    win.focus();
-    // Fast print trigger: 50ms ensures synchronous SVG DOM parsing without latency
-    setTimeout(() => {
-      try {
-        // Measure real DOM height for ultra-precise @page dimension
-        const el = doc.getElementById("receipt-container");
-        if (el) {
-          const actualHeightPx = el.scrollHeight || el.offsetHeight;
-          if (actualHeightPx > 0) {
-            const measuredMm = Math.ceil((actualHeightPx * 25.4) / 96) + 3;
-            const styleTag = doc.getElementById("thermal-print-styles");
-            if (styleTag && measuredMm > 0) {
-              styleTag.innerHTML = `
-                @page {
-                  size: ${rollWidth} ${measuredMm}mm;
-                  margin: 0mm;
-                }
-                @media print {
-                  html, body {
-                    width: ${rollWidth} !important;
-                    max-width: ${rollWidth} !important;
-                    height: ${measuredMm}mm !important;
-                    max-height: ${measuredMm}mm !important;
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    background: #ffffff !important;
-                    color: #000000 !important;
-                    overflow: hidden !important;
-                    -webkit-print-color-adjust: exact;
-                    print-color-adjust: exact;
-                  }
-                  .thermal-receipt-container {
-                    width: ${contentWidth} !important;
-                    max-width: ${contentWidth} !important;
-                    box-sizing: border-box;
-                    margin: 0 auto;
-                    padding: 0.5mm 0 1mm 0;
-                    text-align: center !important;
-                    page-break-after: avoid;
-                    break-after: avoid;
-                  }
-                  .receipt-logo-wrap {
-                    text-align: center !important;
-                    margin: 0 auto 0.5mm auto !important;
-                    padding: 0 !important;
-                    display: block !important;
-                    width: 100% !important;
-                  }
-                  .receipt-logo-wrap svg,
-                  .receipt-logo-wrap img {
-                    width: ${is58mm ? "13mm" : "16mm"} !important;
-                    max-width: ${is58mm ? "13mm" : "16mm"} !important;
-                    height: auto !important;
-                    margin: 0 auto !important;
-                    display: block !important;
-                    filter: grayscale(100%) contrast(250%);
-                    -webkit-filter: grayscale(100%) contrast(250%);
-                  }
-                  .receipt-header-block {
-                    text-align: center !important;
-                    width: 100% !important;
-                    margin: 0 auto !important;
-                  }
-                  .receipt-header-line {
-                    text-align: center !important;
-                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${is58mm ? "8px" : "9.5px"} !important;
-                    line-height: 1.2 !important;
-                    font-weight: 700 !important;
-                    letter-spacing: -0.2px !important;
-                    word-break: break-word !important;
-                  }
-                  .receipt-divider {
-                    text-align: center !important;
-                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${is58mm ? "8px" : "9.5px"} !important;
-                    line-height: 1.15 !important;
-                    font-weight: 700 !important;
-                    letter-spacing: -0.2px !important;
-                  }
-                  .thermal-receipt-body-wrap {
-                    text-align: center !important;
-                    width: 100% !important;
-                    margin: 0 auto !important;
-                  }
-                  .thermal-receipt-body {
-                    text-align: left !important;
-                    display: inline-block !important;
-                    margin: 0 auto !important;
-                  }
-                  .receipt-items-header {
-                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${is58mm ? "9.5px" : "11.5px"} !important;
-                    font-weight: 800 !important;
-                    line-height: ${lineHeight} !important;
-                    white-space: pre !important;
-                    letter-spacing: -0.2px !important;
-                  }
-                  .receipt-item-row {
-                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${is58mm ? "9.5px" : "11.5px"} !important;
-                    font-weight: 800 !important;
-                    line-height: ${lineHeight} !important;
-                    white-space: pre !important;
-                    letter-spacing: -0.2px !important;
-                  }
-                  .receipt-total-row {
-                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${is58mm ? "11px" : "13.5px"} !important;
-                    font-weight: 900 !important;
-                    line-height: 1.35 !important;
-                    white-space: pre !important;
-                    letter-spacing: 0.1px !important;
-                  }
-                  .receipt-summary-row {
-                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${is58mm ? "9px" : "10.5px"} !important;
-                    font-weight: 600 !important;
-                    line-height: ${lineHeight} !important;
-                    white-space: pre !important;
-                    letter-spacing: -0.2px !important;
-                  }
-                  .receipt-meta-row {
-                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${is58mm ? "8.5px" : "10px"} !important;
-                    font-weight: 600 !important;
-                    line-height: 1.25 !important;
-                    white-space: pre !important;
-                    letter-spacing: -0.2px !important;
-                  }
-                  .receipt-divider-line {
-                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${is58mm ? "8.5px" : "10px"} !important;
-                    font-weight: 700 !important;
-                    line-height: 1.1 !important;
-                    white-space: pre !important;
-                  }
-                  .receipt-default-row {
-                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${is58mm ? "9px" : "10.5px"} !important;
-                    font-weight: 600 !important;
-                    line-height: ${lineHeight} !important;
-                    white-space: pre !important;
-                    letter-spacing: -0.2px !important;
-                  }
-                  .receipt-footer-block {
-                    text-align: center !important;
-                    width: 100% !important;
-                    margin: 0.5mm auto 0 auto !important;
-                  }
-                  .receipt-footer-line {
-                    text-align: center !important;
-                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${is58mm ? "8.5px" : "10px"} !important;
-                    line-height: 1.25 !important;
-                    font-weight: 700 !important;
-                    letter-spacing: -0.2px !important;
-                  }
-                }
-              `;
-            }
-          }
-        }
-        win.print();
-      } catch (err) {
-        console.error("Direct thermal print error:", err);
-      } finally {
-        setTimeout(() => {
-          if (iframe.parentNode) {
-            iframe.parentNode.removeChild(iframe);
-          }
-        }, 1200);
-      }
-    }, 50);
-  }
+  const printStyles = getThermalPrinterStyles(rollWidth, contentWidth, is58mm, lineHeight);
+  const kotHtml = formatKOTBodyHtml(kotData, is58mm);
+
+  const fullHtml = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(options?.title || "Kitchen Order Ticket (KOT)")}</title>
+        <style>${printStyles}</style>
+      </head>
+      <body>
+        <div class="thermal-printable-wrapper">
+          ${kotHtml}
+        </div>
+      </body>
+    </html>
+  `;
+
+  dispatchDirectPrint(fullHtml, rollWidth);
+}
+
+export interface PrintCombinedOptions {
+  kotParams: BuildKOTParams;
+  billParams: BuildReceiptParams;
+  paperSize?: ThermalPaperSize;
+  logoUrl?: string | null;
+}
+
+/**
+ * Dispatches KOT FIRST, followed immediately by Customer Bill in a single thermal print spool!
+ * The KOT slip strictly contains Table Number and Items with quantities/notes (NO prices).
+ * Features a clean tear/cut line between the KOT and the Bill.
+ */
+export function printCombinedKOTAndBillDirectly(options: PrintCombinedOptions): void {
+  if (typeof window === "undefined") return;
+
+  const paperSize: ThermalPaperSize = options.paperSize || getSavedPaperSize();
+  const is58mm = paperSize === "58mm";
+  const rollWidth = is58mm ? "58mm" : "80mm";
+  const contentWidth = is58mm ? "48mm" : "72mm";
+  const lineHeight = is58mm ? "1.2" : "1.25";
+
+  const printStyles = getThermalPrinterStyles(rollWidth, contentWidth, is58mm, lineHeight);
+  const kotHtml = formatKOTBodyHtml(options.kotParams, is58mm);
+  const billRawText = buildThermalReceiptText(options.billParams, paperSize);
+  const billHtml = buildBillHtml(billRawText, true, options.logoUrl);
+
+  const fullHtml = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>KOT & Invoice #${escapeHtml(options.billParams.invoiceNumber)}</title>
+        <style>${printStyles}</style>
+      </head>
+      <body>
+        <div class="thermal-printable-wrapper">
+          <!-- 1. KOT SLIP (KITCHEN COPY: Strictly Table & Items) -->
+          <div class="kot-page-section">
+            ${kotHtml}
+          </div>
+
+          <!-- TEAR / CUT SEPARATOR -->
+          <div class="tear-separator-block">
+            ✂ - - - - TEAR HERE FOR KITCHEN - - - - ✂
+          </div>
+
+          <!-- 2. CUSTOMER BILL (Madrasi Dosa Logo + Full Totals) -->
+          <div class="bill-page-section">
+            ${billHtml}
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  dispatchDirectPrint(fullHtml, rollWidth);
 }
