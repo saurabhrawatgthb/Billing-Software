@@ -222,11 +222,11 @@ export async function createOrder(
     let unitPriceNum = Number(dbItem.price);
     if (dbItem.hasSizes && item.selectedSize) {
       const sz = item.selectedSize.toLowerCase();
-      if ((sz === "small" || sz === "s") && dbItem.priceSmall != null) {
+      if ((sz === "small" || sz === "s" || sz === "normal" || sz === "n") && dbItem.priceSmall != null) {
         unitPriceNum = Number(dbItem.priceSmall);
       } else if ((sz === "medium" || sz === "m") && dbItem.priceMedium != null) {
         unitPriceNum = Number(dbItem.priceMedium);
-      } else if ((sz === "large" || sz === "l") && dbItem.priceLarge != null) {
+      } else if ((sz === "large" || sz === "l" || sz === "loaded") && dbItem.priceLarge != null) {
         unitPriceNum = Number(dbItem.priceLarge);
       }
     } else if (item.unitPrice !== undefined && !isNaN(item.unitPrice)) {
@@ -354,11 +354,11 @@ export async function updateOrder(
       let unitPriceNum = Number(dbItem.price);
       if (dbItem.hasSizes && item.selectedSize) {
         const sz = item.selectedSize.toLowerCase();
-        if ((sz === "small" || sz === "s") && dbItem.priceSmall != null) {
+        if ((sz === "small" || sz === "s" || sz === "normal" || sz === "n") && dbItem.priceSmall != null) {
           unitPriceNum = Number(dbItem.priceSmall);
         } else if ((sz === "medium" || sz === "m") && dbItem.priceMedium != null) {
           unitPriceNum = Number(dbItem.priceMedium);
-        } else if ((sz === "large" || sz === "l") && dbItem.priceLarge != null) {
+        } else if ((sz === "large" || sz === "l" || sz === "loaded") && dbItem.priceLarge != null) {
           unitPriceNum = Number(dbItem.priceLarge);
         }
       } else if (item.unitPrice !== undefined && !isNaN(item.unitPrice)) {

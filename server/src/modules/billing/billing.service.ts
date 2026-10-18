@@ -748,11 +748,11 @@ export async function fastBill(
     let unitPrice = dbItem ? Number(dbItem.price) : 0;
     if (dbItem?.hasSizes && item.selectedSize) {
       const sz = item.selectedSize.toLowerCase();
-      if ((sz === "small" || sz === "s") && dbItem.priceSmall != null) {
+      if ((sz === "small" || sz === "s" || sz === "normal" || sz === "n") && dbItem.priceSmall != null) {
         unitPrice = Number(dbItem.priceSmall);
       } else if ((sz === "medium" || sz === "m") && dbItem.priceMedium != null) {
         unitPrice = Number(dbItem.priceMedium);
-      } else if ((sz === "large" || sz === "l") && dbItem.priceLarge != null) {
+      } else if ((sz === "large" || sz === "l" || sz === "loaded") && dbItem.priceLarge != null) {
         unitPrice = Number(dbItem.priceLarge);
       }
     } else if (item.unitPrice !== undefined && !isNaN(item.unitPrice)) {
@@ -933,24 +933,58 @@ export async function fastBill(
 function centerLine(text: string, width = 32): string {
   const trimmed = text.trim();
   if (!trimmed) return "";
-  if (trimmed.length >= width) {
-    const words = trimmed.split(/\s+/);
-    const sublines: string[] = [];
-    let current = "";
-    for (const w of words) {
-      if ((current + (current ? " " : "") + w).length <= width) {
-        current += (current ? " " : "") + w;
-      } else {
-        if (current) sublines.push(centerLine(current, width));
-        current = w;
-      }
-    }
-    if (current) sublines.push(centerLine(current, width));
-    return sublines.join("\n");
+  if (width <= 0) return trimmed;
+
+  if (trimmed.includes("\n")) {
+    return trimmed
+      .split("\n")
+      .map((l) => centerLine(l, width))
+      .join("\n");
   }
-  const totalPad = width - trimmed.length;
-  const leftPad = Math.floor(totalPad / 2);
-  return " ".repeat(leftPad) + trimmed;
+
+  if (trimmed.length <= width) {
+    const totalPad = width - trimmed.length;
+    const leftPad = Math.floor(totalPad / 2);
+    return " ".repeat(leftPad) + trimmed;
+  }
+
+  const words = trimmed.split(/\s+/);
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (let word of words) {
+    while (word.length > width) {
+      if (currentLine) {
+        lines.push(currentLine);
+        currentLine = "";
+      }
+      lines.push(word.slice(0, width));
+      word = word.slice(width);
+    }
+
+    if (!word) continue;
+
+    if (!currentLine) {
+      currentLine = word;
+    } else if ((currentLine + " " + word).length <= width) {
+      currentLine += " " + word;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines
+    .map((l) => {
+      const pad = Math.max(0, width - l.length);
+      const left = Math.floor(pad / 2);
+      return " ".repeat(left) + l;
+    })
+    .join("\n");
 }
 
   const lines = [

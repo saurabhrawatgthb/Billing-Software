@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
@@ -86,43 +86,60 @@ export const POSPage: React.FC = () => {
   const [splitUpiAmount, setSplitUpiAmount] = useState<number>(0);
   const [printKOT, setPrintKOT] = useState<boolean>(true);
 
-  // Portion / Size Selection for Pizza (Small / Medium / Large)
+  // Portion / Size Selection for Pizza (Small / Medium / Large OR Normal / Loaded)
   const [sizeSelectionItem, setSizeSelectionItem] = useState<MenuItem | null>(null);
 
-  const isPizzaOrSized = (item: MenuItem) => {
-    return (
-      Boolean(item.hasSizes) ||
-      item.name.toLowerCase().includes("pizza") ||
-      Boolean(item.category?.name?.toLowerCase().includes("pizza"))
-    );
+  const isPizzaCategory = (item: MenuItem) => {
+    return Boolean(item.category?.name?.toLowerCase().includes("pizza"));
   };
 
-  // Instant keyboard shortcuts for Portion Selection (1=Small, 2=Medium, 3=Large, Esc=Cancel)
+  const isPizzaWithSizes = (item: MenuItem) => {
+    return isPizzaCategory(item) && Boolean(item.hasSizes);
+  };
+
+  // Instant keyboard shortcuts for Portion Selection (1=Small/Normal, 2=Medium/Loaded, 3=Large, Esc=Cancel)
   useEffect(() => {
     if (!sizeSelectionItem) return;
+
+    const hasThreeSizes = sizeSelectionItem.priceMedium != null && Number(sizeSelectionItem.priceMedium) > 0;
+    const pSmall = sizeSelectionItem.priceSmall != null ? Number(sizeSelectionItem.priceSmall) : Number(sizeSelectionItem.price);
+    const pMedium = sizeSelectionItem.priceMedium != null ? Number(sizeSelectionItem.priceMedium) : Number(sizeSelectionItem.price);
+    const pLarge = sizeSelectionItem.priceLarge != null ? Number(sizeSelectionItem.priceLarge) : Number(sizeSelectionItem.price);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) return;
 
-      const pSmall = sizeSelectionItem.priceSmall != null ? Number(sizeSelectionItem.priceSmall) : Number(sizeSelectionItem.price);
-      const pMedium = sizeSelectionItem.priceMedium != null ? Number(sizeSelectionItem.priceMedium) : Number(sizeSelectionItem.price);
-      const pLarge = sizeSelectionItem.priceLarge != null ? Number(sizeSelectionItem.priceLarge) : Number(sizeSelectionItem.price);
-
-      if (e.key === "1" || e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        addItem(sizeSelectionItem, "Small", pSmall);
-        setSizeSelectionItem(null);
-      } else if (e.key === "2" || e.key.toLowerCase() === "m") {
-        e.preventDefault();
-        addItem(sizeSelectionItem, "Medium", pMedium);
-        setSizeSelectionItem(null);
-      } else if (e.key === "3" || e.key.toLowerCase() === "l") {
-        e.preventDefault();
-        addItem(sizeSelectionItem, "Large", pLarge);
-        setSizeSelectionItem(null);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        setSizeSelectionItem(null);
+      if (hasThreeSizes) {
+        if (e.key === "1" || e.key.toLowerCase() === "s") {
+          e.preventDefault();
+          addItem(sizeSelectionItem, "Small", pSmall);
+          setSizeSelectionItem(null);
+        } else if (e.key === "2" || e.key.toLowerCase() === "m") {
+          e.preventDefault();
+          addItem(sizeSelectionItem, "Medium", pMedium);
+          setSizeSelectionItem(null);
+        } else if (e.key === "3" || e.key.toLowerCase() === "l") {
+          e.preventDefault();
+          addItem(sizeSelectionItem, "Large", pLarge);
+          setSizeSelectionItem(null);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setSizeSelectionItem(null);
+        }
+      } else {
+        // Normal & Loaded variations
+        if (e.key === "1" || e.key.toLowerCase() === "n") {
+          e.preventDefault();
+          addItem(sizeSelectionItem, "Normal", pSmall);
+          setSizeSelectionItem(null);
+        } else if (e.key === "2" || e.key.toLowerCase() === "l") {
+          e.preventDefault();
+          addItem(sizeSelectionItem, "Loaded", pLarge);
+          setSizeSelectionItem(null);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setSizeSelectionItem(null);
+        }
       }
     };
 
@@ -569,21 +586,25 @@ export const POSPage: React.FC = () => {
       };
 
       // 7. INSTANT PRINT SPOOLER: Dispatches KOT FIRST, followed immediately by Customer Bill
-      if (printKOT) {
-        printCombinedKOTAndBillDirectly({
-          kotParams,
-          billParams,
-          paperSize,
-          logoUrl: brandSettings?.logoUrl || undefined,
-        });
-      } else {
-        const receiptText = buildThermalReceiptText(billParams, paperSize);
-        printReceiptDirectly(receiptText, {
-          title: `Invoice #${invoiceNumber}`,
-          paperSize,
-          logoUrl: brandSettings?.logoUrl || undefined,
-          showLogo: true,
-        });
+      try {
+        if (printKOT) {
+          printCombinedKOTAndBillDirectly({
+            kotParams,
+            billParams,
+            paperSize,
+            logoUrl: brandSettings?.logoUrl || undefined,
+          });
+        } else {
+          const receiptText = buildThermalReceiptText(billParams, paperSize);
+          printReceiptDirectly(receiptText, {
+            title: `Invoice #${invoiceNumber}`,
+            paperSize,
+            logoUrl: brandSettings?.logoUrl || undefined,
+            showLogo: true,
+          });
+        }
+      } catch (printErr) {
+        console.warn("Direct printer spool warning:", printErr);
       }
 
       // 8. INSTANT UI RESET: Immediate feedback, zero waiting
@@ -595,7 +616,9 @@ export const POSPage: React.FC = () => {
       setGuestCount(2);
 
       // 9. BACKGROUND CLOUD ASYNC SYNC: Syncs order, invoice, payment with Render & MongoDB
+      const franchiseToUse = effectiveFranchiseId || (activeFranchises && activeFranchises[0]?.id) || user?.franchiseId;
       const payload = {
+        franchiseId: franchiseToUse,
         invoiceNumber,
         orderNumber,
         tableId: tableSnapshot?.id || null,
@@ -622,7 +645,8 @@ export const POSPage: React.FC = () => {
       };
 
       // Fire in background without blocking UI
-      api.post("/billing/fast-bill", payload)
+      const fastBillUrl = franchiseToUse ? `/billing/fast-bill?franchiseId=${franchiseToUse}` : "/billing/fast-bill";
+      api.post(fastBillUrl, payload)
         .then(() => {
           queryClient.invalidateQueries({ queryKey: ["tables"] });
           queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -633,7 +657,7 @@ export const POSPage: React.FC = () => {
           setPosError("Bill printed locally! Cloud sync delayed: " + extractErrorMessage(err));
         });
     } catch (err: any) {
-      console.error("Billing print error:", err);
+      console.error("Billing error:", err);
       setPosError("Billing error: " + (err?.message || "Failed to complete payment and print bill"));
     } finally {
       setIsBilling(false);
@@ -641,14 +665,17 @@ export const POSPage: React.FC = () => {
   };
 
 
-  const filteredItems = menuItems.filter((item) => {
-    const matchesCategory = activeCategory ? item.categoryId === activeCategory : true;
-    const matchesSearch =
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.code || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.category?.name || "").toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  const filteredItems = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return menuItems.filter((item) => {
+      const matchesCategory = activeCategory ? item.categoryId === activeCategory : true;
+      const matchesSearch =
+        item.name.toLowerCase().includes(term) ||
+        (item.code || "").toLowerCase().includes(term) ||
+        (item.category?.name || "").toLowerCase().includes(term);
+      return matchesCategory && matchesSearch;
+    });
+  }, [menuItems, activeCategory, searchTerm]);
 
   const subtotal = getSubtotal();
   const tax = getTax();
@@ -940,7 +967,7 @@ export const POSPage: React.FC = () => {
                 <button
                   key={item.id}
                   disabled={!item.isAvailable}
-                  onClick={() => (isPizzaOrSized(item) ? setSizeSelectionItem(item) : addItem(item))}
+                  onClick={() => (isPizzaWithSizes(item) ? setSizeSelectionItem(item) : addItem(item))}
                   className={`p-3.5 rounded-xl border text-left flex flex-col justify-between transition-all duration-150 cursor-pointer ${
                     item.isAvailable
                       ? "bg-white border-gray-200/90 hover:border-indigo-400 hover:shadow-md active:scale-98"
@@ -969,9 +996,9 @@ export const POSPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
-                    {isPizzaOrSized(item) ? (
+                    {isPizzaWithSizes(item) ? (
                       <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/60">
-                        S/M/L • ₹{Number(item.priceSmall || item.price).toFixed(0)}+
+                        {item.priceMedium != null && Number(item.priceMedium) > 0 ? "S/M/L" : "Normal/Loaded"} • ₹{Number(item.priceSmall || item.price).toFixed(0)}+
                       </span>
                     ) : (
                       <span className="text-sm font-extrabold text-gray-900">
@@ -1864,8 +1891,9 @@ Thanks For Visiting Madrasi Dosa`;
         </div>
       </Modal>
 
-      {/* Portion / Size Selection Modal for Pizza (Small / Medium / Large) */}
+      {/* Portion / Size Selection Modal for Pizza (Small / Medium / Large OR Normal / Loaded) */}
       {sizeSelectionItem && (() => {
+        const hasThreeSizes = sizeSelectionItem.priceMedium != null && Number(sizeSelectionItem.priceMedium) > 0;
         const pSmall = sizeSelectionItem.priceSmall != null ? Number(sizeSelectionItem.priceSmall) : Number(sizeSelectionItem.price);
         const pMedium = sizeSelectionItem.priceMedium != null ? Number(sizeSelectionItem.priceMedium) : Number(sizeSelectionItem.price);
         const pLarge = sizeSelectionItem.priceLarge != null ? Number(sizeSelectionItem.priceLarge) : Number(sizeSelectionItem.price);
@@ -1874,84 +1902,137 @@ Thanks For Visiting Madrasi Dosa`;
           <Modal
             isOpen={Boolean(sizeSelectionItem)}
             onClose={() => setSizeSelectionItem(null)}
-            title={`🍕 Select Pizza Size: ${sizeSelectionItem.name}`}
+            title={hasThreeSizes ? `🍕 Select Pizza Size: ${sizeSelectionItem.name}` : `🍕 Select Pizza Style: ${sizeSelectionItem.name}`}
             maxWidth="sm"
           >
             <div className="space-y-4 pt-1">
               <p className="text-xs text-gray-500 font-medium">
-                Choose size to immediately add to order (or press 1, 2, 3 on keyboard):
+                {hasThreeSizes
+                  ? "Choose size to immediately add to order (or press 1, 2, 3 / S, M, L):"
+                  : "Choose style to immediately add to order (or press 1, 2 / N, L):"}
               </p>
 
-              <div className="grid grid-cols-3 gap-3">
-                {/* Small */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    addItem(sizeSelectionItem, "Small", pSmall);
-                    setSizeSelectionItem(null);
-                  }}
-                  className="p-3.5 rounded-2xl border-2 border-indigo-100 hover:border-indigo-600 bg-white hover:bg-indigo-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
-                >
-                  <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 font-black text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                    S
-                  </span>
-                  <div className="text-center">
-                    <span className="text-xs font-black text-gray-900 group-hover:text-indigo-900 block">
-                      Small
+              {hasThreeSizes ? (
+                <div className="grid grid-cols-3 gap-3">
+                  {/* Small */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addItem(sizeSelectionItem, "Small", pSmall);
+                      setSizeSelectionItem(null);
+                    }}
+                    className="p-3.5 rounded-2xl border-2 border-indigo-100 hover:border-indigo-600 bg-white hover:bg-indigo-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
+                  >
+                    <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 font-black text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                      S
                     </span>
-                    <span className="text-[10px] text-gray-400 font-mono">[Key 1]</span>
-                  </div>
-                  <span className="text-sm font-extrabold text-emerald-600">
-                    ₹{pSmall.toFixed(2)}
-                  </span>
-                </button>
+                    <div className="text-center">
+                      <span className="text-xs font-black text-gray-900 group-hover:text-indigo-900 block">
+                        Small (7")
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-mono">[Key 1 / S]</span>
+                    </div>
+                    <span className="text-sm font-extrabold text-emerald-600">
+                      ₹{pSmall.toFixed(2)}
+                    </span>
+                  </button>
 
-                {/* Medium */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    addItem(sizeSelectionItem, "Medium", pMedium);
-                    setSizeSelectionItem(null);
-                  }}
-                  className="p-3.5 rounded-2xl border-2 border-indigo-300 hover:border-indigo-600 bg-indigo-50/50 hover:bg-indigo-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-indigo-400/30"
-                >
-                  <span className="w-9 h-9 rounded-full bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-xs">
-                    M
-                  </span>
-                  <div className="text-center">
-                    <span className="text-xs font-black text-gray-900 group-hover:text-indigo-900 block">
-                      Medium
+                  {/* Medium */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addItem(sizeSelectionItem, "Medium", pMedium);
+                      setSizeSelectionItem(null);
+                    }}
+                    className="p-3.5 rounded-2xl border-2 border-indigo-300 hover:border-indigo-600 bg-indigo-50/50 hover:bg-indigo-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-indigo-400/30"
+                  >
+                    <span className="w-9 h-9 rounded-full bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-xs">
+                      M
                     </span>
-                    <span className="text-[10px] text-indigo-600 font-mono font-bold">[Key 2]</span>
-                  </div>
-                  <span className="text-sm font-extrabold text-emerald-600">
-                    ₹{pMedium.toFixed(2)}
-                  </span>
-                </button>
+                    <div className="text-center">
+                      <span className="text-xs font-black text-gray-900 group-hover:text-indigo-900 block">
+                        Medium (10")
+                      </span>
+                      <span className="text-[10px] text-indigo-600 font-mono font-bold">[Key 2 / M]</span>
+                    </div>
+                    <span className="text-sm font-extrabold text-emerald-600">
+                      ₹{pMedium.toFixed(2)}
+                    </span>
+                  </button>
 
-                {/* Large */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    addItem(sizeSelectionItem, "Large", pLarge);
-                    setSizeSelectionItem(null);
-                  }}
-                  className="p-3.5 rounded-2xl border-2 border-indigo-100 hover:border-indigo-600 bg-white hover:bg-indigo-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
-                >
-                  <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 font-black text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                    L
-                  </span>
-                  <div className="text-center">
-                    <span className="text-xs font-black text-gray-900 group-hover:text-indigo-900 block">
-                      Large
+                  {/* Large */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addItem(sizeSelectionItem, "Large", pLarge);
+                      setSizeSelectionItem(null);
+                    }}
+                    className="p-3.5 rounded-2xl border-2 border-indigo-100 hover:border-indigo-600 bg-white hover:bg-indigo-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
+                  >
+                    <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 font-black text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                      L
                     </span>
-                    <span className="text-[10px] text-gray-400 font-mono">[Key 3]</span>
-                  </div>
-                  <span className="text-sm font-extrabold text-emerald-600">
-                    ₹{pLarge.toFixed(2)}
-                  </span>
-                </button>
-              </div>
+                    <div className="text-center">
+                      <span className="text-xs font-black text-gray-900 group-hover:text-indigo-900 block">
+                        Large (12")
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-mono">[Key 3 / L]</span>
+                    </div>
+                    <span className="text-sm font-extrabold text-emerald-600">
+                      ₹{pLarge.toFixed(2)}
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                /* Normal & Loaded */
+                <div className="grid grid-cols-2 gap-3.5">
+                  {/* Normal */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addItem(sizeSelectionItem, "Normal", pSmall);
+                      setSizeSelectionItem(null);
+                    }}
+                    className="p-4 rounded-2xl border-2 border-emerald-100 hover:border-emerald-600 bg-white hover:bg-emerald-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
+                  >
+                    <span className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                      N
+                    </span>
+                    <div className="text-center">
+                      <span className="text-sm font-black text-gray-900 group-hover:text-emerald-950 block">
+                        Normal Pizza
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-mono">[Key 1 / N]</span>
+                    </div>
+                    <span className="text-sm font-extrabold text-emerald-600">
+                      ₹{pSmall.toFixed(2)}
+                    </span>
+                  </button>
+
+                  {/* Loaded */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addItem(sizeSelectionItem, "Loaded", pLarge);
+                      setSizeSelectionItem(null);
+                    }}
+                    className="p-4 rounded-2xl border-2 border-emerald-300 hover:border-emerald-600 bg-emerald-50/60 hover:bg-emerald-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-emerald-400/30"
+                  >
+                    <span className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black text-sm flex items-center justify-center shadow-xs">
+                      L
+                    </span>
+                    <div className="text-center">
+                      <span className="text-sm font-black text-gray-900 group-hover:text-emerald-950 block">
+                        Loaded Pizza 🧀
+                      </span>
+                      <span className="text-[10px] text-emerald-700 font-mono font-bold">[Key 2 / L]</span>
+                    </div>
+                    <span className="text-sm font-extrabold text-emerald-600">
+                      ₹{pLarge.toFixed(2)}
+                    </span>
+                  </button>
+                </div>
+              )}
 
               <div className="flex justify-end pt-3 border-t border-gray-100">
                 <Button variant="outline" size="sm" onClick={() => setSizeSelectionItem(null)}>
