@@ -237,7 +237,7 @@ function parseReceiptSections(text: string) {
       topDivider: rawLines[firstDiv],
       headerLines,
       midDivider: rawLines[secondDiv],
-      bodyText: bodyLines.join("\n"),
+      bodyLines,
       bottomDivider: lastDiv > secondDiv ? rawLines[lastDiv] : "--------------------------------",
       footerLines,
     };
@@ -250,9 +250,59 @@ function parseReceiptSections(text: string) {
 }
 
 /**
+ * Formats body lines into styled HTML elements:
+ * - Items header and item rows (Item Name, Qty, Price) are rendered BOLD (font-weight: 800)
+ * - Grand TOTAL line is rendered EXTRA BOLD (font-weight: 900) and slightly larger
+ * - Metadata and summary rows have clean proportional sizing
+ */
+function formatReceiptBodyHtml(bodyLines: string[]): string {
+  let inItemsTable = false;
+
+  return bodyLines
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return "";
+
+      if (/^Item\s+Qty\s+Price/i.test(trimmed)) {
+        inItemsTable = true;
+        return `<div class="receipt-items-header">${escapeHtml(line)}</div>`;
+      }
+
+      if (inItemsTable) {
+        if (/^[=\-]{16,}$/.test(trimmed)) {
+          inItemsTable = false;
+          return `<div class="receipt-divider-line">${escapeHtml(line)}</div>`;
+        }
+        // Item row (Item name, quantity, price) -> BOLD!
+        return `<div class="receipt-item-row">${escapeHtml(line)}</div>`;
+      }
+
+      if (/^TOTAL:/i.test(trimmed)) {
+        // Grand Total -> EXTRA BOLD!
+        return `<div class="receipt-total-row">${escapeHtml(line)}</div>`;
+      }
+
+      if (/^(Subtotal|Tax|Discount):/i.test(trimmed)) {
+        return `<div class="receipt-summary-row">${escapeHtml(line)}</div>`;
+      }
+
+      if (/^[=\-]{16,}$/.test(trimmed)) {
+        return `<div class="receipt-divider-line">${escapeHtml(line)}</div>`;
+      }
+
+      if (/^(Invoice|Order|Date|Dine-In|Takeaway|Table)/i.test(trimmed)) {
+        return `<div class="receipt-meta-row">${escapeHtml(line)}</div>`;
+      }
+
+      return `<div class="receipt-default-row">${escapeHtml(line)}</div>`;
+    })
+    .join("");
+}
+
+/**
  * Direct thermal printer spooler
- * Dispatches the receipt directly to the printer in <50ms with a compact Madrasi Dosa Logo header
- * and mathematically center-aligned store branding, address, phone number, and footer.
+ * Dispatches the receipt directly to the printer in <50ms with a compact Madrasi Dosa Logo header,
+ * small clean header lines, bold item rows, extra bold total bill, and centered footer.
  */
 export function printReceiptDirectly(
   rawText: string,
@@ -284,16 +334,15 @@ export function printReceiptDirectly(
   const is58mm = paperSize === "58mm";
   const rollWidth = is58mm ? "58mm" : "80mm";
   const contentWidth = is58mm ? "48mm" : "72mm";
-  const fontSize = is58mm ? "9.5px" : "12px";
-  const lineHeight = is58mm ? "1.22" : "1.28";
+  const lineHeight = is58mm ? "1.2" : "1.25";
 
-  // Compute exact physical height needed: line count * line height + compact logo + padding
+  // Compute exact physical height needed: line count * line height + small logo + padding
   const lines = cleanedText.split("\n");
   const lineCount = lines.length;
-  const mmPerLine = is58mm ? 3.8 : 4.3;
-  // Compact logo height: 11mm for 80mm roll, 8.5mm for 58mm roll to easily fit on a page
-  const logoHeightMm = showLogo ? (is58mm ? 8.5 : 11) : 0;
-  const dynamicHeightMm = Math.max(45, Math.ceil(lineCount * mmPerLine + logoHeightMm + 10));
+  const mmPerLine = is58mm ? 3.6 : 4.1;
+  // Small logo height: ~7mm for 80mm roll, ~5.5mm for 58mm roll
+  const logoHeightMm = showLogo ? (is58mm ? 5.5 : 7) : 0;
+  const dynamicHeightMm = Math.max(40, Math.ceil(lineCount * mmPerLine + logoHeightMm + 8));
 
   const printStyles = `
     @page {
@@ -319,28 +368,30 @@ export function printReceiptDirectly(
         max-width: ${contentWidth} !important;
         box-sizing: border-box;
         margin: 0 auto;
-        padding: 1mm 0 1.5mm 0;
+        padding: 0.5mm 0 1mm 0;
         text-align: center !important;
         page-break-after: avoid;
         break-after: avoid;
       }
+      /* Small, refined logo - much smaller compared to the font */
       .receipt-logo-wrap {
         text-align: center !important;
-        margin: 0 auto 1mm auto !important;
+        margin: 0 auto 0.5mm auto !important;
         padding: 0 !important;
         display: block !important;
         width: 100% !important;
       }
       .receipt-logo-wrap svg,
       .receipt-logo-wrap img {
-        width: ${is58mm ? "20mm" : "26mm"} !important;
-        max-width: ${is58mm ? "20mm" : "26mm"} !important;
+        width: ${is58mm ? "13mm" : "16mm"} !important;
+        max-width: ${is58mm ? "13mm" : "16mm"} !important;
         height: auto !important;
         margin: 0 auto !important;
         display: block !important;
         filter: grayscale(100%) contrast(250%);
         -webkit-filter: grayscale(100%) contrast(250%);
       }
+      /* Compact, refined header lines - smaller font */
       .receipt-header-block {
         text-align: center !important;
         width: 100% !important;
@@ -349,8 +400,8 @@ export function printReceiptDirectly(
       .receipt-header-line {
         text-align: center !important;
         font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${fontSize} !important;
-        line-height: ${lineHeight} !important;
+        font-size: ${is58mm ? "8px" : "9.5px"} !important;
+        line-height: 1.2 !important;
         font-weight: 700 !important;
         letter-spacing: -0.2px !important;
         word-break: break-word !important;
@@ -358,8 +409,8 @@ export function printReceiptDirectly(
       .receipt-divider {
         text-align: center !important;
         font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${fontSize} !important;
-        line-height: ${lineHeight} !important;
+        font-size: ${is58mm ? "8px" : "9.5px"} !important;
+        line-height: 1.15 !important;
         font-weight: 700 !important;
         letter-spacing: -0.2px !important;
       }
@@ -372,37 +423,77 @@ export function printReceiptDirectly(
         text-align: left !important;
         display: inline-block !important;
         margin: 0 auto !important;
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${fontSize} !important;
-        line-height: ${lineHeight} !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.2px !important;
-        white-space: pre !important;
-        word-break: normal !important;
       }
+      /* BOLD Item Header & Item Rows */
+      .receipt-items-header {
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+        font-size: ${is58mm ? "9.5px" : "11.5px"} !important;
+        font-weight: 800 !important;
+        line-height: ${lineHeight} !important;
+        white-space: pre !important;
+        letter-spacing: -0.2px !important;
+      }
+      .receipt-item-row {
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+        font-size: ${is58mm ? "9.5px" : "11.5px"} !important;
+        font-weight: 800 !important; /* BOLD as requested! */
+        line-height: ${lineHeight} !important;
+        white-space: pre !important;
+        letter-spacing: -0.2px !important;
+      }
+      /* EXTRA BOLD TOTAL ROW */
+      .receipt-total-row {
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+        font-size: ${is58mm ? "11px" : "13.5px"} !important;
+        font-weight: 900 !important; /* EXTRA BOLD */
+        line-height: 1.35 !important;
+        white-space: pre !important;
+        letter-spacing: 0.1px !important;
+      }
+      .receipt-summary-row {
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+        font-size: ${is58mm ? "9px" : "10.5px"} !important;
+        font-weight: 600 !important;
+        line-height: ${lineHeight} !important;
+        white-space: pre !important;
+        letter-spacing: -0.2px !important;
+      }
+      .receipt-meta-row {
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+        font-size: ${is58mm ? "8.5px" : "10px"} !important;
+        font-weight: 600 !important;
+        line-height: 1.25 !important;
+        white-space: pre !important;
+        letter-spacing: -0.2px !important;
+      }
+      .receipt-divider-line {
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+        font-size: ${is58mm ? "8.5px" : "10px"} !important;
+        font-weight: 700 !important;
+        line-height: 1.1 !important;
+        white-space: pre !important;
+      }
+      .receipt-default-row {
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+        font-size: ${is58mm ? "9px" : "10.5px"} !important;
+        font-weight: 600 !important;
+        line-height: ${lineHeight} !important;
+        white-space: pre !important;
+        letter-spacing: -0.2px !important;
+      }
+      /* Centered Footer */
       .receipt-footer-block {
         text-align: center !important;
         width: 100% !important;
-        margin: 0 auto !important;
+        margin: 0.5mm auto 0 auto !important;
       }
       .receipt-footer-line {
         text-align: center !important;
         font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${fontSize} !important;
-        line-height: ${lineHeight} !important;
+        font-size: ${is58mm ? "8.5px" : "10px"} !important;
+        line-height: 1.25 !important;
         font-weight: 700 !important;
         letter-spacing: -0.2px !important;
-      }
-      .thermal-receipt-text {
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-        font-size: ${fontSize} !important;
-        line-height: ${lineHeight} !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.2px !important;
-        white-space: pre !important;
-        word-break: normal !important;
-        margin: 0 !important;
-        padding: 0 !important;
       }
     }
     html, body {
@@ -418,22 +509,22 @@ export function printReceiptDirectly(
       max-width: ${contentWidth};
       box-sizing: border-box;
       margin: 0 auto;
-      padding: 1mm 0 1.5mm 0;
+      padding: 0.5mm 0 1mm 0;
       text-align: center;
       page-break-after: avoid;
       break-after: avoid;
     }
     .receipt-logo-wrap {
       text-align: center;
-      margin: 0 auto 1mm auto;
+      margin: 0 auto 0.5mm auto;
       padding: 0;
       display: block;
       width: 100%;
     }
     .receipt-logo-wrap svg,
     .receipt-logo-wrap img {
-      width: ${is58mm ? "20mm" : "26mm"};
-      max-width: ${is58mm ? "20mm" : "26mm"};
+      width: ${is58mm ? "13mm" : "16mm"};
+      max-width: ${is58mm ? "13mm" : "16mm"};
       height: auto;
       margin: 0 auto;
       display: block;
@@ -448,8 +539,8 @@ export function printReceiptDirectly(
     .receipt-header-line {
       text-align: center;
       font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${fontSize};
-      line-height: ${lineHeight};
+      font-size: ${is58mm ? "8px" : "9.5px"};
+      line-height: 1.2;
       font-weight: 700;
       letter-spacing: -0.2px;
       word-break: break-word;
@@ -457,8 +548,8 @@ export function printReceiptDirectly(
     .receipt-divider {
       text-align: center;
       font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${fontSize};
-      line-height: ${lineHeight};
+      font-size: ${is58mm ? "8px" : "9.5px"};
+      line-height: 1.15;
       font-weight: 700;
       letter-spacing: -0.2px;
     }
@@ -471,37 +562,74 @@ export function printReceiptDirectly(
       text-align: left;
       display: inline-block;
       margin: 0 auto;
+    }
+    .receipt-items-header {
       font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${fontSize};
+      font-size: ${is58mm ? "9.5px" : "11.5px"};
+      font-weight: 800;
       line-height: ${lineHeight};
-      font-weight: 700;
-      letter-spacing: -0.2px;
       white-space: pre;
-      word-break: normal;
+      letter-spacing: -0.2px;
+    }
+    .receipt-item-row {
+      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-size: ${is58mm ? "9.5px" : "11.5px"};
+      font-weight: 800;
+      line-height: ${lineHeight};
+      white-space: pre;
+      letter-spacing: -0.2px;
+    }
+    .receipt-total-row {
+      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-size: ${is58mm ? "11px" : "13.5px"};
+      font-weight: 900;
+      line-height: 1.35;
+      white-space: pre;
+      letter-spacing: 0.1px;
+    }
+    .receipt-summary-row {
+      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-size: ${is58mm ? "9px" : "10.5px"};
+      font-weight: 600;
+      line-height: ${lineHeight};
+      white-space: pre;
+      letter-spacing: -0.2px;
+    }
+    .receipt-meta-row {
+      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-size: ${is58mm ? "8.5px" : "10px"};
+      font-weight: 600;
+      line-height: 1.25;
+      white-space: pre;
+      letter-spacing: -0.2px;
+    }
+    .receipt-divider-line {
+      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-size: ${is58mm ? "8.5px" : "10px"};
+      font-weight: 700;
+      line-height: 1.1;
+      white-space: pre;
+    }
+    .receipt-default-row {
+      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-size: ${is58mm ? "9px" : "10.5px"};
+      font-weight: 600;
+      line-height: ${lineHeight};
+      white-space: pre;
+      letter-spacing: -0.2px;
     }
     .receipt-footer-block {
       text-align: center;
       width: 100%;
-      margin: 0 auto;
+      margin: 0.5mm auto 0 auto;
     }
     .receipt-footer-line {
       text-align: center;
       font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${fontSize};
-      line-height: ${lineHeight};
+      font-size: ${is58mm ? "8.5px" : "10px"};
+      line-height: 1.25;
       font-weight: 700;
       letter-spacing: -0.2px;
-    }
-    .thermal-receipt-text {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${fontSize};
-      line-height: ${lineHeight};
-      font-weight: 700;
-      letter-spacing: -0.2px;
-      white-space: pre;
-      word-break: normal;
-      margin: 0;
-      padding: 0;
     }
   `;
 
@@ -522,7 +650,7 @@ export function printReceiptDirectly(
         <div class="receipt-divider">${escapeHtml(parsed.midDivider || "================================")}</div>
       </div>
       <div class="thermal-receipt-body-wrap">
-        <div class="thermal-receipt-body">${escapeHtml(parsed.bodyText || "")}</div>
+        <div class="thermal-receipt-body">${formatReceiptBodyHtml(parsed.bodyLines || [])}</div>
       </div>
       ${
         parsed.footerLines && parsed.footerLines.length > 0
@@ -535,7 +663,7 @@ export function printReceiptDirectly(
       }
     `;
   } else {
-    innerContentHtml = `<div class="thermal-receipt-text">${escapeHtml(cleanedText)}</div>`;
+    innerContentHtml = `<div class="thermal-receipt-body-wrap"><div class="thermal-receipt-body">${formatReceiptBodyHtml(lines)}</div></div>`;
   }
 
   const receiptHtml = `
@@ -626,22 +754,22 @@ export function printReceiptDirectly(
                     max-width: ${contentWidth} !important;
                     box-sizing: border-box;
                     margin: 0 auto;
-                    padding: 1mm 0 1.5mm 0;
+                    padding: 0.5mm 0 1mm 0;
                     text-align: center !important;
                     page-break-after: avoid;
                     break-after: avoid;
                   }
                   .receipt-logo-wrap {
                     text-align: center !important;
-                    margin: 0 auto 1mm auto !important;
+                    margin: 0 auto 0.5mm auto !important;
                     padding: 0 !important;
                     display: block !important;
                     width: 100% !important;
                   }
                   .receipt-logo-wrap svg,
                   .receipt-logo-wrap img {
-                    width: ${is58mm ? "20mm" : "26mm"} !important;
-                    max-width: ${is58mm ? "20mm" : "26mm"} !important;
+                    width: ${is58mm ? "13mm" : "16mm"} !important;
+                    max-width: ${is58mm ? "13mm" : "16mm"} !important;
                     height: auto !important;
                     margin: 0 auto !important;
                     display: block !important;
@@ -656,8 +784,8 @@ export function printReceiptDirectly(
                   .receipt-header-line {
                     text-align: center !important;
                     font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${fontSize} !important;
-                    line-height: ${lineHeight} !important;
+                    font-size: ${is58mm ? "8px" : "9.5px"} !important;
+                    line-height: 1.2 !important;
                     font-weight: 700 !important;
                     letter-spacing: -0.2px !important;
                     word-break: break-word !important;
@@ -665,8 +793,8 @@ export function printReceiptDirectly(
                   .receipt-divider {
                     text-align: center !important;
                     font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${fontSize} !important;
-                    line-height: ${lineHeight} !important;
+                    font-size: ${is58mm ? "8px" : "9.5px"} !important;
+                    line-height: 1.15 !important;
                     font-weight: 700 !important;
                     letter-spacing: -0.2px !important;
                   }
@@ -679,24 +807,72 @@ export function printReceiptDirectly(
                     text-align: left !important;
                     display: inline-block !important;
                     margin: 0 auto !important;
+                  }
+                  .receipt-items-header {
                     font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${fontSize} !important;
+                    font-size: ${is58mm ? "9.5px" : "11.5px"} !important;
+                    font-weight: 800 !important;
                     line-height: ${lineHeight} !important;
-                    font-weight: 700 !important;
-                    letter-spacing: -0.2px !important;
                     white-space: pre !important;
-                    word-break: normal !important;
+                    letter-spacing: -0.2px !important;
+                  }
+                  .receipt-item-row {
+                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+                    font-size: ${is58mm ? "9.5px" : "11.5px"} !important;
+                    font-weight: 800 !important;
+                    line-height: ${lineHeight} !important;
+                    white-space: pre !important;
+                    letter-spacing: -0.2px !important;
+                  }
+                  .receipt-total-row {
+                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+                    font-size: ${is58mm ? "11px" : "13.5px"} !important;
+                    font-weight: 900 !important;
+                    line-height: 1.35 !important;
+                    white-space: pre !important;
+                    letter-spacing: 0.1px !important;
+                  }
+                  .receipt-summary-row {
+                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+                    font-size: ${is58mm ? "9px" : "10.5px"} !important;
+                    font-weight: 600 !important;
+                    line-height: ${lineHeight} !important;
+                    white-space: pre !important;
+                    letter-spacing: -0.2px !important;
+                  }
+                  .receipt-meta-row {
+                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+                    font-size: ${is58mm ? "8.5px" : "10px"} !important;
+                    font-weight: 600 !important;
+                    line-height: 1.25 !important;
+                    white-space: pre !important;
+                    letter-spacing: -0.2px !important;
+                  }
+                  .receipt-divider-line {
+                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+                    font-size: ${is58mm ? "8.5px" : "10px"} !important;
+                    font-weight: 700 !important;
+                    line-height: 1.1 !important;
+                    white-space: pre !important;
+                  }
+                  .receipt-default-row {
+                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+                    font-size: ${is58mm ? "9px" : "10.5px"} !important;
+                    font-weight: 600 !important;
+                    line-height: ${lineHeight} !important;
+                    white-space: pre !important;
+                    letter-spacing: -0.2px !important;
                   }
                   .receipt-footer-block {
                     text-align: center !important;
                     width: 100% !important;
-                    margin: 0 auto !important;
+                    margin: 0.5mm auto 0 auto !important;
                   }
                   .receipt-footer-line {
                     text-align: center !important;
                     font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
-                    font-size: ${fontSize} !important;
-                    line-height: ${lineHeight} !important;
+                    font-size: ${is58mm ? "8.5px" : "10px"} !important;
+                    line-height: 1.25 !important;
                     font-weight: 700 !important;
                     letter-spacing: -0.2px !important;
                   }
