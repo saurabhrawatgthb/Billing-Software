@@ -1651,8 +1651,10 @@ export const POSPage: React.FC = () => {
                 type="button"
                 onClick={() => {
                   const testBill = `================================
-     MADRASI DOSA
---- MALYANA BRANCH ---
+          MADRASI DOSA
+     --- MALYANA BRANCH ---
+  Shop 7, Kanha Plaza, Malyana
+       Phone: 8279707880
 ================================
 Sample Test Receipt
 Date: ${new Date().toLocaleString()}

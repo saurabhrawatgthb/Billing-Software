@@ -31,6 +31,33 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "&#039;");
 }
 
+/**
+ * Mathematically centers a single line of text within a fixed column width (default 32 chars).
+ * If the string exceeds the width (e.g. lengthy branch addresses), it word-wraps and centers each sub-line.
+ */
+export function centerLine(text: string, width = 32): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  if (trimmed.length >= width) {
+    const words = trimmed.split(/\s+/);
+    const sublines: string[] = [];
+    let current = "";
+    for (const w of words) {
+      if ((current + (current ? " " : "") + w).length <= width) {
+        current += (current ? " " : "") + w;
+      } else {
+        if (current) sublines.push(centerLine(current, width));
+        current = w;
+      }
+    }
+    if (current) sublines.push(centerLine(current, width));
+    return sublines.join("\n");
+  }
+  const totalPad = width - trimmed.length;
+  const leftPad = Math.floor(totalPad / 2);
+  return " ".repeat(leftPad) + trimmed;
+}
+
 export const MADRASI_DOSA_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 140" width="100%">
   <defs>
     <style>
@@ -116,6 +143,7 @@ export interface BuildReceiptParams {
 
 /**
  * Builds formatted thermal receipt raw text locally on the client with zero network latency.
+ * All header items (Brand name, Franchise name, Address, Phone, GSTIN) and Footer are strictly center-aligned.
  */
 export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: ThermalPaperSize = "80mm"): string {
   const currSym = data.currencySymbol || "₹";
@@ -126,21 +154,22 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
 
   const lines: string[] = [];
   lines.push(divider);
-  lines.push(`     ${brandName}     `);
+  lines.push(centerLine(brandName, 32));
   if (franchiseName) {
-    lines.push(`--- ${franchiseName} ---`);
+    const branchLabel = franchiseName.startsWith("---") ? franchiseName : `--- ${franchiseName} ---`;
+    lines.push(centerLine(branchLabel, 32));
   }
   if (data.franchiseAddress) {
-    lines.push(`  ${data.franchiseAddress.trim()}  `);
+    lines.push(centerLine(data.franchiseAddress, 32));
   }
   if (data.franchisePhone) {
-    lines.push(`  Phone: ${data.franchisePhone.trim()}  `);
+    lines.push(centerLine(`Phone: ${data.franchisePhone.trim()}`, 32));
   }
   if (data.gstin) {
-    lines.push(`  GSTIN: ${data.gstin.trim()}  `);
+    lines.push(centerLine(`GSTIN: ${data.gstin.trim()}`, 32));
   }
   if (data.fssaiNumber) {
-    lines.push(`  FSSAI: ${data.fssaiNumber.trim()}  `);
+    lines.push(centerLine(`FSSAI: ${data.fssaiNumber.trim()}`, 32));
   }
   lines.push(divider);
   lines.push(`Invoice: ${data.invoiceNumber}`);
@@ -175,14 +204,55 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
     lines.push(`  ${p.method.padEnd(8, " ")}: ${currSym}${p.amount.toFixed(2)} [${p.status || "COMPLETED"}]`);
   }
   lines.push(thinDivider);
-  lines.push(data.footerMessage || "Thanks For Visiting Madrasi Dosa");
+  lines.push(centerLine(data.footerMessage || "Thanks For Visiting Madrasi Dosa", 32));
 
   return lines.join("\n");
 }
 
+function parseReceiptSections(text: string) {
+  const rawLines = text.split("\n");
+  let firstDiv = -1;
+  let secondDiv = -1;
+  let lastDiv = -1;
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const t = rawLines[i].trim();
+    if (/^[=\-]{16,}$/.test(t)) {
+      if (firstDiv === -1) {
+        firstDiv = i;
+      } else if (secondDiv === -1) {
+        secondDiv = i;
+      }
+      lastDiv = i;
+    }
+  }
+
+  if (firstDiv !== -1 && secondDiv > firstDiv) {
+    const headerLines = rawLines.slice(firstDiv + 1, secondDiv).map((l) => l.trim()).filter(Boolean);
+    const bodyLines = rawLines.slice(secondDiv + 1, lastDiv > secondDiv ? lastDiv : undefined);
+    const footerLines = lastDiv > secondDiv ? rawLines.slice(lastDiv + 1).map((l) => l.trim()).filter(Boolean) : [];
+
+    return {
+      hasStructure: true,
+      topDivider: rawLines[firstDiv],
+      headerLines,
+      midDivider: rawLines[secondDiv],
+      bodyText: bodyLines.join("\n"),
+      bottomDivider: lastDiv > secondDiv ? rawLines[lastDiv] : "--------------------------------",
+      footerLines,
+    };
+  }
+
+  return {
+    hasStructure: false,
+    rawText: text,
+  };
+}
+
 /**
  * Direct thermal printer spooler
- * Dispatches the receipt directly to the printer in <50ms with Madrasi Dosa Logo header.
+ * Dispatches the receipt directly to the printer in <50ms with a compact Madrasi Dosa Logo header
+ * and mathematically center-aligned store branding, address, phone number, and footer.
  */
 export function printReceiptDirectly(
   rawText: string,
@@ -214,15 +284,16 @@ export function printReceiptDirectly(
   const is58mm = paperSize === "58mm";
   const rollWidth = is58mm ? "58mm" : "80mm";
   const contentWidth = is58mm ? "48mm" : "72mm";
-  const fontSize = is58mm ? "9.5px" : "12.5px";
+  const fontSize = is58mm ? "9.5px" : "12px";
   const lineHeight = is58mm ? "1.22" : "1.28";
 
-  // Compute exact physical height needed: line count * line height + logo + padding
+  // Compute exact physical height needed: line count * line height + compact logo + padding
   const lines = cleanedText.split("\n");
   const lineCount = lines.length;
-  const mmPerLine = is58mm ? 3.8 : 4.4;
-  const logoHeightMm = showLogo ? (is58mm ? 18 : 24) : 0;
-  const dynamicHeightMm = Math.max(50, Math.ceil(lineCount * mmPerLine + logoHeightMm + 14));
+  const mmPerLine = is58mm ? 3.8 : 4.3;
+  // Compact logo height: 11mm for 80mm roll, 8.5mm for 58mm roll to easily fit on a page
+  const logoHeightMm = showLogo ? (is58mm ? 8.5 : 11) : 0;
+  const dynamicHeightMm = Math.max(45, Math.ceil(lineCount * mmPerLine + logoHeightMm + 10));
 
   const printStyles = `
     @page {
@@ -248,37 +319,90 @@ export function printReceiptDirectly(
         max-width: ${contentWidth} !important;
         box-sizing: border-box;
         margin: 0 auto;
-        padding: 1.5mm 0 2mm 0;
+        padding: 1mm 0 1.5mm 0;
+        text-align: center !important;
         page-break-after: avoid;
         break-after: avoid;
       }
       .receipt-logo-wrap {
-        text-align: center;
-        margin: 0 auto 1.5mm auto;
-        padding: 0;
-        display: block;
-        width: 100%;
+        text-align: center !important;
+        margin: 0 auto 1mm auto !important;
+        padding: 0 !important;
+        display: block !important;
+        width: 100% !important;
       }
       .receipt-logo-wrap svg,
       .receipt-logo-wrap img {
-        width: ${is58mm ? "36mm" : "48mm"} !important;
-        max-width: ${is58mm ? "36mm" : "48mm"} !important;
+        width: ${is58mm ? "20mm" : "26mm"} !important;
+        max-width: ${is58mm ? "20mm" : "26mm"} !important;
         height: auto !important;
         margin: 0 auto !important;
         display: block !important;
         filter: grayscale(100%) contrast(250%);
         -webkit-filter: grayscale(100%) contrast(250%);
       }
+      .receipt-header-block {
+        text-align: center !important;
+        width: 100% !important;
+        margin: 0 auto !important;
+      }
+      .receipt-header-line {
+        text-align: center !important;
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+        font-size: ${fontSize} !important;
+        line-height: ${lineHeight} !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.2px !important;
+        word-break: break-word !important;
+      }
+      .receipt-divider {
+        text-align: center !important;
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+        font-size: ${fontSize} !important;
+        line-height: ${lineHeight} !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.2px !important;
+      }
+      .thermal-receipt-body-wrap {
+        text-align: center !important;
+        width: 100% !important;
+        margin: 0 auto !important;
+      }
+      .thermal-receipt-body {
+        text-align: left !important;
+        display: inline-block !important;
+        margin: 0 auto !important;
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+        font-size: ${fontSize} !important;
+        line-height: ${lineHeight} !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.2px !important;
+        white-space: pre !important;
+        word-break: normal !important;
+      }
+      .receipt-footer-block {
+        text-align: center !important;
+        width: 100% !important;
+        margin: 0 auto !important;
+      }
+      .receipt-footer-line {
+        text-align: center !important;
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+        font-size: ${fontSize} !important;
+        line-height: ${lineHeight} !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.2px !important;
+      }
       .thermal-receipt-text {
-        font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-        font-size: ${fontSize};
-        line-height: ${lineHeight};
-        font-weight: 700;
-        letter-spacing: -0.2px;
-        white-space: pre;
-        word-break: normal;
-        margin: 0;
-        padding: 0;
+        font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+        font-size: ${fontSize} !important;
+        line-height: ${lineHeight} !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.2px !important;
+        white-space: pre !important;
+        word-break: normal !important;
+        margin: 0 !important;
+        padding: 0 !important;
       }
     }
     html, body {
@@ -294,26 +418,79 @@ export function printReceiptDirectly(
       max-width: ${contentWidth};
       box-sizing: border-box;
       margin: 0 auto;
-      padding: 1.5mm 0 2mm 0;
+      padding: 1mm 0 1.5mm 0;
+      text-align: center;
       page-break-after: avoid;
       break-after: avoid;
     }
     .receipt-logo-wrap {
       text-align: center;
-      margin: 0 auto 1.5mm auto;
+      margin: 0 auto 1mm auto;
       padding: 0;
       display: block;
       width: 100%;
     }
     .receipt-logo-wrap svg,
     .receipt-logo-wrap img {
-      width: ${is58mm ? "36mm" : "48mm"};
-      max-width: ${is58mm ? "36mm" : "48mm"};
+      width: ${is58mm ? "20mm" : "26mm"};
+      max-width: ${is58mm ? "20mm" : "26mm"};
       height: auto;
       margin: 0 auto;
       display: block;
       filter: grayscale(100%) contrast(250%);
       -webkit-filter: grayscale(100%) contrast(250%);
+    }
+    .receipt-header-block {
+      text-align: center;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .receipt-header-line {
+      text-align: center;
+      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-size: ${fontSize};
+      line-height: ${lineHeight};
+      font-weight: 700;
+      letter-spacing: -0.2px;
+      word-break: break-word;
+    }
+    .receipt-divider {
+      text-align: center;
+      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-size: ${fontSize};
+      line-height: ${lineHeight};
+      font-weight: 700;
+      letter-spacing: -0.2px;
+    }
+    .thermal-receipt-body-wrap {
+      text-align: center;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .thermal-receipt-body {
+      text-align: left;
+      display: inline-block;
+      margin: 0 auto;
+      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-size: ${fontSize};
+      line-height: ${lineHeight};
+      font-weight: 700;
+      letter-spacing: -0.2px;
+      white-space: pre;
+      word-break: normal;
+    }
+    .receipt-footer-block {
+      text-align: center;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .receipt-footer-line {
+      text-align: center;
+      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-size: ${fontSize};
+      line-height: ${lineHeight};
+      font-weight: 700;
+      letter-spacing: -0.2px;
     }
     .thermal-receipt-text {
       font-family: 'Courier New', Courier, monospace, 'Lucida Console';
@@ -334,6 +511,33 @@ export function printReceiptDirectly(
       : `<div class="receipt-logo-wrap">${MADRASI_DOSA_LOGO_SVG}</div>`
     : "";
 
+  const parsed = parseReceiptSections(cleanedText);
+
+  let innerContentHtml = "";
+  if (parsed.hasStructure && parsed.headerLines) {
+    innerContentHtml = `
+      <div class="receipt-header-block">
+        <div class="receipt-divider">${escapeHtml(parsed.topDivider || "================================")}</div>
+        ${parsed.headerLines.map((l) => `<div class="receipt-header-line">${escapeHtml(l)}</div>`).join("")}
+        <div class="receipt-divider">${escapeHtml(parsed.midDivider || "================================")}</div>
+      </div>
+      <div class="thermal-receipt-body-wrap">
+        <div class="thermal-receipt-body">${escapeHtml(parsed.bodyText || "")}</div>
+      </div>
+      ${
+        parsed.footerLines && parsed.footerLines.length > 0
+          ? `
+        <div class="receipt-footer-block">
+          <div class="receipt-divider">${escapeHtml(parsed.bottomDivider || "--------------------------------")}</div>
+          ${parsed.footerLines.map((l) => `<div class="receipt-footer-line">${escapeHtml(l)}</div>`).join("")}
+        </div>`
+          : ""
+      }
+    `;
+  } else {
+    innerContentHtml = `<div class="thermal-receipt-text">${escapeHtml(cleanedText)}</div>`;
+  }
+
   const receiptHtml = `
     <!DOCTYPE html>
     <html>
@@ -345,7 +549,7 @@ export function printReceiptDirectly(
       <body>
         <div id="receipt-container" class="thermal-receipt-container">
           ${logoMarkup}
-          <div class="thermal-receipt-text">${escapeHtml(cleanedText)}</div>
+          ${innerContentHtml}
         </div>
       </body>
     </html>
@@ -395,7 +599,7 @@ export function printReceiptDirectly(
         if (el) {
           const actualHeightPx = el.scrollHeight || el.offsetHeight;
           if (actualHeightPx > 0) {
-            const measuredMm = Math.ceil((actualHeightPx * 25.4) / 96) + 4;
+            const measuredMm = Math.ceil((actualHeightPx * 25.4) / 96) + 3;
             const styleTag = doc.getElementById("thermal-print-styles");
             if (styleTag && measuredMm > 0) {
               styleTag.innerHTML = `
@@ -422,37 +626,79 @@ export function printReceiptDirectly(
                     max-width: ${contentWidth} !important;
                     box-sizing: border-box;
                     margin: 0 auto;
-                    padding: 1.5mm 0 2mm 0;
+                    padding: 1mm 0 1.5mm 0;
+                    text-align: center !important;
                     page-break-after: avoid;
                     break-after: avoid;
                   }
                   .receipt-logo-wrap {
-                    text-align: center;
-                    margin: 0 auto 1.5mm auto;
-                    padding: 0;
-                    display: block;
-                    width: 100%;
+                    text-align: center !important;
+                    margin: 0 auto 1mm auto !important;
+                    padding: 0 !important;
+                    display: block !important;
+                    width: 100% !important;
                   }
                   .receipt-logo-wrap svg,
                   .receipt-logo-wrap img {
-                    width: ${is58mm ? "36mm" : "48mm"} !important;
-                    max-width: ${is58mm ? "36mm" : "48mm"} !important;
+                    width: ${is58mm ? "20mm" : "26mm"} !important;
+                    max-width: ${is58mm ? "20mm" : "26mm"} !important;
                     height: auto !important;
                     margin: 0 auto !important;
                     display: block !important;
                     filter: grayscale(100%) contrast(250%);
                     -webkit-filter: grayscale(100%) contrast(250%);
                   }
-                  .thermal-receipt-text {
-                    font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-                    font-size: ${fontSize};
-                    line-height: ${lineHeight};
-                    font-weight: 700;
-                    letter-spacing: -0.2px;
-                    white-space: pre;
-                    word-break: normal;
-                    margin: 0;
-                    padding: 0;
+                  .receipt-header-block {
+                    text-align: center !important;
+                    width: 100% !important;
+                    margin: 0 auto !important;
+                  }
+                  .receipt-header-line {
+                    text-align: center !important;
+                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+                    font-size: ${fontSize} !important;
+                    line-height: ${lineHeight} !important;
+                    font-weight: 700 !important;
+                    letter-spacing: -0.2px !important;
+                    word-break: break-word !important;
+                  }
+                  .receipt-divider {
+                    text-align: center !important;
+                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+                    font-size: ${fontSize} !important;
+                    line-height: ${lineHeight} !important;
+                    font-weight: 700 !important;
+                    letter-spacing: -0.2px !important;
+                  }
+                  .thermal-receipt-body-wrap {
+                    text-align: center !important;
+                    width: 100% !important;
+                    margin: 0 auto !important;
+                  }
+                  .thermal-receipt-body {
+                    text-align: left !important;
+                    display: inline-block !important;
+                    margin: 0 auto !important;
+                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+                    font-size: ${fontSize} !important;
+                    line-height: ${lineHeight} !important;
+                    font-weight: 700 !important;
+                    letter-spacing: -0.2px !important;
+                    white-space: pre !important;
+                    word-break: normal !important;
+                  }
+                  .receipt-footer-block {
+                    text-align: center !important;
+                    width: 100% !important;
+                    margin: 0 auto !important;
+                  }
+                  .receipt-footer-line {
+                    text-align: center !important;
+                    font-family: 'Courier New', Courier, monospace, 'Lucida Console' !important;
+                    font-size: ${fontSize} !important;
+                    line-height: ${lineHeight} !important;
+                    font-weight: 700 !important;
+                    letter-spacing: -0.2px !important;
                   }
                 }
               `;

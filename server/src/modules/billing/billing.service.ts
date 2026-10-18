@@ -879,14 +879,37 @@ export async function fastBill(
   const dateStr = now.toLocaleString();
   const tableStr = data.tableId ? "Dine-In" : "Takeaway";
 
+function centerLine(text: string, width = 32): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  if (trimmed.length >= width) {
+    const words = trimmed.split(/\s+/);
+    const sublines: string[] = [];
+    let current = "";
+    for (const w of words) {
+      if ((current + (current ? " " : "") + w).length <= width) {
+        current += (current ? " " : "") + w;
+      } else {
+        if (current) sublines.push(centerLine(current, width));
+        current = w;
+      }
+    }
+    if (current) sublines.push(centerLine(current, width));
+    return sublines.join("\n");
+  }
+  const totalPad = width - trimmed.length;
+  const leftPad = Math.floor(totalPad / 2);
+  return " ".repeat(leftPad) + trimmed;
+}
+
   const lines = [
     "================================",
-    `     ${brandName}     `,
-    `--- ${franchiseName} ---`,
+    centerLine(brandName, 32),
+    centerLine(`--- ${franchiseName} ---`, 32),
   ];
-  if (franchiseAddress) lines.push(`  ${franchiseAddress}  `);
-  if (franchisePhone) lines.push(`  Phone: ${franchisePhone}  `);
-  if (brand?.taxNumber) lines.push(`  GSTIN: ${brand.taxNumber}  `);
+  if (franchiseAddress) lines.push(centerLine(franchiseAddress, 32));
+  if (franchisePhone) lines.push(centerLine(`Phone: ${franchisePhone}`, 32));
+  if (brand?.taxNumber) lines.push(centerLine(`GSTIN: ${brand.taxNumber}`, 32));
   lines.push("================================");
   lines.push(`Invoice: ${result.invoice.invoiceNumber}`);
   lines.push(`Order  : ${result.order.orderNumber}`);
@@ -917,7 +940,7 @@ export async function fastBill(
     lines.push(`  ${p.method.padEnd(8, " ")}: ${currSym}${p.amount.toFixed(2)} [COMPLETED]`);
   }
   lines.push("--------------------------------");
-  lines.push("Thanks For Visiting Madrasi Dosa");
+  lines.push(centerLine("Thanks For Visiting Madrasi Dosa", 32));
 
   const rawText = lines.join("\n");
 
