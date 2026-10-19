@@ -150,21 +150,21 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
       throw new AppError("KOT not found", 404);
     }
 
-    const tableStr = kot.order.tableSession?.table ? `Table: ${kot.order.tableSession.table.tableNumber}` : "Takeaway";
+    const tableStr = kot.order.tableSession?.table ? `मेज / Table: ${kot.order.tableSession.table.tableNumber}` : "पार्सल / Takeaway";
     const stationStr = kot.station ? kot.station.name : "Main Kitchen";
-    const dateStr = new Date(kot.createdAt).toLocaleString();
+    const dateStr = new Date(kot.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
     let lines = [
       "================================",
-      `     KITCHEN ORDER TICKET       `,
+      "     किचन ऑर्डर टिकट • KOT      ",
       `          ${stationStr}         `,
       "================================",
-      `KOT #: ${kot.kotNumber}`,
-      `Order: ${kot.order.orderNumber}`,
+      `टोकन / KOT #: ${kot.kotNumber}`,
+      `आर्डर / Order: ${kot.order.orderNumber}`,
       `${tableStr}`,
-      `Time: ${dateStr}`,
+      `समय / Time  : ${dateStr}`,
       "--------------------------------",
-      "Item                     Qty",
+      "व्यंजन / Item                Qty",
       "--------------------------------",
     ];
 
@@ -178,6 +178,8 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
     }
 
     lines.push("--------------------------------");
+    lines.push("*** रसोई प्रति • KITCHEN COPY ***");
+    lines.push("================================");
 
     return {
       type: "KOT",
@@ -206,7 +208,7 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
   }
 
   const brand = await prisma.brandSettings.findFirst();
-  const brandName = brand?.businessName?.trim().toUpperCase() || "RESTAURANT BRAND";
+  const brandName = brand?.businessName?.trim().toUpperCase() || "MADRASI DOSA";
   const franchiseName = invoice.franchise.name.toUpperCase();
   const franchiseAddress = invoice.franchise.address?.trim() || brand?.address?.trim() || "";
   const franchisePhone = invoice.franchise.phone?.trim() || brand?.phone?.trim() || "";
@@ -214,12 +216,17 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
   const fssai = brand?.fssaiNumber?.trim() ? `FSSAI: ${brand.fssaiNumber.trim()}` : "";
   const currSym = brand?.currencySymbol || "₹";
 
-  const tableStr = invoice.order.tableSession?.table ? `Table: ${invoice.order.tableSession.table.tableNumber}` : "Takeaway";
+  const isDineIn = !!invoice.order.tableSession?.table;
+  const tableStr = isDineIn
+    ? `डाइन-इन / Table ${invoice.order.tableSession!.table.tableNumber}`
+    : "पार्सल / Takeaway";
   const dateStr = new Date(invoice.createdAt).toLocaleString();
 
   let lines = [
     "================================",
+    "     || श्री गणेशाय नमः ||     ",
     `     ${brandName}     `,
+    "  मद्रासी डोसा • असली दक्षिण भारतीय स्वाद  ",
     `--- ${franchiseName} ---`,
   ];
 
@@ -227,7 +234,7 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
     lines.push(`  ${franchiseAddress}  `);
   }
   if (franchisePhone) {
-    lines.push(`  Phone: ${franchisePhone}  `);
+    lines.push(`  दूरभाष / Phone: ${franchisePhone}  `);
   }
   if (gstin) {
     lines.push(`  ${gstin}  `);
@@ -236,12 +243,12 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
     lines.push(`  ${fssai}  `);
   }
   lines.push("================================");
-  lines.push(`Invoice: ${invoice.invoiceNumber}`);
-  lines.push(`Order  : ${invoice.order.orderNumber}`);
+  lines.push(`बिल / Tax Invoice: ${invoice.invoiceNumber}`);
+  lines.push(`आर्डर / Order   : ${invoice.order.orderNumber}`);
   lines.push(`${tableStr}`);
-  lines.push(`Date   : ${dateStr}`);
+  lines.push(`दिनांक / Date   : ${dateStr}`);
   lines.push("--------------------------------");
-  lines.push("Item             Qty      Price");
+  lines.push("व्यंजन / Item    मात्रा/Qty   मूल्य");
   lines.push("--------------------------------");
 
   for (const item of invoice.order.items) {
@@ -252,24 +259,36 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
   }
 
   lines.push("--------------------------------");
-  lines.push(`Subtotal:             ${currSym}${Number(invoice.subtotal).toFixed(2)}`);
+  lines.push(`उपयोग / Subtotal:     ${currSym}${Number(invoice.subtotal).toFixed(2)}`);
   if (Number(invoice.discount) > 0) {
-    lines.push(`Discount:            -${currSym}${Number(invoice.discount).toFixed(2)}`);
+    lines.push(`छूट / Discount:      -${currSym}${Number(invoice.discount).toFixed(2)}`);
   }
-  lines.push(`Tax:                  ${currSym}${Number(invoice.tax).toFixed(2)}`);
+  lines.push(`कर / Tax (GST):       ${currSym}${Number(invoice.tax).toFixed(2)}`);
   lines.push("================================");
-  lines.push(`TOTAL:                ${currSym}${Number(invoice.total).toFixed(2)}`);
+  lines.push(`कुल देय / TOTAL:      ${currSym}${Number(invoice.total).toFixed(2)}`);
   lines.push("================================");
 
   if (invoice.payments.length > 0) {
-    lines.push("PAYMENTS:");
+    lines.push("भुगतान विवरण / PAYMENTS:");
     for (const p of invoice.payments) {
-      lines.push(`  ${p.method.padEnd(8, " ")}: ${currSym}${Number(p.amount).toFixed(2)} [${p.status}]`);
+      const pMethodUpper = (p.method || "").toUpperCase();
+      const methodHindi = pMethodUpper.includes("CASH")
+        ? "नकद / CASH"
+        : pMethodUpper.includes("UPI")
+        ? "यूपीआई / UPI"
+        : pMethodUpper.includes("CARD")
+        ? "कार्ड / CARD"
+        : p.method;
+      lines.push(`  ${methodHindi.padEnd(14, " ")}: ${currSym}${Number(p.amount).toFixed(2)} [${p.status}]`);
     }
   }
 
   lines.push("--------------------------------");
-  lines.push("Thanks For Visiting Madrasi Dosa");
+  lines.push("      धन्यवाद! पुनः पधारें      ");
+  lines.push(" Thank You! Please Visit Again  ");
+  lines.push("    Follow Us On Instagram:    ");
+  lines.push("     📸 @madrasidosaoffical     ");
+  lines.push("================================");
 
   return {
     type: "RECEIPT",

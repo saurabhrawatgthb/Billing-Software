@@ -941,7 +941,8 @@ export const POSPage: React.FC = () => {
         tax: taxSnapshot,
         total: totalSnapshot,
         payments: paymentRecords,
-        footerMessage: "Thanks For Visiting Madrasi Dosa",
+        instagramId: "madrasidosaoffical",
+        footerMessage: "धन्यवाद! पुनः पधारें • Visit Again",
       };
 
       // 7. INSTANT PRINT SPOOLER: Dispatches KOT FIRST (auto-cut), followed by Customer Bill (auto-cut)

@@ -100,7 +100,7 @@ export const MADRASI_DOSA_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" vi
   <defs>
     <style>
       .brand-title { font-family: 'Arial Black', Impact, 'Segoe UI', system-ui, sans-serif; font-size: 26px; font-weight: 900; letter-spacing: 2.5px; fill: #000; text-anchor: middle; }
-      .brand-sub { font-family: 'Courier New', Courier, monospace, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 2px; fill: #000; text-anchor: middle; }
+      .brand-sub { font-family: 'Nirmala UI', 'Segoe UI', 'Courier New', Courier, monospace, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; fill: #000; text-anchor: middle; }
       .brand-badge { font-family: Arial, sans-serif; font-size: 8.5px; font-weight: 800; letter-spacing: 1.5px; fill: #000; text-anchor: middle; }
     </style>
   </defs>
@@ -132,7 +132,7 @@ export const MADRASI_DOSA_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" vi
     <path d="M20,-12 Q23,-19 18,-24 Q13,-29 18,-34" fill="none" stroke="#000000" stroke-width="1.6" stroke-linecap="round"/>
   </g>
   <text x="170" y="102" class="brand-title">MADRASI DOSA</text>
-  <text x="170" y="118" class="brand-sub">AUTHENTIC SOUTH INDIAN TASTE</text>
+  <text x="170" y="118" class="brand-sub">मद्रासी डोसा • AUTHENTIC TASTE</text>
   <line x1="20" y1="128" x2="135" y2="128" stroke="#000" stroke-width="1.5"/>
   <circle cx="145" cy="128" r="2" fill="#000"/>
   <text x="170" y="131" class="brand-badge">ESTD 2024</text>
@@ -176,6 +176,7 @@ export interface BuildReceiptParams {
     amount: number;
     status?: string;
   }>;
+  instagramId?: string;
   footerMessage?: string;
 }
 
@@ -205,20 +206,20 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
   const lines: string[] = [];
 
   lines.push(divider);
-  lines.push(centerLine("KITCHEN ORDER TICKET (KOT)", 32));
+  lines.push(centerLine("किचन ऑर्डर टिकट • KOT", 32));
   lines.push(divider);
 
   const tableLabel = data.tableNumber
-    ? `TABLE: ${String(data.tableNumber).toUpperCase().startsWith("TABLE") ? data.tableNumber : `Table ${data.tableNumber}`}`
-    : `ORDER: ${data.orderType || "TAKEAWAY / COUNTER"}`;
+    ? `मेज / TABLE: ${String(data.tableNumber).toUpperCase().startsWith("TABLE") ? data.tableNumber : `Table ${data.tableNumber}`}`
+    : `पार्सल / ORDER: ${data.orderType || "TAKEAWAY / COUNTER"}`;
   lines.push(tableLabel);
 
   if (data.orderNumber) {
-    lines.push(`Token: ${data.orderNumber}`);
+    lines.push(`टोकन / Token: ${data.orderNumber}`);
   }
-  lines.push(`Time : ${data.date || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+  lines.push(`समय / Time  : ${data.date || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
   lines.push(thinDivider);
-  lines.push("Item                         Qty");
+  lines.push("व्यंजन / Item                Qty");
   lines.push(thinDivider);
 
   for (const item of data.items) {
@@ -239,11 +240,11 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
 
   if (data.instructions && data.instructions.trim()) {
     lines.push(thinDivider);
-    lines.push(`Instructions: ${data.instructions.trim()}`);
+    lines.push(`निर्देश: ${data.instructions.trim()}`);
   }
 
   lines.push(divider);
-  lines.push(centerLine("*** KITCHEN COPY ***", 32));
+  lines.push(centerLine("*** रसोई प्रति • KITCHEN COPY ***", 32));
   lines.push(divider);
 
   return lines.join("\n");
@@ -252,6 +253,7 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
 /**
  * Builds formatted thermal receipt raw text locally on the client with zero network latency.
  * All header items (Brand name, Franchise name, Address, Phone, GSTIN) and Footer are strictly center-aligned.
+ * Includes authentic Hindi greetings and labels, and Instagram handle.
  */
 export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: ThermalPaperSize = "80mm"): string {
   const currSym = data.currencySymbol || "₹";
@@ -262,7 +264,10 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
 
   const lines: string[] = [];
   lines.push(divider);
+  lines.push(centerLine("|| श्री गणेशाय नमः ||", 32));
   lines.push(centerLine(brandName, 32));
+  lines.push(centerLine("मद्रासी डोसा • असली दक्षिण भारतीय स्वाद", 32));
+
   if (franchiseName) {
     const branchLabel = franchiseName.startsWith("---") ? franchiseName : `--- ${franchiseName} ---`;
     lines.push(centerLine(branchLabel, 32));
@@ -271,7 +276,7 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
     lines.push(centerLine(data.franchiseAddress, 32));
   }
   if (data.franchisePhone) {
-    lines.push(centerLine(`Phone: ${data.franchisePhone.trim()}`, 32));
+    lines.push(centerLine(`दूरभाष / Phone: ${data.franchisePhone.trim()}`, 32));
   }
   if (data.gstin) {
     lines.push(centerLine(`GSTIN: ${data.gstin.trim()}`, 32));
@@ -280,14 +285,17 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
     lines.push(centerLine(`FSSAI: ${data.fssaiNumber.trim()}`, 32));
   }
   lines.push(divider);
-  lines.push(`Invoice: ${data.invoiceNumber}`);
+  lines.push(`बिल / Tax Invoice: ${data.invoiceNumber}`);
   if (data.orderNumber) {
-    lines.push(`Order  : ${data.orderNumber}`);
+    lines.push(`आर्डर / Order   : ${data.orderNumber}`);
   }
-  lines.push(`${data.orderType || "Takeaway"}`);
-  lines.push(`Date   : ${data.date || new Date().toLocaleString()}`);
+  const typeStr = data.orderType || "Takeaway";
+  const isDineIn = typeStr.toLowerCase().includes("dine") || typeStr.toLowerCase().includes("table");
+  const hindiType = isDineIn ? `डाइन-इन / ${typeStr}` : `पार्सल / ${typeStr}`;
+  lines.push(hindiType);
+  lines.push(`दिनांक / Date   : ${data.date || new Date().toLocaleString()}`);
   lines.push(thinDivider);
-  lines.push("Item             Qty      Price");
+  lines.push("व्यंजन / Item    मात्रा/Qty   मूल्य");
   lines.push(thinDivider);
 
   for (const item of data.items) {
@@ -304,20 +312,35 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
   }
 
   lines.push(thinDivider);
-  lines.push(`Subtotal:             ${currSym}${data.subtotal.toFixed(2)}`);
+  lines.push(`उपयोग / Subtotal:     ${currSym}${data.subtotal.toFixed(2)}`);
   if (data.discount && data.discount > 0) {
-    lines.push(`Discount:            -${currSym}${data.discount.toFixed(2)}`);
+    lines.push(`छूट / Discount:      -${currSym}${data.discount.toFixed(2)}`);
   }
-  lines.push(`Tax:                  ${currSym}${(data.tax || 0).toFixed(2)}`);
+  lines.push(`कर / Tax (GST):       ${currSym}${(data.tax || 0).toFixed(2)}`);
   lines.push(divider);
-  lines.push(`TOTAL:                ${currSym}${data.total.toFixed(2)}`);
+  lines.push(`कुल देय / TOTAL:      ${currSym}${data.total.toFixed(2)}`);
   lines.push(divider);
-  lines.push("PAYMENTS:");
+  lines.push("भुगतान विवरण / PAYMENTS:");
   for (const p of data.payments) {
-    lines.push(`  ${p.method.padEnd(8, " ")}: ${currSym}${p.amount.toFixed(2)} [${p.status || "COMPLETED"}]`);
+    const pMethodUpper = (p.method || "").toUpperCase();
+    const methodHindi = pMethodUpper.includes("CASH")
+      ? "नकद / CASH"
+      : pMethodUpper.includes("UPI")
+      ? "यूपीआई / UPI"
+      : pMethodUpper.includes("CARD")
+      ? "कार्ड / CARD"
+      : p.method;
+    lines.push(`  ${methodHindi.padEnd(14, " ")}: ${currSym}${p.amount.toFixed(2)} [${p.status || "COMPLETED"}]`);
   }
   lines.push(thinDivider);
-  lines.push(centerLine(data.footerMessage || "Thanks For Visiting Madrasi Dosa", 32));
+  lines.push(centerLine("धन्यवाद! पुनः पधारें", 32));
+  lines.push(centerLine(data.footerMessage || "Thank You! Please Visit Again", 32));
+
+  // Instagram Handle
+  const rawInsta = (data.instagramId || "madrasidosaoffical").replace(/^@/, "");
+  lines.push(centerLine("Follow Us On Instagram:", 32));
+  lines.push(centerLine(`📸 @${rawInsta}`, 32));
+  lines.push(divider);
 
   return lines.join("\n");
 }
@@ -367,6 +390,7 @@ function parseReceiptSections(text: string) {
  * - Items header and item rows (Item Name, Qty, Price) are rendered BOLD (font-weight: 800)
  * - Grand TOTAL line is rendered EXTRA BOLD (font-weight: 900) and slightly larger
  * - Metadata and summary rows have clean proportional sizing
+ * - Supports authentic Hindi/English bilingual receipt formatting
  */
 function formatReceiptBodyHtml(bodyLines: string[]): string {
   let inItemsTable = false;
@@ -376,7 +400,7 @@ function formatReceiptBodyHtml(bodyLines: string[]): string {
       const trimmed = line.trim();
       if (!trimmed) return "";
 
-      if (/^Item\s+Qty\s+Price/i.test(trimmed)) {
+      if (/^(Item\s+Qty\s+Price|व्यंजन\s*\/)/i.test(trimmed)) {
         inItemsTable = true;
         return `<div class="receipt-items-header">${escapeHtml(line)}</div>`;
       }
@@ -389,11 +413,11 @@ function formatReceiptBodyHtml(bodyLines: string[]): string {
         return `<div class="receipt-item-row">${escapeHtml(line)}</div>`;
       }
 
-      if (/^TOTAL:/i.test(trimmed)) {
+      if (/^(TOTAL:|कुल\s*देय)/i.test(trimmed)) {
         return `<div class="receipt-total-row">${escapeHtml(line)}</div>`;
       }
 
-      if (/^(Subtotal|Tax|Discount):/i.test(trimmed)) {
+      if (/^(Subtotal|Tax|Discount|उपयोग|उप-योग|छूट|कर):/i.test(trimmed)) {
         return `<div class="receipt-summary-row">${escapeHtml(line)}</div>`;
       }
 
@@ -401,8 +425,12 @@ function formatReceiptBodyHtml(bodyLines: string[]): string {
         return `<div class="receipt-divider-line">${escapeHtml(line)}</div>`;
       }
 
-      if (/^(Invoice|Order|Date|Dine-In|Takeaway|Table)/i.test(trimmed)) {
+      if (/^(Invoice|Order|Date|Dine-In|Takeaway|Table|बिल|आर्डर|दिनांक|डाइन-इन|पार्सल|मेज)/i.test(trimmed)) {
         return `<div class="receipt-meta-row">${escapeHtml(line)}</div>`;
+      }
+
+      if (/^(भुगतान|PAYMENTS|नकद|यूपीआई|कार्ड)/i.test(trimmed)) {
+        return `<div class="receipt-summary-row">${escapeHtml(line)}</div>`;
       }
 
       return `<div class="receipt-default-row">${escapeHtml(line)}</div>`;
@@ -415,10 +443,10 @@ function formatReceiptBodyHtml(bodyLines: string[]): string {
  */
 function formatKOTBodyHtml(kotData: BuildKOTParams, _is58mm?: boolean): string {
   const tableStr = kotData.tableNumber
-    ? String(kotData.tableNumber).toUpperCase().startsWith("TABLE")
+    ? String(kotData.tableNumber).toUpperCase().startsWith("TABLE") || String(kotData.tableNumber).startsWith("मेज")
       ? String(kotData.tableNumber)
-      : `TABLE ${kotData.tableNumber}`
-    : (kotData.orderType || "TAKEAWAY / COUNTER").toUpperCase();
+      : `मेज / TABLE ${kotData.tableNumber}`
+    : `पार्सल / ${(kotData.orderType || "TAKEAWAY / COUNTER").toUpperCase()}`;
 
   const itemsHtml = kotData.items
     .map((item) => {
@@ -435,16 +463,16 @@ function formatKOTBodyHtml(kotData: BuildKOTParams, _is58mm?: boolean): string {
 
   return `
     <div class="kot-container">
-      <div class="kot-header-badge">KITCHEN ORDER TICKET (KOT)</div>
+      <div class="kot-header-badge">किचन ऑर्डर टिकट • KITCHEN TICKET (KOT)</div>
       <div class="kot-table-banner">${escapeHtml(tableStr)}</div>
       <div class="kot-meta-row">
-        ${kotData.orderNumber ? `<span>Token: ${escapeHtml(kotData.orderNumber)}</span>` : ""}
-        <span>Time: ${escapeHtml(kotData.date || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>
+        ${kotData.orderNumber ? `<span>टोकन/Token: ${escapeHtml(kotData.orderNumber)}</span>` : ""}
+        <span>समय/Time: ${escapeHtml(kotData.date || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>
       </div>
       <div class="kot-divider">================================</div>
       <div class="kot-table-head">
-        <span>ITEM</span>
-        <span>QTY</span>
+        <span>व्यंजन (ITEM)</span>
+        <span>मात्रा (QTY)</span>
       </div>
       <div class="kot-divider">--------------------------------</div>
       <div class="kot-items-list">
@@ -453,11 +481,11 @@ function formatKOTBodyHtml(kotData: BuildKOTParams, _is58mm?: boolean): string {
       ${
         kotData.instructions && kotData.instructions.trim()
           ? `<div class="kot-divider">--------------------------------</div>
-             <div class="kot-special-note">Special: ${escapeHtml(kotData.instructions.trim())}</div>`
+             <div class="kot-special-note">विशेष निर्देश / Special: ${escapeHtml(kotData.instructions.trim())}</div>`
           : ""
       }
       <div class="kot-divider">================================</div>
-      <div class="kot-footer">*** KITCHEN COPY ***</div>
+      <div class="kot-footer">*** रसोई प्रति • KITCHEN COPY ***</div>
     </div>
   `;
 }
@@ -535,7 +563,7 @@ function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm
       width: 100%;
       text-align: center;
       margin: 0 auto;
-      font-family: 'Courier New', Courier, monospace;
+      font-family: 'Nirmala UI', 'Segoe UI', 'Arial Unicode MS', Mangal, 'Courier New', Courier, monospace;
     }
     .kot-header-badge {
       font-size: ${is58mm ? "10px" : "12px"};
@@ -617,7 +645,7 @@ function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm
       text-align: center;
       margin: 4mm 0;
       padding: 1.5mm 0;
-      font-family: 'Courier New', Courier, monospace;
+      font-family: 'Nirmala UI', 'Segoe UI', 'Courier New', Courier, monospace;
       font-size: ${is58mm ? "9px" : "11px"};
       font-weight: 800;
       letter-spacing: 0.5px;
@@ -649,16 +677,16 @@ function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm
     }
     .receipt-header-line {
       text-align: center;
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-family: 'Nirmala UI', 'Segoe UI', 'Arial Unicode MS', Mangal, 'Courier New', Courier, monospace;
       font-size: ${is58mm ? "8px" : "9.5px"};
-      line-height: 1.2;
+      line-height: 1.25;
       font-weight: 700;
-      letter-spacing: -0.2px;
+      letter-spacing: -0.1px;
       word-break: break-word;
     }
     .receipt-divider {
       text-align: center;
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-family: 'Nirmala UI', 'Segoe UI', 'Courier New', Courier, monospace;
       font-size: ${is58mm ? "8px" : "9.5px"};
       line-height: 1.15;
       font-weight: 700;
@@ -675,23 +703,23 @@ function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm
       margin: 0 auto;
     }
     .receipt-items-header {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-family: 'Nirmala UI', 'Segoe UI', 'Arial Unicode MS', Mangal, 'Courier New', Courier, monospace;
       font-size: ${is58mm ? "9.5px" : "11.5px"};
       font-weight: 800;
       line-height: ${lineHeight};
       white-space: pre;
-      letter-spacing: -0.2px;
+      letter-spacing: -0.1px;
     }
     .receipt-item-row {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-family: 'Nirmala UI', 'Segoe UI', 'Arial Unicode MS', Mangal, 'Courier New', Courier, monospace;
       font-size: ${is58mm ? "9.5px" : "11.5px"};
       font-weight: 800;
       line-height: ${lineHeight};
       white-space: pre;
-      letter-spacing: -0.2px;
+      letter-spacing: -0.1px;
     }
     .receipt-total-row {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-family: 'Nirmala UI', 'Segoe UI', 'Arial Unicode MS', Mangal, 'Courier New', Courier, monospace;
       font-size: ${is58mm ? "11px" : "13.5px"};
       font-weight: 900;
       line-height: 1.35;
@@ -699,35 +727,35 @@ function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm
       letter-spacing: 0.1px;
     }
     .receipt-summary-row {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-family: 'Nirmala UI', 'Segoe UI', 'Arial Unicode MS', Mangal, 'Courier New', Courier, monospace;
       font-size: ${is58mm ? "9px" : "10.5px"};
-      font-weight: 600;
+      font-weight: 700;
       line-height: ${lineHeight};
       white-space: pre;
-      letter-spacing: -0.2px;
+      letter-spacing: -0.1px;
     }
     .receipt-meta-row {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-family: 'Nirmala UI', 'Segoe UI', 'Arial Unicode MS', Mangal, 'Courier New', Courier, monospace;
       font-size: ${is58mm ? "8.5px" : "10px"};
-      font-weight: 600;
+      font-weight: 700;
       line-height: 1.25;
       white-space: pre;
-      letter-spacing: -0.2px;
+      letter-spacing: -0.1px;
     }
     .receipt-divider-line {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-family: 'Nirmala UI', 'Segoe UI', 'Courier New', Courier, monospace;
       font-size: ${is58mm ? "8.5px" : "10px"};
       font-weight: 700;
       line-height: 1.1;
       white-space: pre;
     }
     .receipt-default-row {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-family: 'Nirmala UI', 'Segoe UI', 'Arial Unicode MS', Mangal, 'Courier New', Courier, monospace;
       font-size: ${is58mm ? "9px" : "10.5px"};
       font-weight: 600;
       line-height: ${lineHeight};
       white-space: pre;
-      letter-spacing: -0.2px;
+      letter-spacing: -0.1px;
     }
     .receipt-footer-block {
       text-align: center;
@@ -736,11 +764,11 @@ function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm
     }
     .receipt-footer-line {
       text-align: center;
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
+      font-family: 'Nirmala UI', 'Segoe UI', 'Arial Unicode MS', Mangal, 'Courier New', Courier, monospace;
       font-size: ${is58mm ? "8.5px" : "10px"};
       line-height: 1.25;
       font-weight: 700;
-      letter-spacing: -0.2px;
+      letter-spacing: -0.1px;
     }
   `;
 }
