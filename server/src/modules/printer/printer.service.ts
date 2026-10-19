@@ -261,7 +261,6 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
   if (Number(invoice.discount) > 0) {
     lines.push(`Discount:            -${currSym}${Number(invoice.discount).toFixed(2)}`);
   }
-  lines.push(`Tax (GST):            ${currSym}${Number(invoice.tax).toFixed(2)}`);
   lines.push("================================");
   lines.push(`TOTAL:                ${currSym}${Number(invoice.total).toFixed(2)}`);
   lines.push("================================");

@@ -37,7 +37,6 @@ import {
   printKOTThenBillSequentially,
   getSavedPaperSize,
   setSavedPaperSize,
-  buildThermalReceiptText,
   type ThermalPaperSize,
   type BuildKOTParams,
   type BuildReceiptParams,
@@ -961,8 +960,7 @@ export const POSPage: React.FC = () => {
             logoUrl: brandSettings?.logoUrl || undefined,
           });
         } else {
-          const receiptText = buildThermalReceiptText(billParams, paperSize);
-          printReceiptDirectly(receiptText, {
+          printReceiptDirectly(billParams, {
             title: `Invoice #${invoiceNumber}`,
             paperSize,
             logoUrl: brandSettings?.logoUrl || undefined,

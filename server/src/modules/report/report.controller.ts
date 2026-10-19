@@ -96,22 +96,8 @@ export async function global(req: AuthenticatedRequest, res: Response, next: Nex
 export async function dashboard(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const isSuperAdmin = req.user?.role === "SUPER_ADMIN";
-    const isCashier = req.user?.role === "CASHIER";
     const franchiseId = getFranchiseId(req);
     const stats = await getDashboardStats(franchiseId, isSuperAdmin);
-
-    // Keep total revenue and financial metrics confidential from CASHIER
-    if (isCashier && stats) {
-      const sanitizedStats: any = { ...stats };
-      delete sanitizedStats.todayRevenue;
-      delete sanitizedStats.monthlyRevenue;
-      delete sanitizedStats.revenue;
-      // Strip employees list and salaries from cashier
-      sanitizedStats.employees = [];
-      sanitizedStats.users = [];
-      return res.json({ success: true, data: sanitizedStats });
-    }
-
     return res.json({ success: true, data: stats });
   } catch (error) {
     next(error);

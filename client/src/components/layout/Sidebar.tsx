@@ -104,7 +104,7 @@ const navItems: NavItem[] = [
     name: "Unforeseen Expenses",
     to: "/expenses",
     icon: <WalletCards className="w-5 h-5" />,
-    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "ACCOUNTANT"],
+    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER", "ACCOUNTANT"],
   },
   {
     name: "Franchises",
@@ -116,13 +116,13 @@ const navItems: NavItem[] = [
     name: "Users & Staff Access",
     to: "/users",
     icon: <Users className="w-5 h-5" />,
-    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER"],
+    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER"],
   },
   {
     name: "Employees",
     to: "/employees",
     icon: <UserCheck className="w-5 h-5" />,
-    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "HR", "ACCOUNTANT"],
+    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER", "HR", "ACCOUNTANT"],
   },
   {
     name: "Attendance",
@@ -140,7 +140,7 @@ const navItems: NavItem[] = [
     name: "Employee Advances",
     to: "/advances",
     icon: <HandCoins className="w-5 h-5" />,
-    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "HR", "ACCOUNTANT"],
+    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER", "HR", "ACCOUNTANT"],
   },
   {
     name: "Payroll",
