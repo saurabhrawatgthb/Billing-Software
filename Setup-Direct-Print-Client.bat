@@ -86,8 +86,8 @@ echo.
 echo   * Shortcut: %DESKTOP_DIR%\Madrasi Dosa POS (Direct Print).lnk
 echo.
 echo   IMPORTANT FINAL STEP ON THIS COMPUTER:
-echo   1. Open Windows 'Printers & scanners' (Settings > Bluetooth & devices).
-echo   2. Click on your physical Thermal Receipt Printer (e.g. POS-80 / TVS).
+echo   1. Open Windows Printers and Scanners (Settings ^> Bluetooth ^& devices^).
+echo   2. Click on your physical Thermal Receipt Printer (e.g. POS-80 / TVS^).
 echo   3. Click 'Set as default'.
 echo.
 echo   Now whenever you open the Desktop shortcut and click 'Complete Payment',
