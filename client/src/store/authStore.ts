@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { User } from "../types/index.js";
-import { joinFranchiseRoom } from "../services/socket.js";
+import { joinFranchiseRoom, joinSuperAdminRoom } from "../services/socket.js";
 
 interface AuthState {
   user: User | null;
@@ -37,6 +37,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (franchiseId) {
       localStorage.setItem("rms_selected_franchise", franchiseId);
       joinFranchiseRoom(franchiseId);
+    }
+    if (user.role === "SUPER_ADMIN") {
+      joinSuperAdminRoom();
     }
     set({
       user,

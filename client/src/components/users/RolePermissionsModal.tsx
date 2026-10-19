@@ -12,6 +12,7 @@ import { api, extractErrorMessage } from "../../services/api.js";
 import type { Franchise } from "../../types/index.js";
 import { Modal } from "../common/Modal.js";
 import { Button } from "../common/Button.js";
+import { useAuthStore } from "../../store/authStore.js";
 
 interface RolePermissionsModalProps {
   isOpen: boolean;
@@ -25,7 +26,20 @@ export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({
   franchises,
 }) => {
   const queryClient = useQueryClient();
-  const [selectedFranchiseId, setSelectedFranchiseId] = useState<string>("");
+  const { selectedFranchiseId: authFranchiseId } = useAuthStore();
+  const [selectedFranchiseId, setSelectedFranchiseId] = useState<string>(() => {
+    return authFranchiseId || (franchises.length === 1 ? franchises[0].id : "");
+  });
+
+  useEffect(() => {
+    if (isOpen) {
+      if (authFranchiseId) {
+        setSelectedFranchiseId(authFranchiseId);
+      } else if (franchises.length === 1 && !selectedFranchiseId) {
+        setSelectedFranchiseId(franchises[0].id);
+      }
+    }
+  }, [isOpen, authFranchiseId, franchises]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -87,6 +101,7 @@ export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["role-permissions"] });
+      queryClient.invalidateQueries({ queryKey: ["permissions"] });
       setSuccessMessage("Franchise Manager permissions saved successfully!");
       setFormError(null);
       setTimeout(() => setSuccessMessage(null), 3000);

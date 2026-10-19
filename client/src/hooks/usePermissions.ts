@@ -19,8 +19,8 @@ export interface UserPermissions {
 
 export function usePermissions(): UserPermissions {
   const { user, selectedFranchiseId } = useAuthStore();
-  const franchiseId = selectedFranchiseId || user?.franchiseId;
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const franchiseId = isSuperAdmin ? (selectedFranchiseId || user?.franchiseId) : user?.franchiseId;
 
   const { data: perm } = useQuery({
     queryKey: ["role-permissions", franchiseId],
@@ -31,7 +31,7 @@ export function usePermissions(): UserPermissions {
       return res.data.data;
     },
     enabled: !!user && !isSuperAdmin,
-    staleTime: 5000,
+    staleTime: 1000,
   });
 
   return {

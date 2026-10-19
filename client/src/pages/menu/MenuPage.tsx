@@ -70,8 +70,8 @@ export const MenuPage: React.FC = () => {
     enabled: isBrandOwner,
   });
 
-  // Effective franchise context: selected in navbar, or chosen in modal, or user's assigned franchise, or sole franchise
-  const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId || targetFranchiseId || franchises[0]?.id || "";
+  // Effective franchise context: manager's own branch, or selected in navbar by super admin, or chosen in modal
+  const effectiveFranchiseId = user?.franchiseId || selectedFranchiseId || targetFranchiseId || franchises[0]?.id || "";
 
   // Fetch Categories
   const { data: categories = [], isFetching: isFetchingCats } = useQuery<Category[]>({
@@ -115,7 +115,7 @@ export const MenuPage: React.FC = () => {
   // Item Mutation
   const saveItemMutation = useMutation({
     mutationFn: async (data: typeof itemFormData) => {
-      const franchiseToUse = targetFranchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id;
+      const franchiseToUse = targetFranchiseId || effectiveFranchiseId || user?.franchiseId || selectedFranchiseId || franchises[0]?.id;
       const catName = categories.find((c) => c.id === data.categoryId)?.name || "";
       const isPizzaCat = catName.toLowerCase().includes("pizza");
 
@@ -208,7 +208,7 @@ export const MenuPage: React.FC = () => {
 
   const handleOpenCreateItem = (forcePizza = false) => {
     setEditingItem(null);
-    setTargetFranchiseId(selectedFranchiseId || franchises[0]?.id || "");
+    setTargetFranchiseId(effectiveFranchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id || "");
     const pizzaCat = categories.find((c) => c.name.toLowerCase().includes("pizza"));
     const defaultCat = forcePizza && pizzaCat
       ? pizzaCat.id
@@ -269,7 +269,7 @@ export const MenuPage: React.FC = () => {
 
   const handleOpenCreateCategory = () => {
     setEditingCategory(null);
-    setTargetFranchiseId(selectedFranchiseId || user?.franchiseId || franchises[0]?.id || "");
+    setTargetFranchiseId(effectiveFranchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id || "");
     setCategoryFormData({ name: "", description: "", isActive: true });
     setFormError(null);
     setIsCategoryModalOpen(true);

@@ -134,6 +134,26 @@ export async function updatePermissionsForRole(
     });
   }
 
+  // If fId is null (Global Matrix modified), update all franchise records as well so global settings propagate instantly
+  if (!fId) {
+    await prisma.rolePermission.updateMany({
+      where: { role },
+      data: {
+        ...(settings.canEditMenu !== undefined ? { canEditMenu: settings.canEditMenu } : {}),
+        ...(settings.canEditPrices !== undefined ? { canEditPrices: settings.canEditPrices } : {}),
+        ...(settings.canVoidBills !== undefined ? { canVoidBills: settings.canVoidBills } : {}),
+        ...(settings.canManageInventory !== undefined ? { canManageInventory: settings.canManageInventory } : {}),
+        ...(settings.canManageEmployees !== undefined ? { canManageEmployees: settings.canManageEmployees } : {}),
+        ...(settings.canViewReports !== undefined ? { canViewReports: settings.canViewReports } : {}),
+        ...(settings.canManageCRM !== undefined ? { canManageCRM: settings.canManageCRM } : {}),
+        ...(settings.canManagePrinters !== undefined ? { canManagePrinters: settings.canManagePrinters } : {}),
+        ...(settings.canManageTables !== undefined ? { canManageTables: settings.canManageTables } : {}),
+        ...(settings.canApplyDiscounts !== undefined ? { canApplyDiscounts: settings.canApplyDiscounts } : {}),
+        ...(settings.maxDiscountPercent !== undefined ? { maxDiscountPercent: settings.maxDiscountPercent } : {}),
+      },
+    });
+  }
+
   await logAudit({
     franchiseId: fId,
     userId: currentUserId,
@@ -145,9 +165,9 @@ export async function updatePermissionsForRole(
 
   if (fId) {
     emitToFranchise(fId, "permissions:updated", saved);
-  } else {
-    broadcastEvent("permissions:updated", saved);
   }
+  // Broadcast to all sockets across all open terminals and windows
+  broadcastEvent("permissions:updated", saved);
 
   return saved;
 }

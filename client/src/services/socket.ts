@@ -2,16 +2,23 @@ import { io, Socket } from "socket.io-client";
 
 let socket: Socket | null = null;
 
-const SOCKET_BASE_URL = 
-  import.meta.env.VITE_SOCKET_URL || 
-  (import.meta.env.VITE_API_URL ? String(import.meta.env.VITE_API_URL).replace(/\/api\/?$/, "") : "http://localhost:5000");
+const SOCKET_BASE_URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  (import.meta.env.VITE_API_URL
+    ? String(import.meta.env.VITE_API_URL).replace(/\/api\/?$/, "")
+    : typeof window !== "undefined"
+      ? window.location.port === "5000"
+        ? window.location.origin
+        : `${window.location.protocol}//${window.location.hostname}:5000`
+      : "http://localhost:5000");
 
 export function getSocket(): Socket {
   if (!socket) {
     socket = io(SOCKET_BASE_URL, {
       autoConnect: true,
       reconnection: true,
-      reconnectionDelay: 1000,
+      reconnectionDelay: 500,
+      reconnectionAttempts: Infinity,
       transports: ["websocket", "polling"],
     });
 
@@ -38,15 +45,18 @@ export function getSocket(): Socket {
 }
 
 export function joinFranchiseRoom(franchiseId: string) {
+  if (!franchiseId) return;
   const s = getSocket();
-  if (s.connected) {
-    s.emit("join-franchise", franchiseId);
-  }
+  s.emit("join-franchise", franchiseId);
+}
+
+export function joinSuperAdminRoom() {
+  const s = getSocket();
+  s.emit("join-super-admin");
 }
 
 export function joinStationRoom(franchiseId: string, stationId: string) {
+  if (!franchiseId || !stationId) return;
   const s = getSocket();
-  if (s.connected) {
-    s.emit("join-station", { franchiseId, stationId });
-  }
+  s.emit("join-station", { franchiseId, stationId });
 }

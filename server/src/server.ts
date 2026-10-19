@@ -2,6 +2,8 @@ import http from "http";
 import express, { type Request, type Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
+import fs from "fs";
 
 import authRoutes from "./modules/auth/auth.routes.js";
 import franchiseRoutes from "./modules/franchise/franchise.routes.js";
@@ -107,6 +109,25 @@ app.use("/api/brand-settings", brandRoutes);
 app.use("/api/aggregators", aggregatorRoutes);
 app.use("/api/permissions", permissionRoutes);
 app.use("/api/registers", registerRoutes);
+
+// SPA Static Asset Serving & Wildcard Fallback Route
+const clientDist = fs.existsSync(path.resolve(process.cwd(), "../client/dist"))
+  ? path.resolve(process.cwd(), "../client/dist")
+  : path.resolve(process.cwd(), "client/dist");
+
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get("*", (req: Request, res: Response, next) => {
+    if (req.path.startsWith("/api")) {
+      return next();
+    }
+    const indexPath = path.join(clientDist, "index.html");
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
+    next();
+  });
+}
 
 // Centralized error handler
 app.use(errorHandler);
