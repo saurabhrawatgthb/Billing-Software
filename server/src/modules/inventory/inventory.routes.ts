@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, authorizeRole } from "../../middleware/auth.js";
+import { authenticate, authorizeRole, authorizeWithPermission } from "../../middleware/auth.js";
 import { UserRole } from "@prisma/client";
 import {
   getInventoryItemsHandler,
@@ -20,12 +20,12 @@ router.get("/", authorizeRole(UserRole.SUPER_ADMIN, UserRole.FRANCHISE_MANAGER, 
 router.get("/stats", authorizeRole(UserRole.SUPER_ADMIN, UserRole.FRANCHISE_MANAGER, UserRole.CASHIER), getStatsHandler);
 router.get("/transactions", authorizeRole(UserRole.SUPER_ADMIN, UserRole.FRANCHISE_MANAGER, UserRole.CASHIER), getTransactionsHandler);
 
-// Stock-In (Cashier and Manager can log fresh inventory)
-router.post("/stock-in", authorizeRole(UserRole.SUPER_ADMIN, UserRole.FRANCHISE_MANAGER, UserRole.CASHIER), stockInHandler);
+// Stock-In (Cashier and Manager with permission can log fresh inventory)
+router.post("/stock-in", authorizeWithPermission("canManageInventory", "CASHIER"), stockInHandler);
 
-// Create item, update, adjust (Manager & Super Admin)
-router.post("/", authorizeRole(UserRole.SUPER_ADMIN, UserRole.FRANCHISE_MANAGER), createInventoryItemHandler);
-router.put("/:id", authorizeRole(UserRole.SUPER_ADMIN, UserRole.FRANCHISE_MANAGER), updateInventoryItemHandler);
-router.post("/adjust", authorizeRole(UserRole.SUPER_ADMIN, UserRole.FRANCHISE_MANAGER, UserRole.CASHIER), adjustStockHandler);
+// Create item, update, adjust (Protected by canManageInventory permission)
+router.post("/", authorizeWithPermission("canManageInventory"), createInventoryItemHandler);
+router.put("/:id", authorizeWithPermission("canManageInventory"), updateInventoryItemHandler);
+router.post("/adjust", authorizeWithPermission("canManageInventory", "CASHIER"), adjustStockHandler);
 
 export default router;

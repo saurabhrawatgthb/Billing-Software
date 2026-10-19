@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Edit2, Trash2, CheckCircle2, XCircle, Tag, ChefHat } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Plus, Search, Edit2, Trash2, CheckCircle2, XCircle, Tag, ChefHat, Building2, Copy, RefreshCw } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
-import type { Category, MenuItem, PreparationStation } from "../../types/index.js";
+import type { Category, MenuItem, PreparationStation, Franchise } from "../../types/index.js";
 import { Card } from "../../components/common/Card.js";
 import { Button } from "../../components/common/Button.js";
 import { Input } from "../../components/common/Input.js";
@@ -12,15 +13,22 @@ import { Modal } from "../../components/common/Modal.js";
 import { Badge } from "../../components/common/Badge.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
+import { CloneMenuModal } from "../../components/menu/CloneMenuModal.js";
+import { usePermissions } from "../../hooks/usePermissions.js";
 
 export const MenuPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { selectedFranchiseId, user } = useAuthStore();
-  const isBrandOwner = user?.role === "SUPER_ADMIN";
+  const { selectedFranchiseId, setSelectedFranchise, user } = useAuthStore();
+  const { isSuperAdmin, canEditMenu, canEditPrices } = usePermissions();
+  const canModifyMenu = isSuperAdmin || canEditMenu;
+  const canModifyDishes = isSuperAdmin || canEditMenu || canEditPrices;
+  const isBrandOwner = isSuperAdmin;
 
   const [activeTab, setActiveTab] = useState<"items" | "categories">("items");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("");
+  const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
+  const [cloneNotification, setCloneNotification] = useState<string | null>(null);
 
   // Item Modal State
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -32,6 +40,11 @@ export const MenuPage: React.FC = () => {
     code: "",
     description: "",
     price: 150,
+    hasSizes: false,
+    pricingType: "SINGLE" as "SINGLE" | "SIZES_SML" | "NORMAL_LOADED",
+    priceSmall: "" as number | string,
+    priceMedium: "" as number | string,
+    priceLarge: "" as number | string,
     isAvailable: true,
   });
 
@@ -45,48 +58,100 @@ export const MenuPage: React.FC = () => {
   });
 
   const [formError, setFormError] = useState<string | null>(null);
+  const [targetFranchiseId, setTargetFranchiseId] = useState<string>("");
+
+  // Fetch Franchises for Brand Owner
+  const { data: franchises = [] } = useQuery<Franchise[]>({
+    queryKey: ["menu-franchises"],
+    queryFn: async () => {
+      const res = await api.get("/franchises");
+      return res.data.data;
+    },
+    enabled: isBrandOwner,
+  });
+
+  // Effective franchise context: manager's own branch, or selected in navbar by super admin, or chosen in modal
+  const effectiveFranchiseId = user?.franchiseId || selectedFranchiseId || targetFranchiseId || franchises[0]?.id || "";
 
   // Fetch Categories
-  const { data: categories = [] } = useQuery<Category[]>({
-    queryKey: ["categories", selectedFranchiseId],
+  const { data: categories = [], isFetching: isFetchingCats } = useQuery<Category[]>({
+    queryKey: ["categories", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/menu/categories");
+      const url = effectiveFranchiseId
+        ? `/menu/categories?franchiseId=${effectiveFranchiseId}`
+        : "/menu/categories";
+      const res = await api.get(url);
       return res.data.data;
     },
   });
 
   // Fetch Preparation Stations
   const { data: stations = [] } = useQuery<PreparationStation[]>({
-    queryKey: ["stations", selectedFranchiseId],
+    queryKey: ["stations", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/menu/stations");
-      return res.data.data;
-    },
-  });
-
-  // Fetch Menu Items
-  const { data: menuItems = [], isLoading } = useQuery<MenuItem[]>({
-    queryKey: ["menu-items", selectedFranchiseId, selectedCategoryFilter],
-    queryFn: async () => {
-      const url = selectedCategoryFilter
-        ? `/menu/items?categoryId=${selectedCategoryFilter}`
-        : "/menu/items";
+      const url = effectiveFranchiseId
+        ? `/menu/stations?franchiseId=${effectiveFranchiseId}`
+        : "/menu/stations";
       const res = await api.get(url);
       return res.data.data;
     },
   });
 
+  // Fetch Menu Items
+  const { data: menuItems = [], isLoading, isFetching: isFetchingItems } = useQuery<MenuItem[]>({
+    queryKey: ["menu-items", effectiveFranchiseId, selectedCategoryFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (effectiveFranchiseId) params.append("franchiseId", effectiveFranchiseId);
+      if (selectedCategoryFilter) params.append("categoryId", selectedCategoryFilter);
+      const url = params.toString() ? `/menu/items?${params.toString()}` : "/menu/items";
+      const res = await api.get(url);
+      return res.data.data;
+    },
+  });
+
+  const isMenuSyncing = isFetchingCats || isFetchingItems;
+
   // Item Mutation
   const saveItemMutation = useMutation({
     mutationFn: async (data: typeof itemFormData) => {
+      const franchiseToUse = targetFranchiseId || effectiveFranchiseId || user?.franchiseId || selectedFranchiseId || franchises[0]?.id;
+      const catName = categories.find((c) => c.id === data.categoryId)?.name || "";
+      const isPizzaCat = catName.toLowerCase().includes("pizza");
+
+      const effectiveHasSizes = isPizzaCat && data.pricingType !== "SINGLE";
+      let basePrice = Number(data.price);
+      let pSmall: number | null = null;
+      let pMed: number | null = null;
+      let pLarge: number | null = null;
+
+      if (effectiveHasSizes) {
+        if (data.pricingType === "SIZES_SML") {
+          pSmall = data.priceSmall !== "" ? Number(data.priceSmall) : null;
+          pMed = data.priceMedium !== "" ? Number(data.priceMedium) : null;
+          pLarge = data.priceLarge !== "" ? Number(data.priceLarge) : null;
+          basePrice = Number(pMed || pSmall || pLarge || data.price || 0);
+        } else if (data.pricingType === "NORMAL_LOADED") {
+          pSmall = data.priceSmall !== "" ? Number(data.priceSmall) : null; // Normal price
+          pMed = null; // No medium for normal & loaded
+          pLarge = data.priceLarge !== "" ? Number(data.priceLarge) : null; // Loaded price
+          basePrice = Number(pSmall || pLarge || data.price || 0);
+        }
+      }
+
       const payload = {
         categoryId: data.categoryId,
         stationId: data.stationId || null,
         name: data.name,
         code: data.code.trim().toUpperCase(),
         description: data.description || null,
-        price: Number(data.price),
+        price: basePrice > 0 ? basePrice : 100,
+        hasSizes: effectiveHasSizes,
+        priceSmall: pSmall,
+        priceMedium: pMed,
+        priceLarge: pLarge,
         isAvailable: data.isAvailable,
+        franchiseId: franchiseToUse,
       };
       if (editingItem) {
         return api.put(`/menu/items/${editingItem.id}`, payload);
@@ -113,10 +178,15 @@ export const MenuPage: React.FC = () => {
   // Category Mutation
   const saveCategoryMutation = useMutation({
     mutationFn: async (data: typeof categoryFormData) => {
+      const franchiseToUse = targetFranchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id;
+      const payload = {
+        ...data,
+        franchiseId: franchiseToUse,
+      };
       if (editingCategory) {
-        return api.put(`/menu/categories/${editingCategory.id}`, data);
+        return api.put(`/menu/categories/${editingCategory.id}`, payload);
       }
-      return api.post("/menu/categories", data);
+      return api.post("/menu/categories", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
@@ -136,15 +206,28 @@ export const MenuPage: React.FC = () => {
     onError: (err) => alert(extractErrorMessage(err)),
   });
 
-  const handleOpenCreateItem = () => {
+  const handleOpenCreateItem = (forcePizza = false) => {
     setEditingItem(null);
+    setTargetFranchiseId(effectiveFranchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id || "");
+    const pizzaCat = categories.find((c) => c.name.toLowerCase().includes("pizza"));
+    const defaultCat = forcePizza && pizzaCat
+      ? pizzaCat.id
+      : (selectedCategoryFilter || categories[0]?.id || "");
+    const catName = categories.find((c) => c.id === defaultCat)?.name || "";
+    const isPizzaCategory = catName.toLowerCase().includes("pizza");
+
     setItemFormData({
-      categoryId: categories[0]?.id || "",
+      categoryId: defaultCat,
       stationId: stations[0]?.id || "",
       name: "",
-      code: "",
+      code: isPizzaCategory ? `PIZ-${Math.floor(100 + Math.random() * 900)}` : "",
       description: "",
       price: 200,
+      hasSizes: isPizzaCategory,
+      pricingType: isPizzaCategory ? "SIZES_SML" : "SINGLE",
+      priceSmall: 150,
+      priceMedium: 250,
+      priceLarge: 350,
       isAvailable: true,
     });
     setFormError(null);
@@ -153,6 +236,19 @@ export const MenuPage: React.FC = () => {
 
   const handleOpenEditItem = (item: MenuItem) => {
     setEditingItem(item);
+    setTargetFranchiseId(item.franchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id || "");
+    const catName = item.category?.name || categories.find((c) => c.id === item.categoryId)?.name || "";
+    const isPizzaCategory = catName.toLowerCase().includes("pizza");
+
+    let pricingType: "SINGLE" | "SIZES_SML" | "NORMAL_LOADED" = "SINGLE";
+    if (isPizzaCategory && item.hasSizes) {
+      if (item.priceMedium != null && Number(item.priceMedium) > 0) {
+        pricingType = "SIZES_SML";
+      } else {
+        pricingType = "NORMAL_LOADED";
+      }
+    }
+
     setItemFormData({
       categoryId: item.categoryId,
       stationId: item.stationId || "",
@@ -160,6 +256,11 @@ export const MenuPage: React.FC = () => {
       code: item.code || "",
       description: item.description || "",
       price: Number(item.price),
+      hasSizes: isPizzaCategory && Boolean(item.hasSizes),
+      pricingType,
+      priceSmall: item.priceSmall != null ? item.priceSmall : 150,
+      priceMedium: item.priceMedium != null ? item.priceMedium : 250,
+      priceLarge: item.priceLarge != null ? item.priceLarge : 350,
       isAvailable: item.isAvailable,
     });
     setFormError(null);
@@ -168,6 +269,7 @@ export const MenuPage: React.FC = () => {
 
   const handleOpenCreateCategory = () => {
     setEditingCategory(null);
+    setTargetFranchiseId(effectiveFranchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id || "");
     setCategoryFormData({ name: "", description: "", isActive: true });
     setFormError(null);
     setIsCategoryModalOpen(true);
@@ -175,6 +277,7 @@ export const MenuPage: React.FC = () => {
 
   const handleOpenEditCategory = (cat: Category) => {
     setEditingCategory(cat);
+    setTargetFranchiseId(cat.franchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id || "");
     setCategoryFormData({
       name: cat.name,
       description: cat.description || "",
@@ -184,12 +287,15 @@ export const MenuPage: React.FC = () => {
     setIsCategoryModalOpen(true);
   };
 
-  const filteredItems = menuItems.filter(
-    (i) =>
-      i.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (i.code || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (i.category?.name || "").toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredItems = React.useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return menuItems.filter(
+      (i) =>
+        i.name.toLowerCase().includes(term) ||
+        (i.code || "").toLowerCase().includes(term) ||
+        (i.category?.name || "").toLowerCase().includes(term)
+    );
+  }, [menuItems, searchTerm]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -202,30 +308,139 @@ export const MenuPage: React.FC = () => {
           </p>
         </div>
 
-        {isBrandOwner ? (
+        {canModifyMenu || canModifyDishes ? (
+          <div className="flex flex-wrap items-center gap-3">
+            {isSuperAdmin && franchises.length > 0 && (
+              <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-100 rounded-lg px-2.5 py-1 text-xs text-indigo-900">
+                <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span className="font-semibold text-gray-700">Outlet:</span>
+                <select
+                  value={selectedFranchiseId || ""}
+                  onChange={(e) => setSelectedFranchise(e.target.value || null)}
+                  className="bg-white border border-indigo-200 rounded px-2 py-0.5 text-xs font-bold text-gray-800 cursor-pointer focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="">All Outlets (Consolidated)</option>
+                  {franchises.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name} ({f.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <Button
+              variant="outline"
+              disabled={isMenuSyncing}
+              onClick={async () => {
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: ["categories"] }),
+                  queryClient.invalidateQueries({ queryKey: ["menu-items"] }),
+                  queryClient.invalidateQueries({ queryKey: ["stations"] }),
+                ]);
+              }}
+              icon={<RefreshCw className={`w-4 h-4 text-indigo-600 ${isMenuSyncing ? "animate-spin" : ""}`} />}
+            >
+              {isMenuSyncing ? "Refreshing..." : "Refresh"}
+            </Button>
+            {isSuperAdmin && franchises.length > 1 && (
+              <Button
+                variant="outline"
+                onClick={() => setIsCloneModalOpen(true)}
+                icon={<Copy className="w-4 h-4 text-indigo-600" />}
+              >
+                Copy Menu Across Outlets
+              </Button>
+            )}
+            {canModifyMenu && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleOpenCreateCategory}
+                  icon={<Tag className="w-4 h-4" />}
+                  disabled={!effectiveFranchiseId}
+                >
+                  Add Category
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => handleOpenCreateItem(true)}
+                  className="border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100 font-bold shadow-xs"
+                  icon={<span className="text-base leading-none">🍕</span>}
+                  disabled={!effectiveFranchiseId}
+                >
+                  Add Pizza (S/M/L)
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => handleOpenCreateItem(false)}
+                  icon={<Plus className="w-4 h-4" />}
+                  disabled={!effectiveFranchiseId}
+                >
+                  Add Menu Item
+                </Button>
+              </>
+            )}
+          </div>
+        ) : (
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
-              onClick={handleOpenCreateCategory}
-              icon={<Tag className="w-4 h-4" />}
+              disabled={isMenuSyncing}
+              onClick={async () => {
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: ["categories"] }),
+                  queryClient.invalidateQueries({ queryKey: ["menu-items"] }),
+                ]);
+              }}
+              icon={<RefreshCw className={`w-4 h-4 text-indigo-600 ${isMenuSyncing ? "animate-spin" : ""}`} />}
             >
-              Add Category
+              {isMenuSyncing ? "Refreshing..." : "Refresh Menu"}
             </Button>
-            <Button
-              variant="primary"
-              onClick={handleOpenCreateItem}
-              icon={<Plus className="w-4 h-4" />}
-            >
-              Add Menu Item
-            </Button>
-          </div>
-        ) : (
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center gap-2 max-w-md">
-            <Tag className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>Master Menu is centrally governed by Brand Owner. You can toggle live dish availability (In Stock / Out of Stock) below.</span>
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center gap-2 max-w-md">
+              <Tag className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Menu is centrally managed. Contact brand owner for dish addition permissions.</span>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Cloned Notification Banner */}
+      {cloneNotification && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-3 text-emerald-800 text-sm font-medium shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{cloneNotification}</span>
+          </div>
+          <button
+            onClick={() => setCloneNotification(null)}
+            className="text-xs text-emerald-700 hover:text-emerald-900 font-semibold cursor-pointer underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Zero Franchises Alert */}
+      {isBrandOwner && franchises.length === 0 && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-amber-900 shadow-xs">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-amber-100 rounded-lg text-amber-700 mt-0.5 shrink-0">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-sm text-amber-950">No Franchise Outlets Found</h4>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Every category, dish price, and kitchen station belongs to a franchise branch. Please create your first Franchise Branch (e.g. "Main Outlet" or "Flagship Store") first before adding categories or menu items.
+              </p>
+            </div>
+          </div>
+          <Link to="/franchises">
+            <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />}>
+              Create Franchise Outlet
+            </Button>
+          </Link>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200">
@@ -279,8 +494,8 @@ export const MenuPage: React.FC = () => {
             <EmptyState
               title="No Dishes Found"
               description="Create menu items and assign them to categories and kitchen stations."
-              actionLabel={isBrandOwner ? "Add Dish" : undefined}
-              onAction={isBrandOwner ? handleOpenCreateItem : undefined}
+              actionLabel={canModifyMenu ? "Add Dish" : undefined}
+              onAction={canModifyMenu ? () => handleOpenCreateItem(false) : undefined}
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -299,9 +514,33 @@ export const MenuPage: React.FC = () => {
                     </div>
                   }
                   action={
-                    <span className="font-bold text-emerald-600 text-base">
-                      ₹{Number(item.price).toFixed(2)}
-                    </span>
+                    item.hasSizes ? (
+                      <div className="text-right">
+                        {item.priceMedium != null && Number(item.priceMedium) > 0 ? (
+                          <>
+                            <span className="text-[10px] font-bold text-indigo-600 block uppercase tracking-wider">
+                              S / M / L
+                            </span>
+                            <span className="font-bold text-emerald-600 text-xs font-mono">
+                              ₹{Number(item.priceSmall || 0)} / ₹{Number(item.priceMedium || 0)} / ₹{Number(item.priceLarge || 0)}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-[10px] font-bold text-amber-600 block uppercase tracking-wider">
+                              Normal / Loaded
+                            </span>
+                            <span className="font-bold text-emerald-600 text-xs font-mono">
+                              ₹{Number(item.priceSmall || 0)} / ₹{Number(item.priceLarge || 0)}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="font-bold text-emerald-600 text-base">
+                        ₹{Number(item.price).toFixed(2)}
+                      </span>
+                    )
                   }
                 >
                   <div className="space-y-3">
@@ -342,7 +581,7 @@ export const MenuPage: React.FC = () => {
                         )}
                       </button>
 
-                      {isBrandOwner && (
+                      {canModifyDishes && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -381,7 +620,7 @@ export const MenuPage: React.FC = () => {
 
                 <div className="flex items-center justify-between text-xs pt-2 border-t border-gray-100 font-medium text-gray-600">
                   <span>{cat._count?.menuItems || 0} Menu Items</span>
-                  {isBrandOwner && (
+                  {canModifyMenu && (
                     <div className="flex items-center gap-2">
                       <Button
                         variant="ghost"
@@ -421,6 +660,31 @@ export const MenuPage: React.FC = () => {
           onSubmit={(e) => {
             e.preventDefault();
             setFormError(null);
+            const currentCatName = categories.find((c) => c.id === itemFormData.categoryId)?.name || "";
+            const isCategoryPizza = currentCatName.toLowerCase().includes("pizza");
+
+            if (isCategoryPizza && itemFormData.pricingType === "SIZES_SML") {
+              const pSmall = Number(itemFormData.priceSmall);
+              const pMedium = Number(itemFormData.priceMedium);
+              const pLarge = Number(itemFormData.priceLarge);
+              if (!pSmall || pSmall <= 0 || !pMedium || pMedium <= 0 || !pLarge || pLarge <= 0) {
+                setFormError("Please enter valid positive rates for all 3 options: Small, Medium, and Large.");
+                return;
+              }
+            } else if (isCategoryPizza && itemFormData.pricingType === "NORMAL_LOADED") {
+              const pNormal = Number(itemFormData.priceSmall);
+              const pLoaded = Number(itemFormData.priceLarge);
+              if (!pNormal || pNormal <= 0 || !pLoaded || pLoaded <= 0) {
+                setFormError("Please enter valid positive rates for both Normal and Loaded options.");
+                return;
+              }
+            } else {
+              const p = Number(itemFormData.price);
+              if (!p || p <= 0) {
+                setFormError("Please enter a valid price greater than 0.");
+                return;
+              }
+            }
             saveItemMutation.mutate(itemFormData);
           }}
           className="space-y-4"
@@ -431,13 +695,29 @@ export const MenuPage: React.FC = () => {
             </div>
           )}
 
+          {isBrandOwner && franchises.length > 0 && (
+            <Select
+              label="Franchise Outlet *"
+              required
+              options={franchises.map((f) => ({ value: f.id, label: `🏬 ${f.name} (${f.code})` }))}
+              value={targetFranchiseId}
+              onChange={(e) => setTargetFranchiseId(e.target.value)}
+            />
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="Dish Name *"
               required
-              placeholder="e.g. Paneer Butter Masala"
+              placeholder="e.g. Farmhouse Pizza"
               value={itemFormData.name}
-              onChange={(e) => setItemFormData({ ...itemFormData, name: e.target.value })}
+              onChange={(e) => {
+                const val = e.target.value;
+                setItemFormData((prev) => ({
+                  ...prev,
+                  name: val,
+                }));
+              }}
             />
 
             <Input
@@ -454,7 +734,18 @@ export const MenuPage: React.FC = () => {
               label="Category *"
               options={categories.map((c) => ({ value: c.id, label: c.name }))}
               value={itemFormData.categoryId}
-              onChange={(e) => setItemFormData({ ...itemFormData, categoryId: e.target.value })}
+              onChange={(e) => {
+                const catId = e.target.value;
+                const catName = categories.find((c) => c.id === catId)?.name || "";
+                const isPizza = catName.toLowerCase().includes("pizza");
+                setItemFormData((prev) => ({
+                  ...prev,
+                  categoryId: catId,
+                  hasSizes: isPizza ? prev.hasSizes : false,
+                  pricingType: isPizza ? (prev.pricingType === "SINGLE" ? "SIZES_SML" : prev.pricingType) : "SINGLE",
+                  code: isPizza && !prev.code ? `PIZ-${Math.floor(100 + Math.random() * 900)}` : prev.code,
+                }));
+              }}
             />
 
             <Select
@@ -468,16 +759,331 @@ export const MenuPage: React.FC = () => {
             />
           </div>
 
-          <Input
-            label="Price (₹) *"
-            type="number"
-            min="1"
-            step="0.01"
-            required
-            placeholder="250.00"
-            value={itemFormData.price}
-            onChange={(e) => setItemFormData({ ...itemFormData, price: Number(e.target.value) })}
-          />
+          {/* RATE & PRICING CONFIGURATION */}
+          {(() => {
+            const currentCatName = categories.find((c) => c.id === itemFormData.categoryId)?.name || "";
+            const isCategoryPizza = currentCatName.toLowerCase().includes("pizza");
+
+            return (
+              <div className="p-4 bg-slate-50/90 border-2 border-indigo-200/90 rounded-2xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-indigo-100">
+                  <div>
+                    <label className="text-xs font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>Rate / Pricing Section *</span>
+                      {isCategoryPizza && itemFormData.pricingType === "SIZES_SML" && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-amber-950 uppercase shadow-xs">
+                          🍕 3 Sizes Active (S / M / L)
+                        </span>
+                      )}
+                      {isCategoryPizza && itemFormData.pricingType === "NORMAL_LOADED" && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-white uppercase shadow-xs">
+                          🍕 Normal & Loaded Active
+                        </span>
+                      )}
+                      {(!isCategoryPizza || itemFormData.pricingType === "SINGLE") && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-900 uppercase shadow-xs">
+                          Single Rate
+                        </span>
+                      )}
+                    </label>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      {isCategoryPizza
+                        ? "Configure rates for Pizza: Single Rate, 3 Sizes (Small/Medium/Large), or 2 Variations (Normal & Loaded)"
+                        : "Enter standard dish rate (size options apply strictly to Pizza category)"}
+                    </p>
+                  </div>
+                </div>
+
+                {isCategoryPizza ? (
+                  <>
+                    {/* 3 PRICING TYPE BUTTONS FOR PIZZA */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {/* Option A: Single Rate */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setItemFormData((prev) => ({
+                            ...prev,
+                            hasSizes: false,
+                            pricingType: "SINGLE",
+                          }))
+                        }
+                        className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                          itemFormData.pricingType === "SINGLE"
+                            ? "border-indigo-600 bg-white ring-2 ring-indigo-200 shadow-sm"
+                            : "border-gray-200 bg-white/70 hover:bg-white hover:border-gray-300"
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold text-xs ${
+                            itemFormData.pricingType === "SINGLE" ? "bg-indigo-600 text-white shadow-xs" : "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          ₹
+                        </div>
+                        <div>
+                          <span className="text-xs font-black text-gray-900 block">Single Rate</span>
+                          <span className="text-[10px] text-gray-500 block leading-tight mt-0.5">
+                            One fixed rate
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* Option B: 3 Sizes (Small, Medium, Large) */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setItemFormData((prev) => ({
+                            ...prev,
+                            hasSizes: true,
+                            pricingType: "SIZES_SML",
+                            priceSmall: prev.priceSmall || 150,
+                            priceMedium: prev.priceMedium || 250,
+                            priceLarge: prev.priceLarge || 350,
+                          }))
+                        }
+                        className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                          itemFormData.pricingType === "SIZES_SML"
+                            ? "border-amber-500 bg-amber-50/70 ring-2 ring-amber-200 shadow-sm"
+                            : "border-gray-200 bg-white/70 hover:bg-white hover:border-gray-300"
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-sm ${
+                            itemFormData.pricingType === "SIZES_SML" ? "bg-amber-500 text-white shadow-xs" : "bg-gray-100"
+                          }`}
+                        >
+                          🍕
+                        </div>
+                        <div>
+                          <span className="text-xs font-black text-gray-900 block">3 Sizes (S/M/L)</span>
+                          <span className="text-[10px] text-amber-900 font-semibold block leading-tight mt-0.5">
+                            Small, Medium, Large
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* Option C: 2 Variations (Normal & Loaded) */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setItemFormData((prev) => ({
+                            ...prev,
+                            hasSizes: true,
+                            pricingType: "NORMAL_LOADED",
+                            priceSmall: prev.priceSmall || 120,
+                            priceMedium: "",
+                            priceLarge: prev.priceLarge || 180,
+                          }))
+                        }
+                        className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                          itemFormData.pricingType === "NORMAL_LOADED"
+                            ? "border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-200 shadow-sm"
+                            : "border-gray-200 bg-white/70 hover:bg-white hover:border-gray-300"
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-sm ${
+                            itemFormData.pricingType === "NORMAL_LOADED" ? "bg-emerald-600 text-white shadow-xs" : "bg-gray-100"
+                          }`}
+                        >
+                          🧀
+                        </div>
+                        <div>
+                          <span className="text-xs font-black text-gray-900 block">Normal & Loaded</span>
+                          <span className="text-[10px] text-emerald-900 font-semibold block leading-tight mt-0.5">
+                            Normal & Loaded rates
+                          </span>
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* FIELDS FOR 3 SIZES */}
+                    {itemFormData.pricingType === "SIZES_SML" && (
+                      <div className="pt-2 border-t border-indigo-100 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                            <span>🍕 Enter Rates for Small, Medium & Large:</span>
+                          </span>
+                          <span className="text-[10px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                            All 3 sizes required
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          {/* Small */}
+                          <div className="p-3.5 bg-white rounded-xl border-2 border-indigo-200 shadow-xs space-y-2 hover:border-indigo-400 transition-colors">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-800 font-black text-[10px] flex items-center justify-center">
+                                  1
+                                </span>
+                                <span className="text-xs font-black text-gray-900">Small Rate</span>
+                              </div>
+                              <span className="text-[10px] font-bold text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                                7" inch
+                              </span>
+                            </div>
+                            <Input
+                              type="number"
+                              min="1"
+                              step="0.01"
+                              required
+                              placeholder="e.g. 150"
+                              value={itemFormData.priceSmall}
+                              onChange={(e) => setItemFormData({ ...itemFormData, priceSmall: e.target.value })}
+                            />
+                          </div>
+
+                          {/* Medium */}
+                          <div className="p-3.5 bg-white rounded-xl border-2 border-indigo-500 shadow-xs space-y-2 ring-1 ring-indigo-300">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-black text-[10px] flex items-center justify-center">
+                                  2
+                                </span>
+                                <span className="text-xs font-black text-indigo-950">Medium Rate</span>
+                              </div>
+                              <span className="text-[10px] font-bold text-indigo-700 font-mono bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                10" inch
+                              </span>
+                            </div>
+                            <Input
+                              type="number"
+                              min="1"
+                              step="0.01"
+                              required
+                              placeholder="e.g. 250"
+                              value={itemFormData.priceMedium}
+                              onChange={(e) => setItemFormData({ ...itemFormData, priceMedium: e.target.value })}
+                            />
+                          </div>
+
+                          {/* Large */}
+                          <div className="p-3.5 bg-white rounded-xl border-2 border-indigo-200 shadow-xs space-y-2 hover:border-indigo-400 transition-colors">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-800 font-black text-[10px] flex items-center justify-center">
+                                  3
+                                </span>
+                                <span className="text-xs font-black text-gray-900">Large Rate</span>
+                              </div>
+                              <span className="text-[10px] font-bold text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                                12" inch
+                              </span>
+                            </div>
+                            <Input
+                              type="number"
+                              min="1"
+                              step="0.01"
+                              required
+                              placeholder="e.g. 350"
+                              value={itemFormData.priceLarge}
+                              onChange={(e) => setItemFormData({ ...itemFormData, priceLarge: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* FIELDS FOR NORMAL & LOADED */}
+                    {itemFormData.pricingType === "NORMAL_LOADED" && (
+                      <div className="pt-2 border-t border-indigo-100 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                            <span>🧀 Enter Rates for Normal & Loaded Pizza:</span>
+                          </span>
+                          <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                            Normal & Loaded required
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* Normal */}
+                          <div className="p-3.5 bg-white rounded-xl border-2 border-emerald-300 shadow-xs space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 font-black text-[10px] flex items-center justify-center">
+                                  1
+                                </span>
+                                <span className="text-xs font-black text-gray-900">Normal Pizza Rate (₹)</span>
+                              </div>
+                              <span className="text-[10px] font-bold text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                                Regular
+                              </span>
+                            </div>
+                            <Input
+                              type="number"
+                              min="1"
+                              step="0.01"
+                              required
+                              placeholder="e.g. 120"
+                              value={itemFormData.priceSmall}
+                              onChange={(e) => setItemFormData({ ...itemFormData, priceSmall: e.target.value })}
+                            />
+                          </div>
+
+                          {/* Loaded */}
+                          <div className="p-3.5 bg-white rounded-xl border-2 border-emerald-500 shadow-xs space-y-2 ring-1 ring-emerald-300">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center">
+                                  2
+                                </span>
+                                <span className="text-xs font-black text-emerald-950">Loaded Pizza Rate (₹)</span>
+                              </div>
+                              <span className="text-[10px] font-bold text-emerald-800 font-mono bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                Extra Toppings & Cheese
+                              </span>
+                            </div>
+                            <Input
+                              type="number"
+                              min="1"
+                              step="0.01"
+                              required
+                              placeholder="e.g. 180"
+                              value={itemFormData.priceLarge}
+                              onChange={(e) => setItemFormData({ ...itemFormData, priceLarge: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* FIELD FOR SINGLE RATE PIZZA */}
+                    {itemFormData.pricingType === "SINGLE" && (
+                      <div className="pt-2 border-t border-indigo-100">
+                        <Input
+                          label="Single Rate / Price (₹) *"
+                          type="number"
+                          min="1"
+                          step="0.01"
+                          required
+                          placeholder="e.g. 199.00"
+                          value={itemFormData.price}
+                          onChange={(e) => setItemFormData({ ...itemFormData, price: Number(e.target.value) })}
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* NON-PIZZA CATEGORY: ONLY SINGLE STANDARD RATE */
+                  <div className="pt-2 border-t border-indigo-100">
+                    <Input
+                      label="Standard Dish Rate / Price (₹) *"
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      required
+                      placeholder="e.g. 120.00"
+                      value={itemFormData.price}
+                      onChange={(e) => setItemFormData({ ...itemFormData, price: Number(e.target.value) })}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           <div>
             <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
@@ -524,6 +1130,16 @@ export const MenuPage: React.FC = () => {
             </div>
           )}
 
+          {isBrandOwner && franchises.length > 0 && (
+            <Select
+              label="Franchise Outlet *"
+              required
+              options={franchises.map((f) => ({ value: f.id, label: `🏬 ${f.name} (${f.code})` }))}
+              value={targetFranchiseId}
+              onChange={(e) => setTargetFranchiseId(e.target.value)}
+            />
+          )}
+
           <Input
             label="Category Name *"
             required
@@ -549,6 +1165,22 @@ export const MenuPage: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Clone Menu Modal */}
+      {(isBrandOwner || canModifyMenu) && (
+        <CloneMenuModal
+          isOpen={isCloneModalOpen}
+          onClose={() => setIsCloneModalOpen(false)}
+          franchises={franchises}
+          initialSourceId={selectedFranchiseId || franchises[0]?.id}
+          onSuccess={(result) => {
+            setSelectedFranchise(result.targetFranchiseId);
+            setCloneNotification(
+              `Cloned ${result.totalItems} dishes & ${result.categoriesCount} categories from ${result.sourceFranchiseName} into ${result.targetFranchiseName}. You are now viewing ${result.targetFranchiseName}'s menu!`
+            );
+          }}
+        />
+      )}
     </div>
   );
 };

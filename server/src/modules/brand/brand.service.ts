@@ -29,8 +29,8 @@ export async function getBrandSettings() {
   if (!settings) {
     settings = await prisma.brandSettings.create({
       data: {
-        businessName: "My Restaurant Brand",
-        tagline: "Fine Dining & Hospitality",
+        businessName: "Madrasi Dosa",
+        tagline: null,
         currencySymbol: "₹",
         currencyCode: "INR",
         defaultGstRate: 5.0,
@@ -38,6 +38,15 @@ export async function getBrandSettings() {
         loyalDiscountPercent: 15.0,
         regularDiscountPercent: 10.0,
       },
+    });
+  } else if (
+    settings.businessName === "Restaurant POS" ||
+    settings.businessName === "My Restaurant Brand" ||
+    !settings.businessName
+  ) {
+    settings = await prisma.brandSettings.update({
+      where: { id: settings.id },
+      data: { businessName: "Madrasi Dosa" },
     });
   }
 

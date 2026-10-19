@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "../../lib/prisma.js";
 import { AppError } from "../../middleware/error.js";
 import { logAudit } from "../../lib/audit.js";
+import { emitToFranchise } from "../../lib/socket.js";
 
 export const upsertRecipeSchema = z.object({
   name: z.string().trim().min(1, "Recipe name is required"),
@@ -126,6 +127,8 @@ export async function upsertRecipe(
       newData: recipe,
     });
 
+    emitToFranchise(franchiseId, "recipe:updated", recipe);
+
     return recipe;
   });
 }
@@ -145,6 +148,8 @@ export async function deleteRecipe(menuItemId: string, franchiseId: string, user
     entity: "Recipe",
     entityId: existing.id,
   });
+
+  emitToFranchise(franchiseId, "recipe:updated", { deleted: true, menuItemId });
 
   return { success: true };
 }

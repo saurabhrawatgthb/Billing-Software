@@ -11,6 +11,7 @@ import {
   Mail,
   Receipt,
   Sparkles,
+  Copy,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import type { Franchise, BrandSettings } from "../../types/index.js";
@@ -21,6 +22,7 @@ import { Modal } from "../../components/common/Modal.js";
 import { Badge, getStatusBadgeVariant } from "../../components/common/Badge.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
+import { CloneMenuModal } from "../../components/menu/CloneMenuModal.js";
 
 export const FranchisesPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -28,6 +30,8 @@ export const FranchisesPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingFranchise, setEditingFranchise] = useState<Franchise | null>(null);
   const [previewBillFranchise, setPreviewBillFranchise] = useState<Franchise | null>(null);
+  const [cloneModalTarget, setCloneModalTarget] = useState<Franchise | null>(null);
+  const [cloneNotification, setCloneNotification] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -38,11 +42,11 @@ export const FranchisesPage: React.FC = () => {
   });
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Fetch franchises
+  // Fetch franchises (including deactivated ones for management)
   const { data: franchises = [], isLoading } = useQuery<Franchise[]>({
     queryKey: ["franchises"],
     queryFn: async () => {
-      const res = await api.get("/franchises");
+      const res = await api.get("/franchises?includeInactive=true");
       return res.data.data;
     },
   });
@@ -117,12 +121,22 @@ export const FranchisesPage: React.FC = () => {
     saveMutation.mutate(formData);
   };
 
-  const filtered = franchises.filter(
-    (f) =>
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ALL");
+
+  const activeCount = franchises.filter((f) => f.isActive).length;
+  const inactiveCount = franchises.filter((f) => !f.isActive).length;
+
+  const filtered = franchises.filter((f) => {
+    const matchesSearch =
       f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       f.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (f.address && f.address.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+      (f.address && f.address.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    if (!matchesSearch) return false;
+    if (statusFilter === "ACTIVE") return f.isActive;
+    if (statusFilter === "INACTIVE") return !f.isActive;
+    return true;
+  });
 
   const currSym = brandSettings?.currencySymbol || brandSettings?.currency || "₹";
   const brandName = brandSettings?.businessName || "My Restaurant Brand";
@@ -148,6 +162,22 @@ export const FranchisesPage: React.FC = () => {
         </Button>
       </div>
 
+      {/* Clone Menu Success Banner */}
+      {cloneNotification && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-3 text-emerald-800 text-sm font-medium shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{cloneNotification}</span>
+          </div>
+          <button
+            onClick={() => setCloneNotification(null)}
+            className="text-xs text-emerald-700 hover:text-emerald-900 font-semibold cursor-pointer underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Info Callout: Branch Bill Address Isolation */}
       <div className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-200 text-xs text-indigo-900 flex items-start gap-3 shadow-xs">
         <Sparkles className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
@@ -160,7 +190,7 @@ export const FranchisesPage: React.FC = () => {
       </div>
 
       {/* Filter & Search */}
-      <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-200/80 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200/80 shadow-xs">
         <Input
           placeholder="Search by franchise name, code, or branch address..."
           value={searchTerm}
@@ -168,6 +198,44 @@ export const FranchisesPage: React.FC = () => {
           leftIcon={<Search className="w-4 h-4 text-gray-400" />}
           className="max-w-md"
         />
+
+        <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl text-xs font-bold shrink-0">
+          <button
+            type="button"
+            onClick={() => setStatusFilter("ALL")}
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              statusFilter === "ALL"
+                ? "bg-white text-gray-950 shadow-2xs font-extrabold"
+                : "text-gray-500 hover:text-gray-900"
+            }`}
+          >
+            All Outlets ({franchises.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter("ACTIVE")}
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === "ACTIVE"
+                ? "bg-white text-emerald-800 shadow-2xs font-extrabold"
+                : "text-gray-500 hover:text-gray-900"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+            Active ({activeCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter("INACTIVE")}
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === "INACTIVE"
+                ? "bg-white text-rose-800 shadow-2xs font-extrabold"
+                : "text-gray-500 hover:text-gray-900"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
+            Deactivated ({inactiveCount})
+          </button>
+        </div>
       </div>
 
       {/* Grid */}
@@ -246,8 +314,31 @@ export const FranchisesPage: React.FC = () => {
                   )}
                 </div>
 
+                {/* Assigned Franchise Manager */}
+                <div className="p-2.5 rounded-lg bg-indigo-50/60 border border-indigo-100 text-xs">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 block mb-1">
+                    Franchise Manager
+                  </span>
+                  {(franchise as any).users && (franchise as any).users.filter((u: any) => u.role === "FRANCHISE_MANAGER").length > 0 ? (
+                    (franchise as any).users
+                      .filter((u: any) => u.role === "FRANCHISE_MANAGER")
+                      .map((m: any) => (
+                        <div key={m.id} className="flex items-center justify-between">
+                          <span className="font-semibold text-gray-900">{m.name}</span>
+                          <span className="text-[11px] text-gray-500 font-mono">{m.email}</span>
+                        </div>
+                      ))
+                  ) : (
+                    <span className="text-[11px] text-amber-700 italic">No manager account assigned yet</span>
+                  )}
+                </div>
+
                 {/* Counts */}
-                <div className="grid grid-cols-3 gap-2 py-2 px-3 bg-gray-50 rounded-xl text-center text-xs">
+                <div className="grid grid-cols-4 gap-1.5 py-2 px-2.5 bg-gray-50 rounded-xl text-center text-xs">
+                  <div>
+                    <p className="font-bold text-gray-900">{(franchise as any)._count?.users || 0}</p>
+                    <p className="text-[10px] text-gray-500 uppercase">Logins</p>
+                  </div>
                   <div>
                     <p className="font-bold text-gray-900">{franchise._count?.employees || 0}</p>
                     <p className="text-[10px] text-gray-500 uppercase">Staff</p>
@@ -289,6 +380,17 @@ export const FranchisesPage: React.FC = () => {
                   </button>
 
                   <div className="flex items-center gap-2">
+                    {franchises.length > 1 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCloneModalTarget(franchise)}
+                        icon={<Copy className="w-3.5 h-3.5 text-indigo-600" />}
+                        title="Copy another branch's menu into this franchise"
+                      >
+                        Copy Menu
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -471,8 +573,7 @@ export const FranchisesPage: React.FC = () => {
               </div>
 
               <div className="text-center text-[10px] text-slate-500 pt-1">
-                <p className="font-bold text-slate-700">Thank you for visiting {previewBillFranchise.name}!</p>
-                <p>Please Visit Again</p>
+                <p className="font-bold text-slate-700">Thanks For Visiting Madrasi Dosa</p>
               </div>
             </div>
 
@@ -484,6 +585,21 @@ export const FranchisesPage: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* Clone Menu Modal */}
+      {cloneModalTarget && (
+        <CloneMenuModal
+          isOpen={!!cloneModalTarget}
+          onClose={() => setCloneModalTarget(null)}
+          franchises={franchises}
+          initialTargetId={cloneModalTarget.id}
+          onSuccess={(result) => {
+            setCloneNotification(
+              `Cloned ${result.totalItems} dishes & ${result.categoriesCount} categories from ${result.sourceFranchiseName} into ${result.targetFranchiseName}!`
+            );
+          }}
+        />
+      )}
     </div>
   );
 };

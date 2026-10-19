@@ -11,10 +11,12 @@ import {
   Eye,
   RefreshCw,
   Plus,
+  Printer,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { getSocket } from "../../services/socket.js";
 import { useAuthStore } from "../../store/authStore.js";
+import { printReceiptDirectly } from "../../utils/print.js";
 import type { Order } from "../../types/index.js";
 import { Card } from "../../components/common/Card.js";
 import { Button } from "../../components/common/Button.js";
@@ -46,7 +48,7 @@ export const OrdersPage: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   // Fetch Orders
-  const { data: orders = [], isLoading, refetch } = useQuery<Order[]>({
+  const { data: orders = [], isLoading, isFetching, refetch } = useQuery<Order[]>({
     queryKey: ["orders", selectedFranchiseId, statusFilter],
     queryFn: async () => {
       const url = statusFilter ? `/orders?status=${statusFilter}` : "/orders";
@@ -93,10 +95,30 @@ export const OrdersPage: React.FC = () => {
   });
 
   const generateInvoiceMutation = useMutation({
-    mutationFn: async (orderId: string) => api.post("/billing/invoices", { orderId }),
+    mutationFn: async (orderId: string) => {
+      const res = await api.post("/billing/invoices", {
+        orderId,
+        autoCompletePayment: true,
+      });
+      const invoice = res.data.data;
+      try {
+        const printJobRes = await api.post("/printers/print-job", {
+          type: "RECEIPT",
+          targetId: invoice.id,
+        });
+        if (printJobRes.data?.data?.rawText) {
+          printReceiptDirectly(printJobRes.data.data.rawText, `Invoice #${invoice.invoiceNumber}`);
+        }
+      } catch (err) {
+        console.warn("Direct thermal print error:", err);
+      }
+      return invoice;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+      queryClient.invalidateQueries({ queryKey: ["gst-audit"] });
       navigate("/billing");
     },
     onError: (err) => alert(extractErrorMessage(err)),
@@ -119,8 +141,17 @@ export const OrdersPage: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => refetch()} icon={<RefreshCw className="w-3.5 h-3.5" />}>
-            Refresh
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isFetching}
+            onClick={async () => {
+              await queryClient.invalidateQueries({ queryKey: ["orders"] });
+              refetch();
+            }}
+            icon={<RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin text-indigo-600" : ""}`} />}
+          >
+            {isFetching ? "Refreshing..." : "Refresh"}
           </Button>
           <Button variant="primary" onClick={() => navigate("/pos")} icon={<Plus className="w-4 h-4" />}>
             New Order
@@ -254,8 +285,9 @@ export const OrdersPage: React.FC = () => {
                           size="sm"
                           onClick={() => generateInvoiceMutation.mutate(order.id)}
                           isLoading={generateInvoiceMutation.isPending}
+                          icon={<Printer className="w-3.5 h-3.5" />}
                         >
-                          Generate Bill
+                          Bill & Print
                         </Button>
                       )}
                     </div>
@@ -345,6 +377,20 @@ export const OrdersPage: React.FC = () => {
                 </button>
               )}
               <div className="flex items-center gap-2 ml-auto">
+                {selectedOrder.status !== "BILLED" && selectedOrder.status !== "CANCELLED" && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      generateInvoiceMutation.mutate(selectedOrder.id);
+                      setSelectedOrder(null);
+                    }}
+                    isLoading={generateInvoiceMutation.isPending}
+                    icon={<Printer className="w-3.5 h-3.5" />}
+                  >
+                    Bill & Print
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" onClick={() => setSelectedOrder(null)}>
                   Close
                 </Button>

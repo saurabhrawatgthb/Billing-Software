@@ -272,6 +272,9 @@ export async function getGlobalFranchiseReport(filters: ReportDateFilter) {
   const franchises = await prisma.franchise.findMany({
     include: {
       _count: { select: { employees: true, tables: true, users: true } },
+      users: {
+        select: { id: true, name: true, email: true, role: true, isActive: true },
+      },
       orders: {
         where: {
           status: { notIn: ["CANCELLED"] },
@@ -286,6 +289,7 @@ export async function getGlobalFranchiseReport(filters: ReportDateFilter) {
     const ordersCount = f.orders.length;
     const revenue = f.orders.reduce((sum, o) => sum + Number(o.total), 0);
     const aov = ordersCount > 0 ? revenue / ordersCount : 0;
+    const managers = f.users.filter((u) => u.role === "FRANCHISE_MANAGER");
 
     return {
       id: f.id,
@@ -294,6 +298,8 @@ export async function getGlobalFranchiseReport(filters: ReportDateFilter) {
       isActive: f.isActive,
       employeesCount: f._count.employees,
       tablesCount: f._count.tables,
+      usersCount: f._count.users,
+      managers: managers.map((m) => ({ id: m.id, name: m.name, email: m.email })),
       ordersCount,
       revenue,
       averageOrderValue: aov,
@@ -329,6 +335,8 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
       monthOrders,
       totalEmployees,
       pendingPayrolls,
+      employeesList,
+      usersList,
     ] = await Promise.all([
       prisma.franchise.count(),
       prisma.franchise.count({ where: { isActive: true } }),
@@ -340,6 +348,29 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
       }),
       prisma.employee.count({ where: { status: "ACTIVE" } }),
       prisma.payroll.count({ where: { status: "DRAFT" } }),
+      prisma.employee.findMany({
+        include: {
+          franchise: { select: { id: true, name: true, code: true } },
+          salaryStructure: true,
+          attendance: { where: { date: { gte: todayStart } }, take: 1 },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }),
+      prisma.user.findMany({
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          franchiseId: true,
+          isActive: true,
+          createdAt: true,
+          franchise: { select: { id: true, name: true, code: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }),
     ]);
 
     const todayRevenue = todayOrders.reduce((sum, o) => sum + Number(o.total), 0);
@@ -357,11 +388,51 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
       averageOrderValue: aov,
       totalEmployees,
       pendingPayrollCount: pendingPayrolls,
+      employees: employeesList.map((e) => ({
+        id: e.id,
+        name: `${e.firstName}${e.lastName ? " " + e.lastName : ""}`,
+        firstName: e.firstName,
+        lastName: e.lastName,
+        employeeCode: e.employeeCode,
+        designation: e.designation || "Staff",
+        phone: e.phone,
+        email: e.email,
+        status: e.status,
+        franchiseName: e.franchise?.name || null,
+        franchiseCode: e.franchise?.code || null,
+        basicSalary: e.salaryStructure?.basicSalary ? Number(e.salaryStructure.basicSalary) : 0,
+        todayAttendance: e.attendance[0]?.status || "NOT_MARKED",
+        checkInTime: e.attendance[0]?.checkIn ? e.attendance[0].checkIn.toISOString() : null,
+      })),
+      users: usersList,
     };
   }
 
   // Franchise-specific dashboard
-  const fid = franchiseId!;
+  let fid = franchiseId;
+  if (!fid) {
+    const firstFranchise = await prisma.franchise.findFirst({ where: { isActive: true } });
+    fid = firstFranchise?.id || null;
+  }
+
+  if (!fid) {
+    return {
+      isSuperAdmin: false,
+      franchiseId: null,
+      todayRevenue: 0,
+      todayOrdersCount: 0,
+      occupiedTables: 0,
+      availableTables: 0,
+      totalTables: 0,
+      activeKOTsCount: 0,
+      totalEmployees: 0,
+      presentStaffCount: 0,
+      activeUsersCount: 0,
+      employees: [],
+      users: [],
+    };
+  }
+
   const [
     todayOrders,
     monthOrders,
@@ -370,6 +441,8 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
     todayAttendance,
     totalEmployees,
     activeUsers,
+    employeesList,
+    usersList,
   ] = await Promise.all([
     prisma.order.findMany({
       where: { franchiseId: fid, createdAt: { gte: todayStart }, status: { notIn: ["CANCELLED"] } },
@@ -386,6 +459,29 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
     }),
     prisma.employee.count({ where: { franchiseId: fid, status: "ACTIVE" } }),
     prisma.user.count({ where: { franchiseId: fid, isActive: true } }),
+    prisma.employee.findMany({
+      where: { franchiseId: fid },
+      include: {
+        salaryStructure: true,
+        attendance: {
+          where: { date: { gte: todayStart } },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.user.findMany({
+      where: { franchiseId: fid },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   const todayRevenue = todayOrders.reduce((sum, o) => sum + Number(o.total), 0);
@@ -405,5 +501,21 @@ export async function getDashboardStats(franchiseId: string | null, isSuperAdmin
     totalEmployees,
     presentStaffCount: presentStaff,
     activeUsersCount: activeUsers,
+    employees: employeesList.map((e) => ({
+      id: e.id,
+      name: `${e.firstName}${e.lastName ? " " + e.lastName : ""}`,
+      firstName: e.firstName,
+      lastName: e.lastName,
+      employeeCode: e.employeeCode,
+      designation: e.designation || "Staff",
+      phone: e.phone,
+      email: e.email,
+      status: e.status,
+      basicSalary: e.salaryStructure?.basicSalary ? Number(e.salaryStructure.basicSalary) : 0,
+      todayAttendance: e.attendance[0]?.status || "NOT_MARKED",
+      checkInTime: e.attendance[0]?.checkIn ? e.attendance[0].checkIn.toISOString() : null,
+      checkOutTime: e.attendance[0]?.checkOut ? e.attendance[0].checkOut.toISOString() : null,
+    })),
+    users: usersList,
   };
 }

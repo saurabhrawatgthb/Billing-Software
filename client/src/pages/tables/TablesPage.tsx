@@ -13,13 +13,15 @@ import { Modal } from "../../components/common/Modal.js";
 import { Badge, getStatusBadgeVariant } from "../../components/common/Badge.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
+import { usePermissions } from "../../hooks/usePermissions.js";
 
 export const TablesPage: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { selectedFranchiseId, user } = useAuthStore();
   const setSelectedCartTable = useCartStore((state) => state.setSelectedTable);
-  const canManage = ["SUPER_ADMIN", "FRANCHISE_MANAGER"].includes(user?.role || "");
+  const { isSuperAdmin, canManageTables } = usePermissions();
+  const canManage = isSuperAdmin || canManageTables;
 
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -27,11 +29,14 @@ export const TablesPage: React.FC = () => {
   const [capacity, setCapacity] = useState(4);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId;
+
   // Fetch Tables
-  const { data: tables = [], isLoading, refetch } = useQuery<RestaurantTable[]>({
-    queryKey: ["tables", selectedFranchiseId],
+  const { data: tables = [], isLoading, isFetching, refetch } = useQuery<RestaurantTable[]>({
+    queryKey: ["tables", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/tables");
+      const url = effectiveFranchiseId ? `/tables?franchiseId=${effectiveFranchiseId}` : "/tables";
+      const res = await api.get(url);
       return res.data.data;
     },
   });
@@ -62,6 +67,7 @@ export const TablesPage: React.FC = () => {
   const createTableMutation = useMutation({
     mutationFn: async () => {
       return api.post("/tables", {
+        franchiseId: effectiveFranchiseId || undefined,
         tableNumber,
         capacity: Number(capacity),
       });
@@ -121,8 +127,17 @@ export const TablesPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => refetch()} icon={<RefreshCw className="w-3.5 h-3.5" />}>
-            Refresh
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isFetching}
+            onClick={async () => {
+              await queryClient.invalidateQueries({ queryKey: ["tables"] });
+              refetch();
+            }}
+            icon={<RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin text-indigo-600" : ""}`} />}
+          >
+            {isFetching ? "Refreshing..." : "Refresh"}
           </Button>
           {canManage && (
             <Button

@@ -1,5 +1,6 @@
 import { Response } from "express";
 import { AuthenticatedRequest, getFranchiseId } from "../../middleware/auth.js";
+import prisma from "../../lib/prisma.js";
 import {
   listInventoryItems,
   createInventoryItem,
@@ -24,29 +25,50 @@ export async function getInventoryItemsHandler(req: AuthenticatedRequest, res: R
   res.json({ success: true, data: items });
 }
 
+async function resolveEffectiveFranchiseId(req: AuthenticatedRequest, bodyFranchiseId?: string) {
+  let fid = bodyFranchiseId || (req.headers["x-franchise-id"] as string) || getFranchiseId(req);
+  if (!fid) {
+    const first = await prisma.franchise.findFirst({ select: { id: true } });
+    fid = first?.id || null;
+  }
+  return fid;
+}
+
 export async function createInventoryItemHandler(req: AuthenticatedRequest, res: Response) {
-  const franchiseId = getFranchiseId(req)!;
+  const franchiseId = await resolveEffectiveFranchiseId(req, req.body.franchiseId);
+  if (!franchiseId) {
+    return res.status(400).json({ success: false, message: "Franchise ID is required" });
+  }
   const parsed = createInventoryItemSchema.parse(req.body);
   const item = await createInventoryItem(parsed, franchiseId, req.user?.userId || req.user?.id);
   res.status(201).json({ success: true, data: item });
 }
 
 export async function updateInventoryItemHandler(req: AuthenticatedRequest, res: Response) {
-  const franchiseId = getFranchiseId(req)!;
+  const franchiseId = await resolveEffectiveFranchiseId(req, req.body.franchiseId);
+  if (!franchiseId) {
+    return res.status(400).json({ success: false, message: "Franchise ID is required" });
+  }
   const parsed = updateInventoryItemSchema.parse(req.body);
   const item = await updateInventoryItem(req.params.id as string, parsed, franchiseId, req.user?.userId || req.user?.id);
   res.json({ success: true, data: item });
 }
 
 export async function stockInHandler(req: AuthenticatedRequest, res: Response) {
-  const franchiseId = getFranchiseId(req)!;
+  const franchiseId = await resolveEffectiveFranchiseId(req, req.body.franchiseId);
+  if (!franchiseId) {
+    return res.status(400).json({ success: false, message: "Franchise ID is required" });
+  }
   const parsed = stockInSchema.parse(req.body);
   const purchase = await recordStockIn(parsed, franchiseId, req.user?.userId || req.user?.id);
   res.status(201).json({ success: true, data: purchase });
 }
 
 export async function adjustStockHandler(req: AuthenticatedRequest, res: Response) {
-  const franchiseId = getFranchiseId(req)!;
+  const franchiseId = await resolveEffectiveFranchiseId(req, req.body.franchiseId);
+  if (!franchiseId) {
+    return res.status(400).json({ success: false, message: "Franchise ID is required" });
+  }
   const parsed = adjustStockSchema.parse(req.body);
   const tx = await adjustStock(parsed, franchiseId, req.user?.userId || req.user?.id);
   res.json({ success: true, data: tx });

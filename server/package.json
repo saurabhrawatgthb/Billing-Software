@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "clear-demo": "tsx prisma/clear-demo-data.ts"
   },
   "keywords": [],
   "author": "",

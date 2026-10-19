@@ -1,6 +1,14 @@
 import axios, { AxiosError } from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== "undefined"
+    ? window.location.hostname.includes("onrender.com")
+      ? "https://restaurent-pos-api.onrender.com/api"
+      : window.location.port === "5000"
+        ? `${window.location.origin}/api`
+        : `${window.location.protocol}//${window.location.hostname}:5000/api`
+    : "http://localhost:5000/api");
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -13,11 +21,17 @@ export const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("rms_token");
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    if (typeof (config.headers as any).set === "function") {
+      (config.headers as any).set("Authorization", `Bearer ${token}`);
+    }
+    config.headers["Authorization"] = `Bearer ${token}`;
   }
 
   const selectedFranchiseId = localStorage.getItem("rms_selected_franchise");
   if (selectedFranchiseId) {
+    if (typeof (config.headers as any).set === "function") {
+      (config.headers as any).set("x-franchise-id", selectedFranchiseId);
+    }
     config.headers["x-franchise-id"] = selectedFranchiseId;
   }
 

@@ -18,6 +18,10 @@ export function initSocket(server: HTTPServer) {
       }
     });
 
+    socket.on("join-super-admin", () => {
+      socket.join("super-admin-room");
+    });
+
     socket.on("join-station", ({ franchiseId, stationId }: { franchiseId: string; stationId: string }) => {
       if (franchiseId && stationId) {
         socket.join(`station:${franchiseId}:${stationId}`);
@@ -41,8 +45,18 @@ export function getIO(): SocketIOServer | null {
 export const getSocket = getIO;
 
 export function emitToFranchise(franchiseId: string, event: string, data: unknown) {
-  if (io && franchiseId) {
-    io.to(`franchise:${franchiseId}`).emit(event, data);
+  if (io) {
+    if (franchiseId) {
+      io.to(`franchise:${franchiseId}`).emit(event, data);
+    }
+    // Also notify super admin room for global updates
+    io.to("super-admin-room").emit(event, data);
+  }
+}
+
+export function broadcastEvent(event: string, data: unknown) {
+  if (io) {
+    io.emit(event, data);
   }
 }
 

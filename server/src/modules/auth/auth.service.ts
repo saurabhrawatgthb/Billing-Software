@@ -8,8 +8,8 @@ function getJwtSecret() {
   return process.env.JWT_SECRET ?? "development-secret";
 }
 
-export async function loginUser(email: string, password: string) {
-  const user = await prisma.user.findUnique({
+export async function loginUser(email: string, password: string, selectedAccountId?: string) {
+  const users = await prisma.user.findMany({
     where: {
       email: email.toLowerCase().trim(),
     },
@@ -18,9 +18,50 @@ export async function loginUser(email: string, password: string) {
     },
   });
 
-  if (!user) {
+  if (!users || users.length === 0) {
     throw new AppError("Invalid email or password", 401);
   }
+
+  // Filter accounts where password matches
+  const validAccounts: typeof users = [];
+  for (const u of users) {
+    const isMatch = await bcrypt.compare(password, u.passwordHash);
+    if (isMatch) {
+      validAccounts.push(u);
+    }
+  }
+
+  if (validAccounts.length === 0) {
+    throw new AppError("Invalid email or password", 401);
+  }
+
+  // If multiple matching accounts exist and none was explicitly picked yet, return the list of accounts
+  if (validAccounts.length > 1 && !selectedAccountId) {
+    return {
+      requiresAccountSelection: true,
+      accounts: validAccounts.map((a) => ({
+        id: a.id,
+        name: a.name,
+        email: a.email,
+        role: a.role,
+        franchiseId: a.franchiseId,
+        isActive: a.isActive,
+        franchise: a.franchise
+          ? {
+              id: a.franchise.id,
+              name: a.franchise.name,
+              code: a.franchise.code,
+              isActive: a.franchise.isActive,
+            }
+          : null,
+      })),
+    };
+  }
+
+  // Determine user account to log in
+  const user = selectedAccountId
+    ? validAccounts.find((a) => a.id === selectedAccountId) || validAccounts[0]
+    : validAccounts[0];
 
   if (!user.isActive) {
     throw new AppError("Your account has been deactivated. Please contact your administrator.", 403);
@@ -30,17 +71,13 @@ export async function loginUser(email: string, password: string) {
     throw new AppError("Your franchise is currently inactive. Please contact the administrator.", 403);
   }
 
-  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
-
-  if (!passwordMatches) {
-    throw new AppError("Invalid email or password", 401);
-  }
-
   const token = jwt.sign(
     {
       userId: user.id,
       role: user.role,
       franchiseId: user.franchiseId,
+      name: user.name,
+      email: user.email,
     },
     getJwtSecret(),
     {
@@ -70,6 +107,87 @@ export async function loginUser(email: string, password: string) {
             name: user.franchise.name,
             code: user.franchise.code,
             isActive: user.franchise.isActive,
+          }
+        : null,
+    },
+  };
+}
+
+export async function getLinkedAccounts(userEmail: string) {
+  const accounts = await prisma.user.findMany({
+    where: {
+      email: userEmail.toLowerCase().trim(),
+      isActive: true,
+    },
+    include: {
+      franchise: {
+        select: { id: true, name: true, code: true, isActive: true },
+      },
+    },
+  });
+
+  return accounts.map((a) => ({
+    id: a.id,
+    name: a.name,
+    email: a.email,
+    role: a.role,
+    franchiseId: a.franchiseId,
+    franchise: a.franchise,
+  }));
+}
+
+export async function switchUserAccount(currentUserId: string, targetAccountId: string) {
+  const current = await prisma.user.findUnique({ where: { id: currentUserId } });
+  if (!current) throw new AppError("Current user not found", 404);
+
+  const target = await prisma.user.findUnique({
+    where: { id: targetAccountId },
+    include: { franchise: true },
+  });
+
+  if (!target) throw new AppError("Target profile not found", 404);
+
+  // Security check: email must match
+  if (target.email.toLowerCase().trim() !== current.email.toLowerCase().trim()) {
+    throw new AppError("Cannot switch to an account registered with a different email address", 403);
+  }
+
+  if (!target.isActive) {
+    throw new AppError("Target account is deactivated", 403);
+  }
+
+  if (target.franchise && !target.franchise.isActive && target.role !== "SUPER_ADMIN") {
+    throw new AppError("Target franchise branch is inactive", 403);
+  }
+
+  const token = jwt.sign(
+    {
+      userId: target.id,
+      role: target.role,
+      franchiseId: target.franchiseId,
+      name: target.name,
+      email: target.email,
+    },
+    getJwtSecret(),
+    {
+      expiresIn: "7d",
+    }
+  );
+
+  return {
+    token,
+    user: {
+      id: target.id,
+      name: target.name,
+      email: target.email,
+      role: target.role,
+      franchiseId: target.franchiseId,
+      franchise: target.franchise
+        ? {
+            id: target.franchise.id,
+            name: target.franchise.name,
+            code: target.franchise.code,
+            isActive: target.franchise.isActive,
           }
         : null,
     },

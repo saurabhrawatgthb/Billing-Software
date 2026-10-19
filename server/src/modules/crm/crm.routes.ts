@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, authorize } from "../../middleware/auth.js";
+import { authenticate, authorize, authorizeWithPermission } from "../../middleware/auth.js";
 import {
   searchCustomers,
   lookupByPhone,
@@ -33,17 +33,17 @@ router.post(
 // Customer Directory & Profiles (Manager and Super Admin)
 router.get("/customers", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER"), searchCustomers);
 router.get("/customers/:id", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER"), getCustomer);
-router.put("/customers/:id", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER"), updateCustomer);
+router.put("/customers/:id", authorizeWithPermission("canManageCRM"), updateCustomer);
 
 // RFM Analytics & Segment Recalculation
 router.get("/analytics", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER"), getAnalytics);
-router.post("/recalculate-segments", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER"), recalculateSegments);
+router.post("/recalculate-segments", authorizeWithPermission("canManageCRM"), recalculateSegments);
 
 // Campaigns & Automations
 router.get("/campaigns", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER"), listCampaigns);
-router.post("/campaigns", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER"), createCampaign);
-router.post("/campaigns/preview", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER"), previewCampaign);
-router.post("/campaigns/:id/execute", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER"), executeCampaign);
+router.post("/campaigns", authorizeWithPermission("canManageCRM"), createCampaign);
+router.post("/campaigns/preview", authorizeWithPermission("canManageCRM"), previewCampaign);
+router.post("/campaigns/:id/execute", authorizeWithPermission("canManageCRM"), executeCampaign);
 
 // Audit & Communication Logs
 router.get("/logs", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER"), listLogs);

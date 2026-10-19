@@ -12,6 +12,7 @@ import { Modal } from "../../components/common/Modal.js";
 import { Badge, getStatusBadgeVariant } from "../../components/common/Badge.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
+import { RolePermissionsModal } from "../../components/users/RolePermissionsModal.js";
 
 const AVAILABLE_ROLES: { value: UserRole; label: string }[] = [
   { value: "FRANCHISE_MANAGER", label: "Franchise Manager" },
@@ -30,6 +31,7 @@ export const UsersPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
   const [formData, setFormData] = useState<{
@@ -47,11 +49,13 @@ export const UsersPage: React.FC = () => {
   });
   const [formError, setFormError] = useState<string | null>(null);
 
+  const effectiveFranchiseId = selectedFranchiseId || currentUser?.franchiseId;
+
   // Fetch Users
   const { data: users = [], isLoading } = useQuery<User[]>({
-    queryKey: ["users", selectedFranchiseId],
+    queryKey: ["users", effectiveFranchiseId],
     queryFn: async () => {
-      const url = selectedFranchiseId ? `/users?franchiseId=${selectedFranchiseId}` : "/users";
+      const url = effectiveFranchiseId ? `/users?franchiseId=${effectiveFranchiseId}` : "/users";
       const res = await api.get(url);
       return res.data.data;
     },
@@ -80,6 +84,7 @@ export const UsersPage: React.FC = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       handleCloseModal();
     },
     onError: (err) => {
@@ -154,9 +159,20 @@ export const UsersPage: React.FC = () => {
             Manage system logins, franchise managers, role permissions, and user accounts
           </p>
         </div>
-        <Button onClick={handleOpenCreate} variant="primary" icon={<Plus className="w-4 h-4" />}>
-          Add User Account
-        </Button>
+        <div className="flex items-center gap-2.5">
+          {isSuperAdmin && (
+            <Button
+              onClick={() => setIsPermissionsModalOpen(true)}
+              variant="outline"
+              icon={<Shield className="w-4 h-4 text-indigo-600" />}
+            >
+              Manager Permission Matrix
+            </Button>
+          )}
+          <Button onClick={handleOpenCreate} variant="primary" icon={<Plus className="w-4 h-4" />}>
+            Add User Account
+          </Button>
+        </div>
       </div>
 
       {/* Filter & Search */}
@@ -327,7 +343,9 @@ export const UsersPage: React.FC = () => {
               label="Assigned Franchise Branch *"
               options={[
                 { value: "", label: "Select a franchise" },
-                ...franchises.map((f) => ({ value: f.id, label: `${f.name} (${f.code})` })),
+                ...franchises
+                  .filter((f) => f.isActive)
+                  .map((f) => ({ value: f.id, label: `${f.name} (${f.code})` })),
               ]}
               value={formData.franchiseId}
               onChange={(e) => setFormData({ ...formData, franchiseId: e.target.value })}
@@ -344,6 +362,13 @@ export const UsersPage: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Role & Manager Permission Control Modal */}
+      <RolePermissionsModal
+        isOpen={isPermissionsModalOpen}
+        onClose={() => setIsPermissionsModalOpen(false)}
+        franchises={franchises}
+      />
     </div>
   );
 };

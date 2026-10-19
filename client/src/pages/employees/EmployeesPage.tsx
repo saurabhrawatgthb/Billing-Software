@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Edit2, Phone, Mail, Calendar, DollarSign } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
-import type { Employee, EmployeeStatus } from "../../types/index.js";
+import type { Employee, EmployeeStatus, Franchise } from "../../types/index.js";
 import { Card } from "../../components/common/Card.js";
 import { Button } from "../../components/common/Button.js";
 import { Input } from "../../components/common/Input.js";
@@ -22,14 +22,26 @@ const STATUS_OPTIONS: { value: EmployeeStatus; label: string }[] = [
 
 export const EmployeesPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { selectedFranchiseId } = useAuthStore();
+  const { user, selectedFranchiseId } = useAuthStore();
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
+  // Fetch Franchises (for dropdown if Super Admin)
+  const { data: franchises = [] } = useQuery<Franchise[]>({
+    queryKey: ["franchises"],
+    queryFn: async () => {
+      const res = await api.get("/franchises");
+      return res.data.data;
+    },
+    enabled: isSuperAdmin,
+  });
+
   const [formData, setFormData] = useState({
+    franchiseId: selectedFranchiseId || "",
     employeeCode: "",
     firstName: "",
     lastName: "",
@@ -44,11 +56,14 @@ export const EmployeesPage: React.FC = () => {
   });
   const [formError, setFormError] = useState<string | null>(null);
 
+  const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId;
+
   // Fetch Employees
   const { data: employees = [], isLoading } = useQuery<Employee[]>({
-    queryKey: ["employees", selectedFranchiseId],
+    queryKey: ["employees", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get("/employees");
+      const url = effectiveFranchiseId ? `/employees?franchiseId=${effectiveFranchiseId}` : "/employees";
+      const res = await api.get(url);
       return res.data.data;
     },
   });
@@ -56,7 +71,7 @@ export const EmployeesPage: React.FC = () => {
   // Create / Update mutation
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const payload = {
+      const payload: any = {
         employeeCode: data.employeeCode,
         firstName: data.firstName,
         lastName: data.lastName || null,
@@ -72,6 +87,12 @@ export const EmployeesPage: React.FC = () => {
         },
       };
 
+      if (isSuperAdmin) {
+        payload.franchiseId = data.franchiseId || selectedFranchiseId || (franchises[0]?.id ?? null);
+      } else {
+        payload.franchiseId = user?.franchiseId || selectedFranchiseId;
+      }
+
       if (editingEmployee) {
         return api.put(`/employees/${editingEmployee.id}`, payload);
       }
@@ -79,6 +100,7 @@ export const EmployeesPage: React.FC = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       handleCloseModal();
     },
     onError: (err) => {
@@ -89,6 +111,7 @@ export const EmployeesPage: React.FC = () => {
   const handleOpenCreate = () => {
     setEditingEmployee(null);
     setFormData({
+      franchiseId: selectedFranchiseId || user?.franchiseId || (franchises[0]?.id ?? ""),
       employeeCode: `EMP-${String(employees.length + 1).padStart(3, "0")}`,
       firstName: "",
       lastName: "",
@@ -108,6 +131,7 @@ export const EmployeesPage: React.FC = () => {
   const handleOpenEdit = (emp: Employee) => {
     setEditingEmployee(emp);
     setFormData({
+      franchiseId: emp.franchiseId || selectedFranchiseId || user?.franchiseId || (franchises[0]?.id ?? ""),
       employeeCode: emp.employeeCode,
       firstName: emp.firstName,
       lastName: emp.lastName || "",
@@ -197,6 +221,7 @@ export const EmployeesPage: React.FC = () => {
                 <tr>
                   <th className="px-6 py-4">Employee</th>
                   <th className="px-6 py-4">Code</th>
+                  {isSuperAdmin && <th className="px-6 py-4">Outlet</th>}
                   <th className="px-6 py-4">Designation</th>
                   <th className="px-6 py-4">Contact</th>
                   <th className="px-6 py-4">Basic Salary</th>
@@ -226,6 +251,13 @@ export const EmployeesPage: React.FC = () => {
                     <td className="px-6 py-4 font-mono font-semibold text-xs text-indigo-600">
                       {emp.employeeCode}
                     </td>
+                    {isSuperAdmin && (
+                      <td className="px-6 py-4">
+                        <span className="text-xs font-semibold text-gray-800 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
+                          {emp.franchise?.name || "Main Outlet"}
+                        </span>
+                      </td>
+                    )}
                     <td className="px-6 py-4 font-medium text-gray-700">
                       {emp.designation || "Staff"}
                     </td>
@@ -288,6 +320,16 @@ export const EmployeesPage: React.FC = () => {
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs font-medium">
               {formError}
             </div>
+          )}
+
+          {isSuperAdmin && franchises.length > 0 && (
+            <Select
+              label="Franchise Outlet *"
+              required
+              options={franchises.map((f) => ({ value: f.id, label: `🏬 ${f.name} (${f.code})` }))}
+              value={formData.franchiseId}
+              onChange={(e) => setFormData({ ...formData, franchiseId: e.target.value })}
+            />
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

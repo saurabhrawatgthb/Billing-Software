@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "../../lib/prisma.js";
 import { AppError } from "../../middleware/error.js";
 import { logAudit } from "../../lib/audit.js";
+import { emitToFranchise } from "../../lib/socket.js";
 
 export const createEmployeeSchema = z.object({
   franchiseId: z.string().optional(),
@@ -29,11 +30,19 @@ export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>;
 
 export async function listEmployees(franchiseId: string | null) {
-  if (!franchiseId) return [];
+  const where: Prisma.EmployeeWhereInput =
+    franchiseId && franchiseId !== "all" ? { franchiseId } : {};
 
   return prisma.employee.findMany({
-    where: { franchiseId },
+    where,
     include: {
+      franchise: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
       salaryStructure: true,
       _count: {
         select: {
@@ -135,6 +144,10 @@ export async function createEmployee(data: CreateEmployeeInput, targetFranchiseI
     newData: employee,
   });
 
+  if (employee) {
+    emitToFranchise(targetFranchiseId, "employee:updated", employee);
+  }
+
   return employee;
 }
 
@@ -219,6 +232,10 @@ export async function updateEmployee(
     newData: updated,
   });
 
+  if (updated) {
+    emitToFranchise(existing.franchiseId, "employee:updated", updated);
+  }
+
   return updated;
 }
 
@@ -252,6 +269,8 @@ export async function setEmployeeStatus(
     oldData: { status: existing.status },
     newData: { status },
   });
+
+  emitToFranchise(existing.franchiseId, "employee:updated", updated);
 
   return updated;
 }

@@ -216,6 +216,9 @@ model Franchise {
   customers             Customer[]
   customerVisits        CustomerVisit[]
   campaigns             Campaign[]
+  aggregatorIntegrations AggregatorIntegration[]
+  registers             DailyRegister[]
+  rolePermissions       RolePermission[]
 }
 
 // =========================
@@ -227,7 +230,7 @@ model User {
   franchiseId String?  @db.ObjectId
 
   name         String
-  email        String   @unique
+  email        String
   passwordHash String
   role         UserRole
   isActive     Boolean  @default(true)
@@ -237,9 +240,12 @@ model User {
 
   franchise Franchise? @relation(fields: [franchiseId], references: [id])
 
-  auditLogs     AuditLog[]
-  notifications Notification[]
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+  registersOpened DailyRegister[] @relation("RegisterOpenedBy")
+  registersClosed DailyRegister[] @relation("RegisterClosedBy")
 
+  @@index([email])
   @@index([franchiseId])
 }
 
@@ -619,6 +625,10 @@ model MenuItem {
   code        String  @default("")
   description String?
   price       Float
+  hasSizes    Boolean? @default(false)
+  priceSmall  Float?
+  priceMedium Float?
+  priceLarge  Float?
   isAvailable Boolean @default(true)
 
   createdAt DateTime @default(now())
@@ -695,6 +705,17 @@ model Order {
   paymentConfirmedAt DateTime?
   kotSentAt          DateTime?
 
+  // Aggregator / Online Delivery Integration
+  orderSource            String?   @default("POS") // "POS", "SWIGGY", "ZOMATO"
+  aggregatorOrderId      String?   // e.g. "SWIG-8492" / "ZOM-1940"
+  aggregatorStatus       String?   // "PENDING_ACCEPTANCE", "ACCEPTED", "REJECTED"
+  aggregatorRejectReason String?
+  customerDeliveryName   String?
+  customerDeliveryPhone  String?
+  deliveryAddress        String?
+  riderName              String?
+  riderPhone             String?
+
   subtotal Float @default(0)
   discount Float @default(0)
   tax      Float @default(0)
@@ -725,6 +746,7 @@ model OrderItem {
   quantity          Int
   unitPrice         Float
   totalPrice        Float
+  selectedSize      String?
   notes             String?
   inventoryDeducted Boolean @default(false)
 
@@ -794,6 +816,27 @@ model Invoice {
   tax      Float @default(0)
   total    Float
 
+  // Statutory Tax & GST Audit Breakdown
+  taxableAmount Float?   @default(0)
+  cgstRate      Float?   @default(2.5)
+  cgstAmount    Float?   @default(0)
+  sgstRate      Float?   @default(2.5)
+  sgstAmount    Float?   @default(0)
+  igstRate      Float?   @default(0)
+  igstAmount    Float?   @default(0)
+  gstin         String?
+
+  // Anti-fraud dormant status & Manager void protection
+  isDormant       Boolean   @default(false)
+  dormantReason   String?
+  dormantBy       String?
+  dormantById     String?
+  dormantAt       DateTime?
+  dormantStatus   String?   @default("ACTIVE") // "ACTIVE" | "PENDING_AUDIT" | "VERIFIED_VOID" | "REINSTATED"
+  verifiedBy      String?
+  verifiedAt      DateTime?
+  adminAuditNotes String?
+
   createdAt DateTime @default(now())
 
   franchise Franchise @relation(fields: [franchiseId], references: [id])
@@ -801,6 +844,7 @@ model Invoice {
   payments  Payment[]
 
   @@index([franchiseId])
+  @@index([isDormant])
 }
 
 model Payment {
@@ -1070,3 +1114,104 @@ model BrandSettings {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }
+
+// ==========================================================
+// SWIGGY & ZOMATO AGGREGATOR INTEGRATION
+// ==========================================================
+
+model AggregatorIntegration {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  franchiseId     String   @db.ObjectId
+  platform        String   // "SWIGGY" | "ZOMATO"
+  isEnabled       Boolean  @default(false)
+  restaurantId    String?  // Aggregator merchant / store outlet ID
+  apiKey          String?  // API secret / webhook token
+  autoAccept      Boolean  @default(false)
+  prepTimeMinutes Int      @default(15)
+  webhookUrl      String?  // Webhook endpoint
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  franchise       Franchise @relation(fields: [franchiseId], references: [id])
+
+  @@unique([franchiseId, platform])
+  @@index([franchiseId])
+}
+
+// ==========================================================
+// DAILY REGISTER & SHIFT CLOSING (DAY OPEN & DAY CLOSE)
+// ==========================================================
+
+enum RegisterStatus {
+  OPEN
+  CLOSED
+}
+
+model DailyRegister {
+  id                String         @id @default(auto()) @map("_id") @db.ObjectId
+  franchiseId       String         @db.ObjectId
+  openedById        String         @db.ObjectId
+  closedById        String?        @db.ObjectId
+
+  openedAt          DateTime       @default(now())
+  closedAt          DateTime?
+  status            RegisterStatus @default(OPEN)
+
+  openingFloat      Float          @default(0)
+  closingCash       Float?
+  expectedCash      Float?
+  cashDifference    Float?
+
+  totalSales        Float          @default(0)
+  cashSales         Float          @default(0)
+  upiSales          Float          @default(0)
+  cardSales         Float          @default(0)
+  aggregatorSales   Float          @default(0)
+  totalOrdersCount  Int            @default(0)
+  totalTaxCollected Float          @default(0)
+  totalDiscounts    Float          @default(0)
+
+  openingNotes      String?
+  closingNotes      String?
+
+  franchise         Franchise      @relation(fields: [franchiseId], references: [id])
+  openedBy          User           @relation("RegisterOpenedBy", fields: [openedById], references: [id])
+  closedBy          User?          @relation("RegisterClosedBy", fields: [closedById], references: [id])
+
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([franchiseId])
+  @@index([status])
+}
+
+// ==========================================================
+// SUPER ADMIN ROLE PERMISSION MODULE FOR MANAGERS
+// ==========================================================
+
+model RolePermission {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  franchiseId        String?  @db.ObjectId
+  role               UserRole @default(FRANCHISE_MANAGER)
+
+  canEditMenu        Boolean  @default(true)
+  canEditPrices      Boolean  @default(true)
+  canVoidBills       Boolean  @default(false)
+  canManageInventory Boolean  @default(true)
+  canManageEmployees Boolean  @default(true)
+  canViewReports     Boolean  @default(true)
+  canManageCRM       Boolean  @default(true)
+  canManagePrinters  Boolean  @default(true)
+  canManageTables    Boolean  @default(true)
+  canApplyDiscounts  Boolean  @default(true)
+  maxDiscountPercent Float    @default(20.0)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  franchise          Franchise? @relation(fields: [franchiseId], references: [id])
+
+  @@unique([franchiseId, role])
+  @@index([role])
+}
+

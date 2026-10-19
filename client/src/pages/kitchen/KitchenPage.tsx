@@ -45,7 +45,7 @@ export const KitchenPage: React.FC = () => {
   });
 
   // Fetch KOTs
-  const { data: kots = [], isLoading, refetch } = useQuery<KOT[]>({
+  const { data: kots = [], isLoading, isFetching, refetch } = useQuery<KOT[]>({
     queryKey: ["kots", selectedFranchiseId, selectedStation],
     queryFn: async () => {
       const url = selectedStation ? `/kot?stationId=${selectedStation}` : "/kot";
@@ -113,8 +113,17 @@ export const KitchenPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => refetch()} icon={<RefreshCw className="w-3.5 h-3.5" />}>
-            Refresh KDS
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isFetching}
+            onClick={async () => {
+              await queryClient.invalidateQueries({ queryKey: ["kots"] });
+              refetch();
+            }}
+            icon={<RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin text-indigo-600" : ""}`} />}
+          >
+            {isFetching ? "Refreshing KDS..." : "Refresh KDS"}
           </Button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import type { Response, NextFunction } from "express";
 import { z } from "zod";
 import { EmployeeStatus } from "@prisma/client";
+import prisma from "../../lib/prisma.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { getFranchiseId } from "../../middleware/auth.js";
 import {
@@ -37,7 +38,11 @@ export async function get(req: AuthenticatedRequest, res: Response, next: NextFu
 
 export async function create(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
-    const franchiseId = getFranchiseId(req);
+    let franchiseId = req.body?.franchiseId || getFranchiseId(req);
+    if (!franchiseId && req.user?.role === "SUPER_ADMIN") {
+      const firstFranchise = await prisma.franchise.findFirst({ where: { isActive: true } });
+      franchiseId = firstFranchise?.id || null;
+    }
     if (!franchiseId) {
       throw new AppError("Franchise ID is required to create employee", 400);
     }

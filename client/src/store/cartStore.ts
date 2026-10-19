@@ -2,8 +2,11 @@ import { create } from "zustand";
 import type { MenuItem, RestaurantTable } from "../types/index.js";
 
 export interface CartItem {
+  cartItemId: string;
   menuItem: MenuItem;
   quantity: number;
+  selectedSize?: string;
+  price: number;
   notes?: string;
 }
 
@@ -13,10 +16,10 @@ interface CartState {
   discount: number;
   taxRate: number;
   notes: string;
-  addItem: (item: MenuItem) => void;
-  removeItem: (menuItemId: string) => void;
-  updateQuantity: (menuItemId: string, quantity: number) => void;
-  updateItemNotes: (menuItemId: string, notes: string) => void;
+  addItem: (item: MenuItem, selectedSize?: string, customPrice?: number) => void;
+  removeItem: (cartItemId: string) => void;
+  updateQuantity: (cartItemId: string, quantity: number) => void;
+  updateItemNotes: (cartItemId: string, notes: string) => void;
   setSelectedTable: (table: RestaurantTable | null) => void;
   setDiscount: (discount: number) => void;
   setTaxRate: (rate: number) => void;
@@ -30,47 +33,61 @@ export const useCartStore = create<CartState>((set, get) => ({
   items: [],
   selectedTable: null,
   discount: 0,
-  taxRate: 5, // 5% default
+  taxRate: 0, // 0% default (only applied if business has a registered GSTIN)
   notes: "",
 
-  addItem: (menuItem) => {
+  addItem: (menuItem, selectedSize, customPrice) => {
+    const sizeKey = selectedSize ? selectedSize.trim() : "std";
+    const cartItemId = `${menuItem.id}_${sizeKey}`;
+    const unitPrice = customPrice !== undefined && !isNaN(customPrice) ? Number(customPrice) : Number(menuItem.price);
+
     set((state) => {
-      const existing = state.items.find((i) => i.menuItem.id === menuItem.id);
+      const existing = state.items.find((i) => i.cartItemId === cartItemId);
       if (existing) {
         return {
           items: state.items.map((i) =>
-            i.menuItem.id === menuItem.id ? { ...i, quantity: i.quantity + 1 } : i
+            i.cartItemId === cartItemId ? { ...i, quantity: i.quantity + 1 } : i
           ),
         };
       }
       return {
-        items: [...state.items, { menuItem, quantity: 1, notes: "" }],
+        items: [
+          ...state.items,
+          {
+            cartItemId,
+            menuItem,
+            quantity: 1,
+            selectedSize: selectedSize || undefined,
+            price: unitPrice,
+            notes: "",
+          },
+        ],
       };
     });
   },
 
-  removeItem: (menuItemId) => {
+  removeItem: (cartItemId) => {
     set((state) => ({
-      items: state.items.filter((i) => i.menuItem.id !== menuItemId),
+      items: state.items.filter((i) => i.cartItemId !== cartItemId && i.menuItem.id !== cartItemId),
     }));
   },
 
-  updateQuantity: (menuItemId, quantity) => {
+  updateQuantity: (cartItemId, quantity) => {
     if (quantity <= 0) {
-      get().removeItem(menuItemId);
+      get().removeItem(cartItemId);
       return;
     }
     set((state) => ({
       items: state.items.map((i) =>
-        i.menuItem.id === menuItemId ? { ...i, quantity } : i
+        i.cartItemId === cartItemId || i.menuItem.id === cartItemId ? { ...i, quantity } : i
       ),
     }));
   },
 
-  updateItemNotes: (menuItemId, notes) => {
+  updateItemNotes: (cartItemId, notes) => {
     set((state) => ({
       items: state.items.map((i) =>
-        i.menuItem.id === menuItemId ? { ...i, notes } : i
+        i.cartItemId === cartItemId || i.menuItem.id === cartItemId ? { ...i, notes } : i
       ),
     }));
   },
@@ -88,7 +105,10 @@ export const useCartStore = create<CartState>((set, get) => ({
     }),
 
   getSubtotal: () => {
-    return get().items.reduce((sum, item) => sum + Number(item.menuItem.price) * item.quantity, 0);
+    return get().items.reduce(
+      (sum, item) => sum + Number(item.price ?? item.menuItem.price) * item.quantity,
+      0
+    );
   },
 
   getTax: () => {

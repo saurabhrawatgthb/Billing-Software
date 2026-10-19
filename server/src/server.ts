@@ -2,6 +2,8 @@ import http from "http";
 import express, { type Request, type Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
+import fs from "fs";
 
 import authRoutes from "./modules/auth/auth.routes.js";
 import franchiseRoutes from "./modules/franchise/franchise.routes.js";
@@ -26,6 +28,9 @@ import advanceRoutes from "./modules/advance/advance.routes.js";
 import notificationRoutes from "./modules/notification/notification.routes.js";
 import crmRoutes from "./modules/crm/crm.routes.js";
 import brandRoutes from "./modules/brand/brand.routes.js";
+import aggregatorRoutes from "./modules/aggregator/aggregator.routes.js";
+import permissionRoutes from "./modules/permission/permission.routes.js";
+import registerRoutes from "./modules/register/register.routes.js";
 
 import { initSocket } from "./lib/socket.js";
 import { errorHandler } from "./middleware/error.js";
@@ -48,7 +53,8 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Health & diagnostics
 app.get("/api/health", (_req: Request, res: Response) => {
@@ -100,14 +106,36 @@ app.use("/api/advances", advanceRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/crm", crmRoutes);
 app.use("/api/brand-settings", brandRoutes);
+app.use("/api/aggregators", aggregatorRoutes);
+app.use("/api/permissions", permissionRoutes);
+app.use("/api/registers", registerRoutes);
+
+// SPA Static Asset Serving & Wildcard Fallback Route
+const clientDist = fs.existsSync(path.resolve(process.cwd(), "../client/dist"))
+  ? path.resolve(process.cwd(), "../client/dist")
+  : path.resolve(process.cwd(), "client/dist");
+
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.use((req: Request, res: Response, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api")) {
+      return next();
+    }
+    const indexPath = path.join(clientDist, "index.html");
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
+    next();
+  });
+}
 
 // Centralized error handler
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
 
 if (process.env.NODE_ENV !== "test") {
-  server.listen(PORT, () => {
+  server.listen(PORT, "0.0.0.0", () => {
     console.log(`Server listening on port ${PORT}`);
   });
 }

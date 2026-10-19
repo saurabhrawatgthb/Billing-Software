@@ -1,7 +1,7 @@
 services:
   # 1. Backend Web Service
   - type: web
-    name: restaurant-pos-server
+    name: restaurent-pos-api
     runtime: node
     plan: free
     rootDir: server
@@ -17,12 +17,17 @@ services:
 
   # 2. Frontend Static Site
   - type: web
-    name: restaurant-pos-client
+    name: restaurent-pos-client
     runtime: static
     plan: free
     rootDir: client
     buildCommand: npm install --include=dev && npm run build
     staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://restaurent-pos-api.onrender.com/api
+      - key: VITE_SOCKET_URL
+        value: https://restaurent-pos-api.onrender.com
     routes:
       - type: rewrite
         source: /*

@@ -54,7 +54,7 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/dashboard"
           element={
-            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER"]}>
               <DashboardPage />
             </ProtectedRoute>
           }
@@ -63,7 +63,7 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/pos"
           element={
-            <ProtectedRoute allowedRoles={["FRANCHISE_MANAGER", "CASHIER", "WAITER"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER", "WAITER"]}>
               <POSPage />
             </ProtectedRoute>
           }
@@ -72,7 +72,7 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/tables"
           element={
-            <ProtectedRoute allowedRoles={["FRANCHISE_MANAGER", "CASHIER", "WAITER", "CHEF"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER", "WAITER", "CHEF"]}>
               <TablesPage />
             </ProtectedRoute>
           }
@@ -81,7 +81,7 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/orders"
           element={
-            <ProtectedRoute allowedRoles={["FRANCHISE_MANAGER", "CASHIER", "WAITER", "CHEF", "ACCOUNTANT"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER", "WAITER", "CHEF", "ACCOUNTANT"]}>
               <OrdersPage />
             </ProtectedRoute>
           }
@@ -90,7 +90,7 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/kitchen"
           element={
-            <ProtectedRoute allowedRoles={["FRANCHISE_MANAGER", "CHEF"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER", "CHEF"]}>
               <KitchenPage />
             </ProtectedRoute>
           }
@@ -99,7 +99,7 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/billing"
           element={
-            <ProtectedRoute allowedRoles={["FRANCHISE_MANAGER", "CASHIER", "ACCOUNTANT"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER", "ACCOUNTANT"]}>
               <BillingPage />
             </ProtectedRoute>
           }
@@ -135,7 +135,7 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/expenses"
           element={
-            <ProtectedRoute allowedRoles={["FRANCHISE_MANAGER", "CASHIER", "ACCOUNTANT"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER", "ACCOUNTANT"]}>
               <ExpensesPage />
             </ProtectedRoute>
           }
@@ -144,7 +144,7 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/advances"
           element={
-            <ProtectedRoute allowedRoles={["FRANCHISE_MANAGER", "CASHIER", "HR", "ACCOUNTANT"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER", "HR", "ACCOUNTANT"]}>
               <AdvancesPage />
             </ProtectedRoute>
           }
@@ -171,7 +171,7 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/employees"
           element={
-            <ProtectedRoute allowedRoles={["FRANCHISE_MANAGER", "HR", "ACCOUNTANT"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FRANCHISE_MANAGER", "CASHIER", "HR", "ACCOUNTANT"]}>
               <EmployeesPage />
             </ProtectedRoute>
           }

@@ -10,6 +10,8 @@ export interface AuthenticatedUser {
   id?: string;
   role: string;
   franchiseId: string | null;
+  name?: string;
+  email?: string;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -47,6 +49,8 @@ export function authenticate(
       id: payload.userId || payload.id,
       role: payload.role,
       franchiseId: payload.franchiseId,
+      name: payload.name,
+      email: payload.email,
     };
     next();
   } catch {
@@ -71,12 +75,84 @@ export function authorize(...roles: string[]) {
 
 export const authorizeRole = authorize;
 
+/**
+ * Evaluates dynamic role permissions configured by Super Admin (e.g. canEditMenu, canEditPrices, canVoidBills).
+ * - SUPER_ADMIN is always authorized.
+ * - FRANCHISE_MANAGER is checked against active franchise RolePermission in the database.
+ * - extraRoles (e.g. CHEF) can also be authorized if specified.
+ */
+export function authorizeWithPermission(
+  permissionKey: keyof import("../modules/permission/permission.service.js").PermissionSettings,
+  ...extraRoles: string[]
+) {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    // Super Admin has all permissions globally
+    if (req.user.role === "SUPER_ADMIN" || extraRoles.includes(req.user.role)) {
+      return next();
+    }
+
+    if (req.user.role === "FRANCHISE_MANAGER") {
+      try {
+        const { getPermissionsForRole } = await import("../modules/permission/permission.service.js");
+        const franchiseId = getFranchiseId(req) || req.user.franchiseId;
+        const perms = await getPermissionsForRole(franchiseId, req.user.role as any);
+        if (perms && (perms as any)[permissionKey]) {
+          return next();
+        }
+      } catch (err) {
+        console.warn("Permission check error:", err);
+      }
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: `You do not have permission to perform this action (${String(permissionKey)})`,
+    });
+  };
+}
+
 export function getFranchiseId(req: AuthenticatedRequest): string | null {
   if (req.user?.role === "SUPER_ADMIN") {
+    const queryFranchise = req.query.franchiseId;
+    if (
+      typeof queryFranchise === "string" &&
+      queryFranchise.trim() !== "" &&
+      queryFranchise !== "all" &&
+      queryFranchise !== "null" &&
+      queryFranchise !== "undefined"
+    ) {
+      return queryFranchise;
+    }
+
     const headerFranchise = req.headers["x-franchise-id"];
-    if (typeof headerFranchise === "string") return headerFranchise;
-    if (typeof req.query.franchiseId === "string") return req.query.franchiseId;
-    if (typeof (req.body as any)?.franchiseId === "string") return (req.body as any).franchiseId;
+    if (
+      typeof headerFranchise === "string" &&
+      headerFranchise.trim() !== "" &&
+      headerFranchise !== "all" &&
+      headerFranchise !== "null" &&
+      headerFranchise !== "undefined"
+    ) {
+      return headerFranchise;
+    }
+
+    const bodyFranchise = (req.body as any)?.franchiseId;
+    if (
+      typeof bodyFranchise === "string" &&
+      bodyFranchise.trim() !== "" &&
+      bodyFranchise !== "all" &&
+      bodyFranchise !== "null" &&
+      bodyFranchise !== "undefined"
+    ) {
+      return bodyFranchise;
+    }
+
     return req.user.franchiseId ?? null;
   }
   return req.user?.franchiseId ?? null;
