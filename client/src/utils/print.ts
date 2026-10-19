@@ -244,9 +244,7 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
 
   lines.push(divider);
   lines.push(centerLine("*** KITCHEN COPY ***", 32));
-  lines.push("--------------------------------");
-  lines.push(centerLine("✂   TEAR HERE FOR KITCHEN   ✂", 32));
-  lines.push("--------------------------------");
+  lines.push(divider);
 
   return lines.join("\n");
 }
@@ -813,11 +811,11 @@ function dispatchDirectPrint(
       }, 1500);
     });
 
-    // Fallback if afterprint doesn't trigger within 3 seconds
+    // Fallback if afterprint doesn't trigger within 60 seconds (prevents premature job overlapping)
     setTimeout(() => {
       triggerDone();
       if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    }, 3000);
+    }, 60000);
 
     setTimeout(() => {
       try {

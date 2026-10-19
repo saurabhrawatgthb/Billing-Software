@@ -21,10 +21,7 @@ import {
   Percent,
   BadgePercent,
   Printer,
-  Maximize2,
-  Minimize2,
   ShoppingBag,
-  ArrowRight,
   Zap,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
@@ -90,7 +87,7 @@ export const POSPage: React.FC = () => {
   const [splitUpiAmount, setSplitUpiAmount] = useState<number>(0);
   const [printKOT, setPrintKOT] = useState<boolean>(true);
 
-  // Portion / Size Selection for Pizza (Small / Medium / Large OR Normal / Loaded)
+  // Portion / Size Selection for Pizza (Small / Medium / Large OR Normal / Loaded) & Ice Cream (1 & 2 Scoops)
   const [sizeSelectionItem, setSizeSelectionItem] = useState<MenuItem | null>(null);
 
   const isPizzaCategory = (item: MenuItem) => {
@@ -101,10 +98,26 @@ export const POSPage: React.FC = () => {
     return isPizzaCategory(item) && Boolean(item.hasSizes);
   };
 
-  // Instant keyboard shortcuts for Portion Selection (1=Small/Normal, 2=Medium/Loaded, 3=Large, Esc=Cancel)
+  const isIceCreamCategory = (item: MenuItem) => {
+    const cat = (item.category?.name || "").toLowerCase();
+    const name = item.name.toLowerCase();
+    return (
+      cat.includes("ice cream") ||
+      cat.includes("icecream") ||
+      name.includes("ice cream") ||
+      name.includes("icecream")
+    );
+  };
+
+  const isIceCreamWithScoops = (item: MenuItem) => {
+    return isIceCreamCategory(item) && Boolean(item.hasSizes);
+  };
+
+  // Instant keyboard shortcuts for Portion & Scoop Selection (1=1 Scoop/Small/Normal, 2=2 Scoops/Medium/Loaded, 3=Large, Esc=Cancel)
   useEffect(() => {
     if (!sizeSelectionItem) return;
 
+    const isIceCream = isIceCreamWithScoops(sizeSelectionItem);
     const hasThreeSizes = sizeSelectionItem.priceMedium != null && Number(sizeSelectionItem.priceMedium) > 0;
     const pSmall = sizeSelectionItem.priceSmall != null ? Number(sizeSelectionItem.priceSmall) : Number(sizeSelectionItem.price);
     const pMedium = sizeSelectionItem.priceMedium != null ? Number(sizeSelectionItem.priceMedium) : Number(sizeSelectionItem.price);
@@ -112,6 +125,23 @@ export const POSPage: React.FC = () => {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) return;
+
+      if (isIceCream) {
+        // Ice cream scoop selection: 1 = 1 Scoop, 2 = 2 Scoops
+        if (e.key === "1") {
+          e.preventDefault();
+          addItem(sizeSelectionItem, "1 Scoop", pSmall);
+          setSizeSelectionItem(null);
+        } else if (e.key === "2") {
+          e.preventDefault();
+          addItem(sizeSelectionItem, "2 Scoops", pLarge);
+          setSizeSelectionItem(null);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setSizeSelectionItem(null);
+        }
+        return;
+      }
 
       if (hasThreeSizes) {
         if (e.key === "1" || e.key.toLowerCase() === "s") {
@@ -185,32 +215,22 @@ export const POSPage: React.FC = () => {
     }
   }, [selectedTable, orderMode]);
 
-  // Fullscreen Big Screen Terminal Mode
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-      }
-      setIsFullscreen(false);
-    }
-  };
-
+  // Attempt HTML5 browser fullscreen directly on mount
   useEffect(() => {
-    const handleFsChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    };
-    document.addEventListener("fullscreenchange", handleFsChange);
-    return () => document.removeEventListener("fullscreenchange", handleFsChange);
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
   }, []);
 
   // Rush Hour Numpad Dish Code Quick-Add State
   const [quickDishCode, setQuickDishCode] = useState("");
   const [codeFeedbackMsg, setCodeFeedbackMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const quickCodeInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Initial Big Screen Numpad Table & Packing Selection State
+  const [initialNumpadCode, setInitialNumpadCode] = useState("");
+  const [initialTableMsg, setInitialTableMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const initialNumpadInputRef = React.useRef<HTMLInputElement>(null);
 
   // Table filter for initial big screen mode
   const [initialTableFilter, setInitialTableFilter] = useState<"ALL" | "AVAILABLE" | "OCCUPIED">("ALL");
@@ -473,39 +493,104 @@ export const POSPage: React.FC = () => {
     },
   });
 
+  const handleInitialNumpadSubmit = (overrideVal?: string) => {
+    const raw = (overrideVal !== undefined ? overrideVal : initialNumpadCode).trim();
+    if (!raw) return;
+
+    // 0, P, or T = Takeaway / Packing
+    if (
+      raw === "0" ||
+      raw.toLowerCase() === "p" ||
+      raw.toLowerCase() === "t" ||
+      raw.toLowerCase() === "packing" ||
+      raw.toLowerCase() === "takeaway"
+    ) {
+      setSelectedTable(null);
+      setOrderMode("TAKEAWAY");
+      setInitialNumpadCode("");
+      return;
+    }
+
+    // Match table number (exact match only)
+    const rawNum = raw.replace(/\D/g, "");
+    const matched = tables.find((t) => {
+      const tClean = t.tableNumber.trim().toLowerCase();
+      if (tClean === raw.toLowerCase()) return true;
+      if (rawNum && tClean.replace(/\D/g, "") === rawNum) return true;
+      return false;
+    });
+
+    if (matched) {
+      handleTableChange(matched.id);
+      setOrderMode("DINE_IN");
+      setInitialNumpadCode("");
+    } else {
+      setInitialTableMsg({ text: `Table "${raw}" not found! (Press 0 for Packing)`, type: "error" });
+      setTimeout(() => setInitialTableMsg(null), 2500);
+      setInitialNumpadCode("");
+    }
+  };
+
   const handleQuickCodeSubmit = (overrideCode?: string) => {
     const query = (overrideCode !== undefined ? overrideCode : quickDishCode).trim();
     if (!query) return;
 
-    // Search dish by item.code
-    const match = menuItems.find((item) => {
+    const queryClean = query.toLowerCase();
+
+    // 1. Strict exact match on item.code (case-insensitive, trimmed)
+    let match = menuItems.find((item) => {
       if (!item.code) return false;
-      const itemCodeClean = item.code.trim().toLowerCase();
-      const queryClean = query.toLowerCase();
-
-      // Exact match
-      if (itemCodeClean === queryClean) return true;
-
-      // Numeric-only match (e.g. cashier typed 101, item.code is "D-101" or "PIZ-101")
-      const itemDigits = itemCodeClean.replace(/\D/g, "");
-      const queryDigits = queryClean.replace(/\D/g, "");
-      if (queryDigits && itemDigits === queryDigits) return true;
-
-      // Prefix match
-      if (itemCodeClean.startsWith(queryClean)) return true;
-
-      return false;
+      return item.code.trim().toLowerCase() === queryClean;
     });
+
+    // 2. Strict exact numeric match (e.g. cashier typed 2, item.code is "2" or "02")
+    if (!match && !isNaN(Number(queryClean))) {
+      const queryNum = Number(queryClean);
+      match = menuItems.find((item) => {
+        if (!item.code) return false;
+        const itemNum = Number(item.code.trim());
+        return !isNaN(itemNum) && itemNum === queryNum;
+      });
+    }
+
+    // 3. Strict exact digits match (e.g. item.code is "D-2" and cashier typed "2")
+    // Under no circumstances use startsWith or includes! "2" will NEVER match "26"!
+    if (!match) {
+      const queryDigits = queryClean.replace(/\D/g, "");
+      if (queryDigits) {
+        match = menuItems.find((item) => {
+          if (!item.code) return false;
+          const itemDigits = item.code.trim().toLowerCase().replace(/\D/g, "");
+          return itemDigits === queryDigits;
+        });
+      }
+    }
 
     if (!match) {
       setCodeFeedbackMsg({ text: `Dish code "${query}" not found!`, type: "error" });
       setTimeout(() => setCodeFeedbackMsg(null), 2500);
+      setQuickDishCode("");
+      quickCodeInputRef.current?.focus();
       return;
     }
 
     if (!match.isAvailable) {
       setCodeFeedbackMsg({ text: `"${match.name}" is OUT OF STOCK!`, type: "error" });
       setTimeout(() => setCodeFeedbackMsg(null), 2500);
+      setQuickDishCode("");
+      quickCodeInputRef.current?.focus();
+      return;
+    }
+
+    // Ice Cream with 1 & 2 Scoops
+    if (isIceCreamWithScoops(match)) {
+      setSizeSelectionItem(match);
+      setQuickDishCode("");
+      setCodeFeedbackMsg({
+        text: `🍨 ${match.name}: Press 1 (1 Scoop), 2 (2 Scoops)`,
+        type: "success",
+      });
+      setTimeout(() => setCodeFeedbackMsg(null), 3000);
       return;
     }
 
@@ -513,8 +598,11 @@ export const POSPage: React.FC = () => {
     if (isPizzaWithSizes(match)) {
       setSizeSelectionItem(match);
       setQuickDishCode("");
+      const hasThreeSizes = match.priceMedium != null && Number(match.priceMedium) > 0;
       setCodeFeedbackMsg({
-        text: `Portion for ${match.name}: Press 1 (Small), 2 (Medium), 3 (Large)`,
+        text: hasThreeSizes
+          ? `🍕 ${match.name}: Press 1 (Small), 2 (Medium), 3 (Large)`
+          : `🍕 ${match.name}: Press 1 (Normal), 2 (Loaded)`,
         type: "success",
       });
       setTimeout(() => setCodeFeedbackMsg(null), 3000);
@@ -529,7 +617,30 @@ export const POSPage: React.FC = () => {
       type: "success",
     });
     setTimeout(() => setCodeFeedbackMsg(null), 2000);
+    quickCodeInputRef.current?.focus();
   };
+
+  // Immediate auto-focus as soon as POS opens or switches mode
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!orderMode) {
+        initialNumpadInputRef.current?.focus();
+      } else {
+        quickCodeInputRef.current?.focus();
+      }
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [orderMode]);
+
+  // Keep dish code input auto-focused after closing portion/scoop modal
+  useEffect(() => {
+    if (!sizeSelectionItem && orderMode) {
+      const timer = setTimeout(() => {
+        quickCodeInputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [sizeSelectionItem, orderMode]);
 
   // Keyboard listeners for initial screen shortcuts & rush hour numpad quick-add
   useEffect(() => {
@@ -557,12 +668,49 @@ export const POSPage: React.FC = () => {
 
       // CASE 1: On the Initial Screen (orderMode === null)
       if (!orderMode) {
+        if (activeEl === initialNumpadInputRef.current) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            handleInitialNumpadSubmit();
+            return;
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            setInitialNumpadCode("");
+            navigate("/");
+            return;
+          }
+          return;
+        }
+
         if (!isInputFocused) {
-          // Press 'T' or 't' for Takeaway
-          if (e.key.toLowerCase() === "t") {
+          // Press digit 0-9 routes to initial numpad selector
+          if (/^[0-9]$/.test(e.key)) {
+            e.preventDefault();
+            setInitialNumpadCode((prev) => prev + e.key);
+            initialNumpadInputRef.current?.focus();
+            return;
+          }
+
+          // Press 'T', 't', 'P', 'p' for Takeaway / Packing
+          if (e.key.toLowerCase() === "t" || e.key.toLowerCase() === "p") {
             e.preventDefault();
             setSelectedTable(null);
             setOrderMode("TAKEAWAY");
+            return;
+          }
+
+          // Press Enter if initialNumpadCode has content
+          if (e.key === "Enter" && initialNumpadCode.trim()) {
+            e.preventDefault();
+            handleInitialNumpadSubmit();
+            return;
+          }
+
+          // Press Escape to exit POS to dashboard
+          if (e.key === "Escape") {
+            e.preventDefault();
+            navigate("/");
             return;
           }
         }
@@ -579,8 +727,12 @@ export const POSPage: React.FC = () => {
         }
         if (e.key === "Escape") {
           e.preventDefault();
-          setQuickDishCode("");
-          quickCodeInputRef.current?.blur();
+          if (quickDishCode.trim()) {
+            setQuickDishCode("");
+          } else {
+            // Return to table selection
+            setOrderMode(null);
+          }
           return;
         }
         return;
@@ -602,6 +754,13 @@ export const POSPage: React.FC = () => {
           handleQuickCodeSubmit();
           return;
         }
+
+        // Pressing Escape switches back to table selection
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setOrderMode(null);
+          return;
+        }
       }
     };
 
@@ -618,7 +777,10 @@ export const POSPage: React.FC = () => {
     showCapacityWarning,
     showQuickAddCustomer,
     quickDishCode,
+    initialNumpadCode,
     menuItems,
+    tables,
+    navigate,
   ]);
 
   // Handle Smart Table Selection with capacity check
@@ -882,8 +1044,16 @@ export const POSPage: React.FC = () => {
   // If Super Admin has not selected a specific franchise outlet yet, prompt to pick one
   if (isSuperAdmin && !selectedFranchiseId) {
     return (
-      <div className="h-[calc(100vh-6.5rem)] flex items-center justify-center p-6 bg-slate-50/50">
-        <div className="max-w-lg w-full bg-white rounded-3xl p-8 border border-gray-200 shadow-xl text-center space-y-6">
+      <div className="fixed inset-0 z-50 w-screen h-screen flex items-center justify-center p-6 bg-slate-950 text-slate-100 select-none">
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          className="absolute top-6 right-6 p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
+          title="Exit to Dashboard"
+        >
+          <X className="w-5 h-5" />
+        </button>
+        <div className="max-w-lg w-full bg-white text-gray-900 rounded-3xl p-8 border border-gray-200 shadow-2xl text-center space-y-6">
           <div className="w-16 h-16 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
             <Store className="w-8 h-8" />
           </div>
@@ -941,7 +1111,15 @@ export const POSPage: React.FC = () => {
   const occupiedTablesCount = tables.filter((t) => t.status === "OCCUPIED" || t.status === "BILLING").length;
 
   const initialFilteredTables = useMemo(() => {
-    let list = tables;
+    let list = [...tables];
+    // Natural numeric sorting (Table 1, Table 2, Table 3... Table 10)
+    list.sort((a, b) => {
+      const numA = parseInt(a.tableNumber.replace(/\D/g, "")) || 0;
+      const numB = parseInt(b.tableNumber.replace(/\D/g, "")) || 0;
+      if (numA !== numB) return numA - numB;
+      return a.tableNumber.localeCompare(b.tableNumber, undefined, { numeric: true });
+    });
+
     if (initialTableFilter === "AVAILABLE") {
       list = list.filter((t) => t.status === "AVAILABLE");
     } else if (initialTableFilter === "OCCUPIED") {
@@ -957,9 +1135,9 @@ export const POSPage: React.FC = () => {
   // INITIAL BIG SCREEN MODE: First select Table or Takeaway before opening menu
   if (!orderMode) {
     return (
-      <div className="h-[calc(100vh-6.5rem)] flex flex-col bg-slate-950 text-slate-100 rounded-3xl border border-slate-800 shadow-2xl overflow-hidden max-w-7xl mx-auto">
+      <div className="fixed inset-0 z-50 w-screen h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden select-none">
         {/* Top Header of Initial Screen */}
-        <div className="px-6 py-4 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 shrink-0">
+        <div className="px-6 py-3.5 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 shrink-0 shadow-lg">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-indigo-600/30">
               <UtensilsCrossed className="w-5 h-5" />
@@ -967,7 +1145,7 @@ export const POSPage: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-black tracking-tight text-white">MADRASI DOSA POS</h1>
-                <span className="text-[10px] uppercase font-black tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                <span className="text-[10px] uppercase font-black tracking-widest bg-emerald-500/20 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
                   Ready
                 </span>
               </div>
@@ -977,10 +1155,53 @@ export const POSPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Quick Numpad Table & Packing Selector */}
+          <div className="relative flex items-center">
+            <div className="flex items-center gap-2 bg-slate-800/90 border-2 border-amber-400/80 rounded-2xl px-3 py-1.5 shadow-lg shadow-amber-950/20">
+              <span className="text-xs font-black text-amber-400 flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-amber-400 fill-amber-400 animate-pulse" />
+                <span className="hidden sm:inline">Numpad:</span>
+              </span>
+              <input
+                ref={initialNumpadInputRef}
+                type="text"
+                value={initialNumpadCode}
+                onChange={(e) => setInitialNumpadCode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleInitialNumpadSubmit();
+                  }
+                }}
+                placeholder="Type Table # (or 0 for Packing) + ↵"
+                className="w-44 sm:w-56 bg-slate-900/90 text-amber-300 font-mono font-bold text-xs px-2.5 py-1 rounded-xl border border-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder:text-slate-500"
+                title="Type Table number (or 0 for Takeaway / Packing) and press Enter"
+              />
+              <button
+                type="button"
+                onClick={() => handleInitialNumpadSubmit()}
+                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-lg transition-colors cursor-pointer"
+                title="Press Enter"
+              >
+                ↵
+              </button>
+            </div>
+
+            {initialTableMsg && (
+              <div
+                className={`absolute top-full left-0 mt-2 z-30 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xl whitespace-nowrap animate-in fade-in slide-in-from-top-1 ${
+                  initialTableMsg.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
+                }`}
+              >
+                {initialTableMsg.text}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2.5">
             {/* Swiggy / Zomato pills */}
-            <div className="hidden md:flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs">
-              <span className="text-slate-400 font-bold">Aggregators:</span>
+            <div className="hidden lg:flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs">
+              <span className="text-slate-400 font-bold">Online:</span>
               <span className={`inline-flex items-center gap-1 font-bold ${isSwiggyEnabled ? "text-[#FC8019]" : "text-slate-500"}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${isSwiggyEnabled ? "bg-[#FC8019] animate-pulse" : "bg-slate-500"}`} />
                 Swiggy
@@ -1002,246 +1223,196 @@ export const POSPage: React.FC = () => {
               <span>🖨️ {paperSize}</span>
             </button>
 
-            {/* Fullscreen Big Screen Mode Toggle */}
+            {/* Exit POS Button */}
             <button
               type="button"
-              onClick={toggleFullscreen}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-lg shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
-              title="Toggle Fullscreen Big Screen Terminal"
+              onClick={() => {
+                if (document.fullscreenElement && document.exitFullscreen) {
+                  document.exitFullscreen().catch(() => {});
+                }
+                navigate("/");
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-500/50 text-slate-300 hover:text-rose-200 text-xs font-bold transition-all cursor-pointer"
+              title="Exit POS Terminal to Dashboard"
             >
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-              <span>{isFullscreen ? "Exit Fullscreen" : "⛶ Big Screen"}</span>
+              <X className="w-4 h-4" />
+              <span className="hidden sm:inline">Exit POS</span>
             </button>
           </div>
         </div>
 
-        {/* Content Body: Split Left (Takeaway / Packing) & Right (Dining Table Grid) */}
-        <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden p-6 gap-6">
-          {/* Left Column: Takeaway / Packing Hero Card */}
-          <div className="w-full lg:w-96 flex flex-col gap-5 shrink-0">
-            {/* Takeaway / Packing Action Card */}
-            <div
+        {/* Filter & Guest Controls Toolbar */}
+        <div className="px-6 py-3 bg-slate-900/60 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2">
+            {/* Status Filter Pills */}
+            <div className="flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700/80 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setInitialTableFilter("ALL")}
+                className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                  initialTableFilter === "ALL" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                All Tables ({tables.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setInitialTableFilter("AVAILABLE")}
+                className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                  initialTableFilter === "AVAILABLE" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-400 hover:text-emerald-300"
+                }`}
+              >
+                🟢 Available ({availableTablesCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setInitialTableFilter("OCCUPIED")}
+                className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                  initialTableFilter === "OCCUPIED" ? "bg-rose-600 text-white shadow-xs" : "text-slate-400 hover:text-rose-300"
+                }`}
+              >
+                🔴 Occupied ({occupiedTablesCount})
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <input
+              type="text"
+              placeholder="Find Table #..."
+              value={initialTableSearch}
+              onChange={(e) => setInitialTableSearch(e.target.value)}
+              className="w-36 sm:w-44 bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+          </div>
+
+          {/* Guest Count for Dine-In selection */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-bold hidden sm:inline">Dine-In Guests:</span>
+            <div className="flex items-center gap-1.5 bg-slate-800/90 px-2 py-1 rounded-xl border border-slate-700/80">
+              <button
+                type="button"
+                onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
+                className="w-6 h-6 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center justify-center text-xs cursor-pointer"
+              >
+                -
+              </button>
+              <span className="w-6 text-center font-black text-amber-400 text-sm">{guestCount}</span>
+              <button
+                type="button"
+                onClick={() => setGuestCount(guestCount + 1)}
+                className="w-6 h-6 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center justify-center text-xs cursor-pointer"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Unified Table & Packing Grid */}
+        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {/* TILE 1: TAKEAWAY / PACKING (Integrated directly with tables!) */}
+            <button
+              type="button"
               onClick={() => {
                 setSelectedTable(null);
                 setOrderMode("TAKEAWAY");
               }}
-              className="group relative flex-1 min-h-[220px] rounded-3xl p-6 bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900/80 border-2 border-indigo-500/40 hover:border-indigo-400 transition-all duration-200 cursor-pointer shadow-xl hover:shadow-indigo-500/20 flex flex-col justify-between overflow-hidden"
+              className="p-5 rounded-2xl border-2 text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900/90 border-indigo-500/50 hover:border-indigo-400 hover:shadow-2xl hover:shadow-indigo-500/25 min-h-[170px]"
             >
-              <div className="absolute top-0 right-0 w-36 h-36 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none group-hover:bg-indigo-500/20 transition-all" />
-
               <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-14 h-14 rounded-2xl bg-indigo-500/20 border border-indigo-400/40 text-indigo-400 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
-                    <ShoppingBag className="w-7 h-7" />
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border bg-indigo-500/20 text-indigo-300 border-indigo-500/30">
+                    🛍️ Parcel / Counter
+                  </span>
+                  <span className="text-[10px] font-mono font-bold bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-400/30">
+                    Key [0 / P]
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3 my-2">
+                  <div className="w-11 h-11 rounded-xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <ShoppingBag className="w-6 h-6" />
                   </div>
-                  <span className="text-[11px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 px-3 py-1 rounded-full border border-indigo-500/30">
-                    Hot Shortcut: [T]
-                  </span>
-                </div>
-                <h2 className="text-2xl font-black text-white group-hover:text-indigo-200 transition-colors">
-                  Takeaway / Packing
-                </h2>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Direct counter walk-in, parcel packaging, or phone pickup order. No dining table assigned.
-                </p>
-              </div>
-
-              <div className="mt-6 flex items-center justify-between pt-4 border-t border-slate-800">
-                <span className="text-xs font-bold text-indigo-400">Open Billing Menu</span>
-                <span className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center group-hover:translate-x-1 transition-transform">
-                  <ArrowRight className="w-5 h-5" />
-                </span>
-              </div>
-            </div>
-
-            {/* Rush Hour Speed Tips & Guest Defaults */}
-            <div className="bg-slate-900/90 rounded-3xl p-5 border border-slate-800/80 space-y-4">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <Zap className="w-4 h-4 text-amber-400" />
-                Rush Hour Terminal Shortcuts
-              </h3>
-
-              <div className="space-y-2 text-xs text-slate-300">
-                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/50">
-                  <span className="text-slate-400">Select Takeaway</span>
-                  <kbd className="px-2 py-0.5 rounded-md bg-slate-700 font-mono font-bold text-amber-300 text-[11px]">T</kbd>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/50">
-                  <span className="text-slate-400">Add Dish by Code</span>
-                  <kbd className="px-2 py-0.5 rounded-md bg-slate-700 font-mono font-bold text-emerald-300 text-[11px]">Numpad + Enter</kbd>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/50">
-                  <span className="text-slate-400">Pizza Size Select</span>
-                  <kbd className="px-2 py-0.5 rounded-md bg-slate-700 font-mono font-bold text-indigo-300 text-[11px]">1=S, 2=M, 3=L</kbd>
+                  <div>
+                    <h3 className="text-lg font-black text-white group-hover:text-indigo-200 transition-colors leading-tight">
+                      Takeaway / Packing
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      No table assigned
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* Guest Count for Dine-In selection */}
-              <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-slate-300">Default Guests</span>
-                  <p className="text-[10px] text-slate-500">Applies to selected table</p>
-                </div>
-                <div className="flex items-center gap-1.5 bg-slate-800 px-2 py-1 rounded-xl border border-slate-700">
-                  <button
-                    type="button"
-                    onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
-                    className="w-6 h-6 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center justify-center text-xs"
-                  >
-                    -
-                  </button>
-                  <span className="w-6 text-center font-black text-amber-400 text-sm">{guestCount}</span>
-                  <button
-                    type="button"
-                    onClick={() => setGuestCount(guestCount + 1)}
-                    className="w-6 h-6 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center justify-center text-xs"
-                  >
-                    +
-                  </button>
-                </div>
+              <div className="mt-4 pt-2.5 border-t border-slate-800 flex items-center justify-between text-xs font-bold text-indigo-300 group-hover:text-white">
+                <span>Open Menu</span>
+                <span className="text-amber-400 group-hover:translate-x-1 transition-transform">→</span>
               </div>
-            </div>
-          </div>
+            </button>
 
-          {/* Right Column: Dining Tables Grid */}
-          <div className="flex-1 flex flex-col min-w-0 bg-slate-900/60 rounded-3xl border border-slate-800 p-5 overflow-hidden">
-            {/* Table Control Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800 shrink-0">
-              <div>
-                <h2 className="text-lg font-black text-white flex items-center gap-2">
-                  <span>🍽️ Dine-In Table Selection</span>
-                  <span className="text-xs font-bold text-slate-400">
-                    ({availableTablesCount} Available / {tables.length} Total)
-                  </span>
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Click any table below to seat customers and open the menu & billing terminal.
-                </p>
-              </div>
+            {/* TILES 2...N: DINING TABLES */}
+            {initialFilteredTables.map((t) => {
+              const isAvail = t.status === "AVAILABLE";
+              const isOcc = t.status === "OCCUPIED";
 
-              <div className="flex items-center gap-2">
-                {/* Search */}
-                <input
-                  type="text"
-                  placeholder="Find Table #..."
-                  value={initialTableSearch}
-                  onChange={(e) => setInitialTableSearch(e.target.value)}
-                  className="w-32 sm:w-40 bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
-
-                {/* Status Filter Pills */}
-                <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setInitialTableFilter("ALL")}
-                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                      initialTableFilter === "ALL" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    All ({tables.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInitialTableFilter("AVAILABLE")}
-                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                      initialTableFilter === "AVAILABLE" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-emerald-300"
-                    }`}
-                  >
-                    🟢 Available ({availableTablesCount})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInitialTableFilter("OCCUPIED")}
-                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                      initialTableFilter === "OCCUPIED" ? "bg-rose-600 text-white" : "text-slate-400 hover:text-rose-300"
-                    }`}
-                  >
-                    🔴 Occupied ({occupiedTablesCount})
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Table Cards Grid */}
-            <div className="flex-1 overflow-y-auto pt-4 pr-1 scrollbar-thin">
-              {tables.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-500">
-                  <UtensilsCrossed className="w-12 h-12 mb-3 text-slate-600" />
-                  <p className="text-base font-bold text-slate-300">No tables configured for this franchise</p>
-                  <p className="text-xs text-slate-500 mt-1">Start with Takeaway or add tables in Floor Plan.</p>
-                  <button
-                    type="button"
-                    onClick={() => setIsFloorPlanOpen(true)}
-                    className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl cursor-pointer"
-                  >
-                    + Open Floor Plan & Add Tables
-                  </button>
-                </div>
-              ) : initialFilteredTables.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-500">
-                  <p className="text-sm font-bold text-slate-400">No tables match your filter</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3.5">
-                  {initialFilteredTables.map((t) => {
-                    const isAvail = t.status === "AVAILABLE";
-                    const isOcc = t.status === "OCCUPIED";
-
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => {
-                          handleTableChange(t.id);
-                          setOrderMode("DINE_IN");
-                        }}
-                        className={`p-4 rounded-2xl border text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative ${
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => {
+                    handleTableChange(t.id);
+                    setOrderMode("DINE_IN");
+                  }}
+                  className={`p-5 rounded-2xl border text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative min-h-[170px] ${
+                    isAvail
+                      ? "bg-slate-800/80 hover:bg-slate-800 border-emerald-500/40 hover:border-emerald-400 hover:shadow-xl hover:shadow-emerald-900/20"
+                      : isOcc
+                      ? "bg-rose-950/30 hover:bg-rose-950/50 border-rose-500/40 hover:border-rose-400"
+                      : "bg-indigo-950/30 hover:bg-indigo-950/50 border-indigo-500/40 hover:border-indigo-400"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2.5">
+                      <span
+                        className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
                           isAvail
-                            ? "bg-slate-800/80 hover:bg-slate-800 border-emerald-500/40 hover:border-emerald-400 hover:shadow-lg hover:shadow-emerald-900/20"
+                            ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
                             : isOcc
-                            ? "bg-rose-950/30 hover:bg-rose-950/50 border-rose-500/40 hover:border-rose-400"
-                            : "bg-indigo-950/30 hover:bg-indigo-950/50 border-indigo-500/40 hover:border-indigo-400"
+                            ? "bg-rose-500/20 text-rose-400 border-rose-500/30"
+                            : "bg-indigo-500/20 text-indigo-400 border-indigo-500/30"
                         }`}
                       >
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span
-                              className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
-                                isAvail
-                                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                                  : isOcc
-                                  ? "bg-rose-500/20 text-rose-400 border-rose-500/30"
-                                  : "bg-indigo-500/20 text-indigo-400 border-indigo-500/30"
-                              }`}
-                            >
-                              {isAvail ? "🟢 Available" : isOcc ? "🔴 Occupied" : "🔵 Billing"}
-                            </span>
-                            <span className="text-[10px] font-bold text-slate-400">
-                              🪑 {t.capacity}P
-                            </span>
-                          </div>
+                        {isAvail ? "🟢 Available" : isOcc ? "🔴 Occupied" : "🔵 Billing"}
+                      </span>
+                      <span className="text-[10px] font-mono font-bold bg-slate-700/60 text-slate-300 px-1.5 py-0.5 rounded border border-slate-600/60">
+                        Key [{t.tableNumber}]
+                      </span>
+                    </div>
 
-                          <h3 className="text-xl font-black text-white group-hover:text-amber-300 transition-colors">
-                            Table {t.tableNumber}
-                          </h3>
+                    <h3 className="text-2xl font-black text-white group-hover:text-amber-300 transition-colors">
+                      Table {t.tableNumber}
+                    </h3>
 
-                          {isOcc && (
-                            <p className="text-[11px] text-rose-300 font-semibold mt-1">
-                              Seated: {t.currentOccupancy || 0}/{t.capacity}
-                            </p>
-                          )}
-                        </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-slate-400 font-bold">
+                        🪑 {t.capacity} Seats
+                      </span>
+                      {isOcc && (
+                        <span className="text-[11px] text-rose-300 font-semibold">
+                          • Seated: {t.currentOccupancy || 0}
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-                        <div className="mt-4 pt-2 border-t border-slate-700/60 flex items-center justify-between text-xs font-bold text-slate-400 group-hover:text-white">
-                          <span>Select Table</span>
-                          <span className="text-amber-400 group-hover:translate-x-1 transition-transform">→</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                  <div className="mt-4 pt-2.5 border-t border-slate-700/60 flex items-center justify-between text-xs font-bold text-slate-400 group-hover:text-white">
+                    <span>Select Table</span>
+                    <span className="text-amber-400 group-hover:translate-x-1 transition-transform">→</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -1249,9 +1420,9 @@ export const POSPage: React.FC = () => {
   }
 
   return (
-    <div className="h-[calc(100vh-6.5rem)] flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto overflow-hidden">
+    <div className="fixed inset-0 z-50 w-screen h-screen flex flex-col lg:flex-row gap-4 p-3 sm:p-4 bg-slate-950 text-slate-100 overflow-hidden select-none">
       {/* LEFT COLUMN: Catalog & Item Selection */}
-      <div className="flex-1 flex flex-col min-w-0 bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden text-gray-900">
         {/* Aggregator Status & Incoming Order Alert Ribbon */}
         <div className="bg-slate-900 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
           <div className="flex items-center gap-2">
@@ -1458,12 +1629,17 @@ export const POSPage: React.FC = () => {
 
             <button
               type="button"
-              onClick={toggleFullscreen}
-              className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 shadow-2xs transition-colors cursor-pointer"
-              title="Toggle Fullscreen Big Screen Terminal"
+              onClick={() => {
+                if (document.fullscreenElement && document.exitFullscreen) {
+                  document.exitFullscreen().catch(() => {});
+                }
+                navigate("/");
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-500/50 text-slate-200 hover:text-rose-200 text-xs font-bold transition-all cursor-pointer"
+              title="Exit POS Terminal to Dashboard"
             >
-              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">{isFullscreen ? "Exit" : "⛶ Big Screen"}</span>
+              <X className="w-4 h-4" />
+              <span>Exit POS</span>
             </button>
 
             {selectedTable && (
@@ -1536,7 +1712,7 @@ export const POSPage: React.FC = () => {
                 <button
                   key={item.id}
                   disabled={!item.isAvailable}
-                  onClick={() => (isPizzaWithSizes(item) ? setSizeSelectionItem(item) : addItem(item))}
+                  onClick={() => (isPizzaWithSizes(item) || isIceCreamWithScoops(item) ? setSizeSelectionItem(item) : addItem(item))}
                   className={`p-3.5 rounded-xl border text-left flex flex-col justify-between transition-all duration-150 cursor-pointer ${
                     item.isAvailable
                       ? "bg-white border-gray-200/90 hover:border-indigo-400 hover:shadow-md active:scale-98"
@@ -1565,7 +1741,11 @@ export const POSPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
-                    {isPizzaWithSizes(item) ? (
+                    {isIceCreamWithScoops(item) ? (
+                      <span className="text-xs font-bold text-pink-700 bg-pink-50 px-2 py-0.5 rounded-md border border-pink-200/60">
+                        🍨 1 & 2 Scoops • ₹{Number(item.priceSmall || item.price).toFixed(0)}+
+                      </span>
+                    ) : isPizzaWithSizes(item) ? (
                       <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/60">
                         {item.priceMedium != null && Number(item.priceMedium) > 0 ? "S/M/L" : "Normal/Loaded"} • ₹{Number(item.priceSmall || item.price).toFixed(0)}+
                       </span>
@@ -2460,28 +2640,86 @@ Thanks For Visiting Madrasi Dosa`;
         </div>
       </Modal>
 
-      {/* Portion / Size Selection Modal for Pizza (Small / Medium / Large OR Normal / Loaded) */}
+      {/* Portion / Size / Scoop Selection Modal for Pizza & Ice Cream */}
       {sizeSelectionItem && (() => {
+        const isIceCream = isIceCreamWithScoops(sizeSelectionItem);
         const hasThreeSizes = sizeSelectionItem.priceMedium != null && Number(sizeSelectionItem.priceMedium) > 0;
         const pSmall = sizeSelectionItem.priceSmall != null ? Number(sizeSelectionItem.priceSmall) : Number(sizeSelectionItem.price);
         const pMedium = sizeSelectionItem.priceMedium != null ? Number(sizeSelectionItem.priceMedium) : Number(sizeSelectionItem.price);
         const pLarge = sizeSelectionItem.priceLarge != null ? Number(sizeSelectionItem.priceLarge) : Number(sizeSelectionItem.price);
 
+        const modalTitle = isIceCream
+          ? `🍨 Select Scoops: ${sizeSelectionItem.name}`
+          : hasThreeSizes
+          ? `🍕 Select Pizza Size: ${sizeSelectionItem.name}`
+          : `🍕 Select Pizza Style: ${sizeSelectionItem.name}`;
+
         return (
           <Modal
             isOpen={Boolean(sizeSelectionItem)}
             onClose={() => setSizeSelectionItem(null)}
-            title={hasThreeSizes ? `🍕 Select Pizza Size: ${sizeSelectionItem.name}` : `🍕 Select Pizza Style: ${sizeSelectionItem.name}`}
+            title={modalTitle}
             maxWidth="sm"
           >
             <div className="space-y-4 pt-1">
               <p className="text-xs text-gray-500 font-medium">
-                {hasThreeSizes
+                {isIceCream
+                  ? "Choose 1 Scoop or 2 Scoops to add to order (or press 1 or 2):"
+                  : hasThreeSizes
                   ? "Choose size to immediately add to order (or press 1, 2, 3 / S, M, L):"
                   : "Choose style to immediately add to order (or press 1, 2 / N, L):"}
               </p>
 
-              {hasThreeSizes ? (
+              {isIceCream ? (
+                /* Ice Cream Scoop Selection (1 Scoop vs 2 Scoops) */
+                <div className="grid grid-cols-2 gap-3.5">
+                  {/* 1 Scoop */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addItem(sizeSelectionItem, "1 Scoop", pSmall);
+                      setSizeSelectionItem(null);
+                    }}
+                    className="p-4 rounded-2xl border-2 border-pink-200 hover:border-pink-600 bg-white hover:bg-pink-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
+                  >
+                    <span className="w-10 h-10 rounded-full bg-pink-100 text-pink-700 font-black text-sm flex items-center justify-center group-hover:bg-pink-600 group-hover:text-white transition-colors">
+                      1
+                    </span>
+                    <div className="text-center">
+                      <span className="text-sm font-black text-gray-900 group-hover:text-pink-950 block">
+                        1 Scoop 🍨
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-mono">[Key 1]</span>
+                    </div>
+                    <span className="text-sm font-extrabold text-pink-600">
+                      ₹{pSmall.toFixed(2)}
+                    </span>
+                  </button>
+
+                  {/* 2 Scoops */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addItem(sizeSelectionItem, "2 Scoops", pLarge);
+                      setSizeSelectionItem(null);
+                    }}
+                    className="p-4 rounded-2xl border-2 border-pink-400 hover:border-pink-600 bg-pink-50/60 hover:bg-pink-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-pink-300/40"
+                  >
+                    <span className="w-10 h-10 rounded-full bg-pink-600 text-white font-black text-sm flex items-center justify-center shadow-xs">
+                      2
+                    </span>
+                    <div className="text-center">
+                      <span className="text-sm font-black text-gray-900 group-hover:text-pink-950 block">
+                        2 Scoops 🍨🍨
+                      </span>
+                      <span className="text-[10px] text-pink-700 font-mono font-bold">[Key 2]</span>
+                    </div>
+                    <span className="text-sm font-extrabold text-pink-600">
+                      ₹{pLarge.toFixed(2)}
+                    </span>
+                  </button>
+                </div>
+              ) : hasThreeSizes ? (
                 <div className="grid grid-cols-3 gap-3">
                   {/* Small */}
                   <button
