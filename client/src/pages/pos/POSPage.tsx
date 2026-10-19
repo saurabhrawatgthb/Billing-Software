@@ -54,7 +54,6 @@ import { AggregatorSettingsModal } from "../../components/pos/AggregatorSettings
 import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
 import { Globe, Bell, LayoutGrid, Store, Cpu, Check } from "lucide-react";
 import { usePermissions } from "../../hooks/usePermissions.js";
-import { InstallDesktopButton } from "../../components/common/InstallDesktopButton.js";
 
 export const POSPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -1045,11 +1044,11 @@ export const POSPage: React.FC = () => {
   // If Super Admin has not selected a specific franchise outlet yet, prompt to pick one
   if (isSuperAdmin && !selectedFranchiseId) {
     return (
-      <div className="fixed inset-0 z-50 w-screen h-screen flex items-center justify-center p-6 bg-slate-950 text-slate-100 select-none">
+      <div className="fixed inset-0 z-50 w-screen h-screen flex items-center justify-center p-6 bg-slate-100 text-gray-900 select-none">
         <button
           type="button"
           onClick={() => navigate("/")}
-          className="absolute top-6 right-6 p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
+          className="absolute top-6 right-6 p-2 rounded-xl bg-white hover:bg-gray-100 text-gray-600 hover:text-gray-900 border border-gray-200 shadow-sm transition-colors cursor-pointer"
           title="Exit to Dashboard"
         >
           <X className="w-5 h-5" />
@@ -1136,21 +1135,21 @@ export const POSPage: React.FC = () => {
   // INITIAL BIG SCREEN MODE: First select Table or Takeaway before opening menu
   if (!orderMode) {
     return (
-      <div className="fixed inset-0 z-50 w-screen h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden select-none">
+      <div className="fixed inset-0 z-50 w-screen h-screen flex flex-col bg-slate-100 text-gray-900 overflow-hidden select-none">
         {/* Top Header of Initial Screen */}
-        <div className="px-6 py-3.5 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 shrink-0 shadow-lg">
+        <div className="px-6 py-3.5 bg-white border-b border-gray-200 shadow-xs flex flex-wrap items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-indigo-600/30">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black shadow-md shadow-indigo-600/20">
               <UtensilsCrossed className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-lg font-black tracking-tight text-white">MADRASI DOSA POS</h1>
-                <span className="text-[10px] uppercase font-black tracking-widest bg-emerald-500/20 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                <h1 className="text-lg font-black tracking-tight text-gray-950">MADRASI DOSA POS</h1>
+                <span className="text-[10px] uppercase font-black tracking-widest bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200">
                   Ready
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-gray-500">
                 {activeFranchises.find((f) => f.id === effectiveFranchiseId)?.name || user?.franchise?.name || "Terminal 01"} • Select Table or Takeaway to Begin Billing
               </p>
             </div>
@@ -1158,9 +1157,9 @@ export const POSPage: React.FC = () => {
 
           {/* Quick Numpad Table & Packing Selector */}
           <div className="relative flex items-center">
-            <div className="flex items-center gap-2 bg-slate-800/90 border-2 border-amber-400/80 rounded-2xl px-3 py-1.5 shadow-lg shadow-amber-950/20">
-              <span className="text-xs font-black text-amber-400 flex items-center gap-1.5">
-                <Zap className="w-4 h-4 text-amber-400 fill-amber-400 animate-pulse" />
+            <div className="flex items-center gap-2 bg-amber-50/90 border-2 border-amber-400 rounded-2xl px-3 py-1.5 shadow-xs">
+              <span className="text-xs font-black text-amber-800 flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-amber-600 fill-amber-500" />
                 <span className="hidden sm:inline">Numpad:</span>
               </span>
               <input
@@ -1175,13 +1174,13 @@ export const POSPage: React.FC = () => {
                   }
                 }}
                 placeholder="Type Table # (or 0 for Packing) + ↵"
-                className="w-44 sm:w-56 bg-slate-900/90 text-amber-300 font-mono font-bold text-xs px-2.5 py-1 rounded-xl border border-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder:text-slate-500"
+                className="w-44 sm:w-56 bg-white text-gray-900 font-mono font-bold text-xs px-2.5 py-1 rounded-xl border border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder:text-gray-400"
                 title="Type Table number (or 0 for Takeaway / Packing) and press Enter"
               />
               <button
                 type="button"
                 onClick={() => handleInitialNumpadSubmit()}
-                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-lg transition-colors cursor-pointer"
+                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-lg transition-colors cursor-pointer"
                 title="Press Enter"
               >
                 ↵
@@ -1201,29 +1200,26 @@ export const POSPage: React.FC = () => {
 
           <div className="flex items-center gap-2.5">
             {/* Swiggy / Zomato pills */}
-            <div className="hidden lg:flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs">
-              <span className="text-slate-400 font-bold">Online:</span>
-              <span className={`inline-flex items-center gap-1 font-bold ${isSwiggyEnabled ? "text-[#FC8019]" : "text-slate-500"}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${isSwiggyEnabled ? "bg-[#FC8019] animate-pulse" : "bg-slate-500"}`} />
+            <div className="hidden lg:flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-200 text-xs">
+              <span className="text-gray-500 font-bold">Online:</span>
+              <span className={`inline-flex items-center gap-1 font-bold ${isSwiggyEnabled ? "text-[#FC8019]" : "text-gray-400"}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isSwiggyEnabled ? "bg-[#FC8019] animate-pulse" : "bg-gray-400"}`} />
                 Swiggy
               </span>
-              <span className="text-slate-600">•</span>
-              <span className={`inline-flex items-center gap-1 font-bold ${isZomatoEnabled ? "text-[#E23744]" : "text-slate-500"}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${isZomatoEnabled ? "bg-[#E23744] animate-pulse" : "bg-slate-500"}`} />
+              <span className="text-gray-300">•</span>
+              <span className={`inline-flex items-center gap-1 font-bold ${isZomatoEnabled ? "text-[#E23744]" : "text-gray-400"}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isZomatoEnabled ? "bg-[#E23744] animate-pulse" : "bg-gray-400"}`} />
                 Zomato
               </span>
             </div>
-
-            {/* Download / Install Desktop App Button */}
-            <InstallDesktopButton variant="pos" />
 
             {/* Printer Button */}
             <button
               type="button"
               onClick={() => setIsPrinterConfigOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 text-xs font-bold text-gray-700 shadow-2xs transition-colors cursor-pointer"
             >
-              <Printer className="w-4 h-4 text-slate-400" />
+              <Printer className="w-4 h-4 text-gray-500" />
               <span>🖨️ {paperSize}</span>
             </button>
 
@@ -1236,7 +1232,7 @@ export const POSPage: React.FC = () => {
                 }
                 navigate("/");
               }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-500/50 text-slate-300 hover:text-rose-200 text-xs font-bold transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-rose-50 border border-gray-200 hover:border-rose-300 text-gray-700 hover:text-rose-700 text-xs font-bold shadow-2xs transition-all cursor-pointer"
               title="Exit POS Terminal to Dashboard"
             >
               <X className="w-4 h-4" />
@@ -1246,15 +1242,15 @@ export const POSPage: React.FC = () => {
         </div>
 
         {/* Filter & Guest Controls Toolbar */}
-        <div className="px-6 py-3 bg-slate-900/60 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="px-6 py-3 bg-white/90 border-b border-gray-200/90 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
             {/* Status Filter Pills */}
-            <div className="flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700/80 text-xs font-bold">
+            <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200 text-xs font-bold">
               <button
                 type="button"
                 onClick={() => setInitialTableFilter("ALL")}
                 className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
-                  initialTableFilter === "ALL" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-white"
+                  initialTableFilter === "ALL" ? "bg-indigo-600 text-white shadow-xs" : "text-gray-600 hover:text-gray-950"
                 }`}
               >
                 All Tables ({tables.length})
@@ -1263,7 +1259,7 @@ export const POSPage: React.FC = () => {
                 type="button"
                 onClick={() => setInitialTableFilter("AVAILABLE")}
                 className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
-                  initialTableFilter === "AVAILABLE" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-400 hover:text-emerald-300"
+                  initialTableFilter === "AVAILABLE" ? "bg-emerald-600 text-white shadow-xs" : "text-gray-600 hover:text-emerald-700"
                 }`}
               >
                 🟢 Available ({availableTablesCount})
@@ -1272,7 +1268,7 @@ export const POSPage: React.FC = () => {
                 type="button"
                 onClick={() => setInitialTableFilter("OCCUPIED")}
                 className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
-                  initialTableFilter === "OCCUPIED" ? "bg-rose-600 text-white shadow-xs" : "text-slate-400 hover:text-rose-300"
+                  initialTableFilter === "OCCUPIED" ? "bg-rose-600 text-white shadow-xs" : "text-gray-600 hover:text-rose-700"
                 }`}
               >
                 🔴 Occupied ({occupiedTablesCount})
@@ -1285,26 +1281,26 @@ export const POSPage: React.FC = () => {
               placeholder="Find Table #..."
               value={initialTableSearch}
               onChange={(e) => setInitialTableSearch(e.target.value)}
-              className="w-36 sm:w-44 bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-36 sm:w-44 bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
             />
           </div>
 
           {/* Guest Count for Dine-In selection */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 font-bold hidden sm:inline">Dine-In Guests:</span>
-            <div className="flex items-center gap-1.5 bg-slate-800/90 px-2 py-1 rounded-xl border border-slate-700/80">
+            <span className="text-xs text-gray-500 font-bold hidden sm:inline">Dine-In Guests:</span>
+            <div className="flex items-center gap-1.5 bg-gray-100 px-2 py-1 rounded-xl border border-gray-200">
               <button
                 type="button"
                 onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
-                className="w-6 h-6 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center justify-center text-xs cursor-pointer"
+                className="w-6 h-6 rounded-lg bg-white hover:bg-gray-200 text-gray-800 font-bold flex items-center justify-center text-xs shadow-2xs border border-gray-200 cursor-pointer"
               >
                 -
               </button>
-              <span className="w-6 text-center font-black text-amber-400 text-sm">{guestCount}</span>
+              <span className="w-6 text-center font-black text-indigo-700 text-sm">{guestCount}</span>
               <button
                 type="button"
                 onClick={() => setGuestCount(guestCount + 1)}
-                className="w-6 h-6 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center justify-center text-xs cursor-pointer"
+                className="w-6 h-6 rounded-lg bg-white hover:bg-gray-200 text-gray-800 font-bold flex items-center justify-center text-xs shadow-2xs border border-gray-200 cursor-pointer"
               >
                 +
               </button>
@@ -1313,7 +1309,7 @@ export const POSPage: React.FC = () => {
         </div>
 
         {/* Unified Table & Packing Grid */}
-        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin bg-slate-100/70">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {/* TILE 1: TAKEAWAY / PACKING (Integrated directly with tables!) */}
             <button
@@ -1322,36 +1318,36 @@ export const POSPage: React.FC = () => {
                 setSelectedTable(null);
                 setOrderMode("TAKEAWAY");
               }}
-              className="p-5 rounded-2xl border-2 text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900/90 border-indigo-500/50 hover:border-indigo-400 hover:shadow-2xl hover:shadow-indigo-500/25 min-h-[170px]"
+              className="p-5 rounded-2xl border-2 text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative bg-white hover:bg-indigo-50/40 border-indigo-300 hover:border-indigo-500 shadow-xs hover:shadow-xl min-h-[170px]"
             >
               <div>
                 <div className="flex items-center justify-between mb-2.5">
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border bg-indigo-500/20 text-indigo-300 border-indigo-500/30">
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border bg-indigo-50 text-indigo-700 border-indigo-200">
                     🛍️ Parcel / Counter
                   </span>
-                  <span className="text-[10px] font-mono font-bold bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-400/30">
+                  <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-300">
                     Key [0 / P]
                   </span>
                 </div>
 
                 <div className="flex items-center gap-3 my-2">
-                  <div className="w-11 h-11 rounded-xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-2xs">
                     <ShoppingBag className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-black text-white group-hover:text-indigo-200 transition-colors leading-tight">
+                    <h3 className="text-lg font-black text-gray-950 group-hover:text-indigo-900 transition-colors leading-tight">
                       Takeaway / Packing
                     </h3>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
+                    <p className="text-[11px] text-gray-500 mt-0.5">
                       No table assigned
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 pt-2.5 border-t border-slate-800 flex items-center justify-between text-xs font-bold text-indigo-300 group-hover:text-white">
+              <div className="mt-4 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs font-bold text-indigo-600 group-hover:text-indigo-800">
                 <span>Open Menu</span>
-                <span className="text-amber-400 group-hover:translate-x-1 transition-transform">→</span>
+                <span className="text-indigo-600 group-hover:translate-x-1 transition-transform font-black">→</span>
               </div>
             </button>
 
@@ -1368,12 +1364,12 @@ export const POSPage: React.FC = () => {
                     handleTableChange(t.id);
                     setOrderMode("DINE_IN");
                   }}
-                  className={`p-5 rounded-2xl border text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative min-h-[170px] ${
+                  className={`p-5 rounded-2xl border-2 text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative min-h-[170px] ${
                     isAvail
-                      ? "bg-slate-800/80 hover:bg-slate-800 border-emerald-500/40 hover:border-emerald-400 hover:shadow-xl hover:shadow-emerald-900/20"
+                      ? "bg-white hover:bg-emerald-50/50 border-emerald-300 hover:border-emerald-500 shadow-xs hover:shadow-xl"
                       : isOcc
-                      ? "bg-rose-950/30 hover:bg-rose-950/50 border-rose-500/40 hover:border-rose-400"
-                      : "bg-indigo-950/30 hover:bg-indigo-950/50 border-indigo-500/40 hover:border-indigo-400"
+                      ? "bg-rose-50/60 hover:bg-rose-50 border-rose-300 hover:border-rose-400 shadow-xs"
+                      : "bg-indigo-50/60 hover:bg-indigo-50 border-indigo-300 hover:border-indigo-400 shadow-xs"
                   }`}
                 >
                   <div>
@@ -1381,38 +1377,38 @@ export const POSPage: React.FC = () => {
                       <span
                         className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
                           isAvail
-                            ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                             : isOcc
-                            ? "bg-rose-500/20 text-rose-400 border-rose-500/30"
-                            : "bg-indigo-500/20 text-indigo-400 border-indigo-500/30"
+                            ? "bg-rose-100 text-rose-800 border-rose-200"
+                            : "bg-indigo-100 text-indigo-800 border-indigo-200"
                         }`}
                       >
                         {isAvail ? "🟢 Available" : isOcc ? "🔴 Occupied" : "🔵 Billing"}
                       </span>
-                      <span className="text-[10px] font-mono font-bold bg-slate-700/60 text-slate-300 px-1.5 py-0.5 rounded border border-slate-600/60">
+                      <span className="text-[10px] font-mono font-bold bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200">
                         Key [{t.tableNumber}]
                       </span>
                     </div>
 
-                    <h3 className="text-2xl font-black text-white group-hover:text-amber-300 transition-colors">
+                    <h3 className="text-2xl font-black text-gray-950 group-hover:text-indigo-900 transition-colors">
                       Table {t.tableNumber}
                     </h3>
 
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-slate-400 font-bold">
+                      <span className="text-xs text-gray-600 font-bold">
                         🪑 {t.capacity} Seats
                       </span>
                       {isOcc && (
-                        <span className="text-[11px] text-rose-300 font-semibold">
+                        <span className="text-[11px] text-rose-700 font-semibold">
                           • Seated: {t.currentOccupancy || 0}
                         </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="mt-4 pt-2.5 border-t border-slate-700/60 flex items-center justify-between text-xs font-bold text-slate-400 group-hover:text-white">
+                  <div className="mt-4 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs font-bold text-gray-500 group-hover:text-gray-900">
                     <span>Select Table</span>
-                    <span className="text-amber-400 group-hover:translate-x-1 transition-transform">→</span>
+                    <span className="text-indigo-600 group-hover:translate-x-1 transition-transform font-black">→</span>
                   </div>
                 </button>
               );
@@ -1424,14 +1420,14 @@ export const POSPage: React.FC = () => {
   }
 
   return (
-    <div className="fixed inset-0 z-50 w-screen h-screen flex flex-col lg:flex-row gap-4 p-3 sm:p-4 bg-slate-950 text-slate-100 overflow-hidden select-none">
+    <div className="fixed inset-0 z-50 w-screen h-screen flex flex-col lg:flex-row gap-3 p-3 bg-slate-100 text-gray-900 overflow-hidden select-none">
       {/* LEFT COLUMN: Catalog & Item Selection */}
-      <div className="flex-1 flex flex-col min-w-0 bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden text-gray-900">
+      <div className="flex-1 flex flex-col min-w-0 bg-white rounded-2xl border border-gray-200/90 shadow-xs overflow-hidden text-gray-900">
         {/* Aggregator Status & Incoming Order Alert Ribbon */}
-        <div className="bg-slate-900 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+        <div className="bg-white border-b border-gray-200 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0 text-gray-700">
           <div className="flex items-center gap-2">
-            <span className="font-bold uppercase tracking-wider text-[11px] text-slate-400 flex items-center gap-1.5">
-              <Globe className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="font-bold uppercase tracking-wider text-[11px] text-gray-500 flex items-center gap-1.5">
+              <Globe className="w-3.5 h-3.5 text-indigo-600" />
               Aggregators:
             </span>
 
@@ -1439,13 +1435,13 @@ export const POSPage: React.FC = () => {
             <span
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[11px] ${
                 isSwiggyEnabled
-                  ? "bg-[#FC8019]/20 text-[#FC8019] border border-[#FC8019]/40"
-                  : "bg-slate-800 text-slate-500 border border-slate-700"
+                  ? "bg-[#FC8019]/15 text-[#FC8019] border border-[#FC8019]/30"
+                  : "bg-gray-100 text-gray-400 border border-gray-200"
               }`}
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  isSwiggyEnabled ? "bg-[#FC8019] animate-pulse" : "bg-slate-500"
+                  isSwiggyEnabled ? "bg-[#FC8019] animate-pulse" : "bg-gray-400"
                 }`}
               />
               Swiggy {isSwiggyEnabled ? "Live" : "Offline"}
@@ -1455,13 +1451,13 @@ export const POSPage: React.FC = () => {
             <span
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[11px] ${
                 isZomatoEnabled
-                  ? "bg-[#E23744]/20 text-[#E23744] border border-[#E23744]/40"
-                  : "bg-slate-800 text-slate-500 border border-slate-700"
+                  ? "bg-[#E23744]/15 text-[#E23744] border border-[#E23744]/30"
+                  : "bg-gray-100 text-gray-400 border border-gray-200"
               }`}
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  isZomatoEnabled ? "bg-[#E23744] animate-pulse" : "bg-slate-500"
+                  isZomatoEnabled ? "bg-[#E23744] animate-pulse" : "bg-gray-400"
                 }`}
               />
               Zomato {isZomatoEnabled ? "Live" : "Offline"}
@@ -1481,20 +1477,20 @@ export const POSPage: React.FC = () => {
             ) : (
               <button
                 onClick={() => setIsAggregatorModalOpen(true)}
-                className="text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer flex items-center gap-1"
+                className="text-[11px] text-gray-500 hover:text-gray-900 cursor-pointer flex items-center gap-1"
               >
-                <Bell className="w-3 h-3 text-slate-500" />
+                <Bell className="w-3 h-3 text-gray-400" />
                 <span>Online Orders</span>
               </button>
             )}
 
             {/* Test Simulation Buttons */}
-            <div className="flex items-center gap-1 pl-1 border-l border-slate-700">
+            <div className="flex items-center gap-1 pl-1 border-l border-gray-200">
               <button
                 type="button"
                 onClick={() => simulateOrderMutation.mutate("SWIGGY")}
                 disabled={simulateOrderMutation.isPending}
-                className="px-2 py-1 rounded-md bg-slate-800 hover:bg-[#FC8019] text-slate-200 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors cursor-pointer"
+                className="px-2 py-1 rounded-md bg-gray-100 hover:bg-[#FC8019] text-gray-600 hover:text-white font-semibold text-[11px] border border-gray-200 transition-colors cursor-pointer"
                 title="Simulate incoming test order from Swiggy"
               >
                 + Test Swiggy
@@ -1503,7 +1499,7 @@ export const POSPage: React.FC = () => {
                 type="button"
                 onClick={() => simulateOrderMutation.mutate("ZOMATO")}
                 disabled={simulateOrderMutation.isPending}
-                className="px-2 py-1 rounded-md bg-slate-800 hover:bg-[#E23744] text-slate-200 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors cursor-pointer"
+                className="px-2 py-1 rounded-md bg-gray-100 hover:bg-[#E23744] text-gray-600 hover:text-white font-semibold text-[11px] border border-gray-200 transition-colors cursor-pointer"
                 title="Simulate incoming test order from Zomato"
               >
                 + Test Zomato
@@ -1514,7 +1510,7 @@ export const POSPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsAggregatorSettingsOpen(true)}
-              className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors cursor-pointer"
+              className="px-2.5 py-1 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 font-semibold text-[11px] border border-gray-200 transition-colors cursor-pointer"
             >
               ⚙️ Integrations
             </button>
@@ -1539,26 +1535,26 @@ export const POSPage: React.FC = () => {
           )}
 
           {/* Active Order Mode Indicator & Switch Table / Mode Button */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-2xs shrink-0">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 text-xs font-bold shadow-2xs shrink-0">
             {selectedTable ? (
               <div className="flex items-center gap-1.5">
-                <span className="text-amber-400 font-black flex items-center gap-1">
+                <span className="text-indigo-700 font-black flex items-center gap-1">
                   🍽️ Table {selectedTable.tableNumber}
                 </span>
-                <span className="text-slate-400 text-[11px] font-normal">
+                <span className="text-gray-500 text-[11px] font-normal">
                   ({guestCount}p)
                 </span>
               </div>
             ) : (
-              <span className="text-emerald-400 font-black flex items-center gap-1">
-                <ShoppingBag className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-emerald-700 font-black flex items-center gap-1">
+                <ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />
                 Takeaway / Packing
               </span>
             )}
             <button
               type="button"
               onClick={() => setOrderMode(null)}
-              className="ml-1 text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-2 py-0.5 rounded-lg border border-slate-700 transition-colors cursor-pointer"
+              className="ml-1 text-[11px] bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-lg border border-indigo-200 transition-colors cursor-pointer shadow-2xs font-bold"
               title="Return to Table Selection / Takeaway Screen"
             >
               ⇄ Switch
@@ -1624,14 +1620,12 @@ export const POSPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsPrinterConfigOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 shadow-2xs transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-xs font-bold text-gray-700 shadow-2xs transition-colors cursor-pointer"
               title="Configure thermal printer port, 58mm / 80mm paper size, and test print"
             >
-              <Printer className="w-4 h-4 text-slate-600" />
+              <Printer className="w-4 h-4 text-gray-500" />
               <span>🖨️ Printer ({paperSize})</span>
             </button>
-
-            <InstallDesktopButton variant="navbar" />
 
             <button
               type="button"
@@ -1641,7 +1635,7 @@ export const POSPage: React.FC = () => {
                 }
                 navigate("/");
               }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-500/50 text-slate-200 hover:text-rose-200 text-xs font-bold transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-rose-50 border border-gray-200 hover:border-rose-300 text-gray-700 hover:text-rose-700 text-xs font-bold shadow-2xs transition-all cursor-pointer"
               title="Exit POS Terminal to Dashboard"
             >
               <X className="w-4 h-4" />
@@ -1774,12 +1768,12 @@ export const POSPage: React.FC = () => {
       {/* RIGHT COLUMN: Active Cart Terminal */}
       <div className="w-full lg:w-96 bg-white rounded-2xl border border-gray-200/80 shadow-xs flex flex-col overflow-hidden shrink-0">
         {/* Cart Header */}
-        <div className="p-4 border-b border-gray-100 bg-slate-900 text-white flex items-center justify-between">
+        <div className="p-4 border-b border-gray-200 bg-white text-gray-900 flex items-center justify-between shadow-2xs">
           <div className="flex items-center gap-2">
-            <ShoppingCart className="w-5 h-5 text-indigo-400" />
+            <ShoppingCart className="w-5 h-5 text-indigo-600" />
             <div>
-              <h3 className="font-bold text-sm leading-none">Current Order</h3>
-              <p className="text-[11px] text-slate-400 mt-1">
+              <h3 className="font-bold text-sm leading-none text-gray-950">Current Order</h3>
+              <p className="text-[11px] text-gray-500 mt-1">
                 {selectedTable ? `Table ${selectedTable.tableNumber}` : "Takeaway / Walk-in"}
               </p>
             </div>
@@ -1787,7 +1781,7 @@ export const POSPage: React.FC = () => {
           {cartItems.length > 0 && (
             <button
               onClick={clearCart}
-              className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer font-medium"
+              className="text-xs text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer font-semibold"
             >
               <Trash2 className="w-3.5 h-3.5" /> Clear
             </button>
@@ -2636,6 +2630,16 @@ Thanks For Visiting Madrasi Dosa`;
                 {printerDetectMsg.text}
               </p>
             )}
+          </div>
+
+          {/* Zero-Click Silent Printing Tip */}
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
+            <p className="font-bold text-amber-950 flex items-center gap-1.5">
+              <span>⚡</span> 100% Zero-Click Silent Printing (Kiosk Mode)
+            </p>
+            <p className="text-[11px] text-amber-900 leading-relaxed">
+              To make your POS print directly to your default thermal printer <strong>without opening ANY browser dialogs</strong> (no prompt for printer, pages, or copies), launch Chrome or Edge with the <code>--kiosk-printing</code> flag on your desktop shortcut.
+            </p>
           </div>
 
           <div className="flex items-center justify-end pt-2 border-t border-gray-100">

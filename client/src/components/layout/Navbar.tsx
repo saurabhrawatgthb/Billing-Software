@@ -17,7 +17,6 @@ import type { Franchise } from "../../types/index.js";
 import { Badge } from "../common/Badge.js";
 import { DailyRegisterModal } from "../register/DailyRegisterModal.js";
 import { getDefaultRoleHome } from "./ProtectedRoute.js";
-import { InstallDesktopButton } from "../common/InstallDesktopButton.js";
 
 export const Navbar: React.FC = () => {
   const queryClient = useQueryClient();
@@ -150,9 +149,6 @@ export const Navbar: React.FC = () => {
 
       {/* Right: Status, Role & Profile */}
       <div className="flex items-center gap-3">
-        {/* Desktop App Install Button */}
-        <InstallDesktopButton variant="navbar" />
-
         {/* Daily Register Day Open / Day Close Button */}
         <button
           onClick={() => setIsRegisterModalOpen(true)}

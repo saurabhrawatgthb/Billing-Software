@@ -992,10 +992,14 @@ export interface PrintCombinedOptions {
 }
 
 /**
- * Issues TWO SEPARATE print commands sequentially:
- * 1. Command 1: Kitchen Order Ticket (KOT) -> Printer prints and triggers hardware auto-cut!
- * 2. Command 2: Customer Bill -> Printer prints and triggers hardware auto-cut!
- * Eliminates the need for manual tearing, and provides clean separate slips for Kitchen & Customer.
+/**
+ * Spools KOT (Kitchen Order Ticket) and Customer Bill in a SINGLE print job
+ * separated by a CSS page-break (`page-break-after: always; break-after: page;`).
+ *
+ * This ensures:
+ * 1. The browser NEVER asks for printer, copies, or destination a second time (only 1 single print job is spooled).
+ * 2. Thermal printers execute hardware auto-cut between Page 1 (KOT) and Page 2 (Bill).
+ * 3. With Chrome/Edge `--kiosk-printing`, printing is 100% silent and instantaneous with zero dialogs.
  */
 export function printKOTThenBillSequentially(options: PrintCombinedOptions): void {
   if (typeof window === "undefined") return;
@@ -1008,14 +1012,19 @@ export function printKOTThenBillSequentially(options: PrintCombinedOptions): voi
 
   const printStyles = getThermalPrinterStyles(rollWidth, contentWidth, is58mm, lineHeight);
 
-  // 1. First Ticket: Kitchen Order Ticket (KOT)
+  // 1. Kitchen Order Ticket (KOT)
   const kotHtml = formatKOTBodyHtml(options.kotParams, is58mm);
-  const kotDocHtml = `
+
+  // 2. Customer Bill (Madrasi Dosa Branding, Invoice details, Totals)
+  const billRawText = buildThermalReceiptText(options.billParams, paperSize);
+  const billHtml = buildBillHtml(billRawText, true, options.logoUrl);
+
+  const combinedDocHtml = `
     <!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8" />
-        <title>KOT - ${escapeHtml(String(options.kotParams.tableNumber || "Order"))}</title>
+        <title>KOT & Invoice #${escapeHtml(options.billParams.invoiceNumber)}</title>
         <style>${printStyles}</style>
       </head>
       <body>
@@ -1023,24 +1032,6 @@ export function printKOTThenBillSequentially(options: PrintCombinedOptions): voi
           <div class="kot-page-section">
             ${kotHtml}
           </div>
-        </div>
-      </body>
-    </html>
-  `;
-
-  // 2. Second Ticket: Customer Bill (Madrasi Dosa Branding, Invoice details, Totals)
-  const billRawText = buildThermalReceiptText(options.billParams, paperSize);
-  const billHtml = buildBillHtml(billRawText, true, options.logoUrl);
-  const billDocHtml = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Invoice #${escapeHtml(options.billParams.invoiceNumber)}</title>
-        <style>${printStyles}</style>
-      </head>
-      <body>
-        <div class="thermal-printable-wrapper">
           <div class="bill-page-section">
             ${billHtml}
           </div>
@@ -1049,10 +1040,8 @@ export function printKOTThenBillSequentially(options: PrintCombinedOptions): voi
     </html>
   `;
 
-  // Dispatch Job 1 (KOT) -> Printer cuts -> On finish, Dispatch Job 2 (Bill) -> Printer cuts!
-  dispatchDirectPrint(kotDocHtml, rollWidth, () => {
-    dispatchDirectPrint(billDocHtml, rollWidth);
-  });
+  // Dispatch single combined print job - NO SECOND DIALOG POPUP
+  dispatchDirectPrint(combinedDocHtml, rollWidth);
 }
 
 /**
