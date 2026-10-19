@@ -750,9 +750,24 @@ function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm
 /**
  * Dispatches an HTML document directly to the printer using an off-screen iframe.
  * Never sets visibility: hidden (which causes Chromium to suppress window.print()).
+ * Accepts an optional onDone callback when printing completes (or times out).
  */
-function dispatchDirectPrint(fullHtml: string, rollWidth: string): void {
+function dispatchDirectPrint(
+  fullHtml: string,
+  rollWidth: string,
+  onDone?: () => void
+): void {
   if (typeof window === "undefined") return;
+
+  let hasNotified = false;
+  const triggerDone = () => {
+    if (!hasNotified) {
+      hasNotified = true;
+      if (onDone) {
+        setTimeout(onDone, 300);
+      }
+    }
+  };
 
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
@@ -777,7 +792,10 @@ function dispatchDirectPrint(fullHtml: string, rollWidth: string): void {
         try {
           winFallback.print();
         } catch {}
+        triggerDone();
       }, 80);
+    } else {
+      triggerDone();
     }
     return;
   }
@@ -789,14 +807,17 @@ function dispatchDirectPrint(fullHtml: string, rollWidth: string): void {
   const win = iframe.contentWindow;
   if (win) {
     win.addEventListener("afterprint", () => {
+      triggerDone();
       setTimeout(() => {
         if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
       }, 1500);
     });
 
+    // Fallback if afterprint doesn't trigger within 3 seconds
     setTimeout(() => {
+      triggerDone();
       if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    }, 120000);
+    }, 3000);
 
     setTimeout(() => {
       try {
@@ -815,8 +836,11 @@ function dispatchDirectPrint(fullHtml: string, rollWidth: string): void {
         } catch (fbErr) {
           console.error("Popup fallback print error:", fbErr);
         }
+        triggerDone();
       }
     }, 70);
+  } else {
+    triggerDone();
   }
 }
 
@@ -970,11 +994,12 @@ export interface PrintCombinedOptions {
 }
 
 /**
- * Dispatches KOT FIRST, followed immediately by Customer Bill in a single thermal print spool!
- * The KOT slip strictly contains Table Number and Items with quantities/notes (NO prices).
- * Features a clean tear/cut line between the KOT and the Bill.
+ * Issues TWO SEPARATE print commands sequentially:
+ * 1. Command 1: Kitchen Order Ticket (KOT) -> Printer prints and triggers hardware auto-cut!
+ * 2. Command 2: Customer Bill -> Printer prints and triggers hardware auto-cut!
+ * Eliminates the need for manual tearing, and provides clean separate slips for Kitchen & Customer.
  */
-export function printCombinedKOTAndBillDirectly(options: PrintCombinedOptions): void {
+export function printKOTThenBillSequentially(options: PrintCombinedOptions): void {
   if (typeof window === "undefined") return;
 
   const paperSize: ThermalPaperSize = options.paperSize || getSavedPaperSize();
@@ -984,31 +1009,40 @@ export function printCombinedKOTAndBillDirectly(options: PrintCombinedOptions): 
   const lineHeight = is58mm ? "1.2" : "1.25";
 
   const printStyles = getThermalPrinterStyles(rollWidth, contentWidth, is58mm, lineHeight);
-  const kotHtml = formatKOTBodyHtml(options.kotParams, is58mm);
-  const billRawText = buildThermalReceiptText(options.billParams, paperSize);
-  const billHtml = buildBillHtml(billRawText, true, options.logoUrl);
 
-  const fullHtml = `
+  // 1. First Ticket: Kitchen Order Ticket (KOT)
+  const kotHtml = formatKOTBodyHtml(options.kotParams, is58mm);
+  const kotDocHtml = `
     <!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8" />
-        <title>KOT & Invoice #${escapeHtml(options.billParams.invoiceNumber)}</title>
+        <title>KOT - ${escapeHtml(String(options.kotParams.tableNumber || "Order"))}</title>
         <style>${printStyles}</style>
       </head>
       <body>
         <div class="thermal-printable-wrapper">
-          <!-- 1. KOT SLIP (KITCHEN COPY: Strictly Table & Items) -->
           <div class="kot-page-section">
             ${kotHtml}
           </div>
+        </div>
+      </body>
+    </html>
+  `;
 
-          <!-- TEAR / CUT SEPARATOR -->
-          <div class="tear-separator-block">
-            ✂ - - - - TEAR HERE FOR KITCHEN - - - - ✂
-          </div>
-
-          <!-- 2. CUSTOMER BILL (Madrasi Dosa Logo + Full Totals) -->
+  // 2. Second Ticket: Customer Bill (Madrasi Dosa Branding, Invoice details, Totals)
+  const billRawText = buildThermalReceiptText(options.billParams, paperSize);
+  const billHtml = buildBillHtml(billRawText, true, options.logoUrl);
+  const billDocHtml = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Invoice #${escapeHtml(options.billParams.invoiceNumber)}</title>
+        <style>${printStyles}</style>
+      </head>
+      <body>
+        <div class="thermal-printable-wrapper">
           <div class="bill-page-section">
             ${billHtml}
           </div>
@@ -1017,5 +1051,16 @@ export function printCombinedKOTAndBillDirectly(options: PrintCombinedOptions): 
     </html>
   `;
 
-  dispatchDirectPrint(fullHtml, rollWidth);
+  // Dispatch Job 1 (KOT) -> Printer cuts -> On finish, Dispatch Job 2 (Bill) -> Printer cuts!
+  dispatchDirectPrint(kotDocHtml, rollWidth, () => {
+    dispatchDirectPrint(billDocHtml, rollWidth);
+  });
+}
+
+/**
+ * Backward compatibility alias for printKOTThenBillSequentially.
+ * Routes directly to sequential printing to trigger hardware auto-cutting.
+ */
+export function printCombinedKOTAndBillDirectly(options: PrintCombinedOptions): void {
+  printKOTThenBillSequentially(options);
 }

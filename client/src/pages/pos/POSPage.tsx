@@ -21,6 +21,11 @@ import {
   Percent,
   BadgePercent,
   Printer,
+  Maximize2,
+  Minimize2,
+  ShoppingBag,
+  ArrowRight,
+  Zap,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
@@ -28,7 +33,7 @@ import { useCartStore } from "../../store/cartStore.js";
 import {
   printReceiptDirectly,
   printKOTDirectly,
-  printCombinedKOTAndBillDirectly,
+  printKOTThenBillSequentially,
   getSavedPaperSize,
   setSavedPaperSize,
   buildThermalReceiptText,
@@ -45,7 +50,6 @@ import {
 import type { Category, MenuItem, RestaurantTable, Customer, BrandSettings, Franchise } from "../../types/index.js";
 import { Button } from "../../components/common/Button.js";
 import { Input } from "../../components/common/Input.js";
-import { Select } from "../../components/common/Select.js";
 import { Modal } from "../../components/common/Modal.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { AggregatorOrderModal } from "../../components/pos/AggregatorOrderModal.js";
@@ -166,6 +170,51 @@ export const POSPage: React.FC = () => {
   const [suggestedTables, setSuggestedTables] = useState<RestaurantTable[]>([]);
   const [pendingTableSelection, setPendingTableSelection] = useState<RestaurantTable | null>(null);
 
+  // POS Order Mode Gate: "DINE_IN" | "TAKEAWAY" | null
+  // When null, renders the initial Big Screen Table / Takeaway selection view first!
+  const [orderMode, setOrderMode] = useState<"DINE_IN" | "TAKEAWAY" | null>(() => {
+    if (selectedTable) return "DINE_IN";
+    if (cartItems.length > 0) return "TAKEAWAY";
+    return null;
+  });
+
+  // Automatically keep orderMode in sync if table is selected
+  useEffect(() => {
+    if (selectedTable && !orderMode) {
+      setOrderMode("DINE_IN");
+    }
+  }, [selectedTable, orderMode]);
+
+  // Fullscreen Big Screen Terminal Mode
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setIsFullscreen(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    return () => document.removeEventListener("fullscreenchange", handleFsChange);
+  }, []);
+
+  // Rush Hour Numpad Dish Code Quick-Add State
+  const [quickDishCode, setQuickDishCode] = useState("");
+  const [codeFeedbackMsg, setCodeFeedbackMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const quickCodeInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Table filter for initial big screen mode
+  const [initialTableFilter, setInitialTableFilter] = useState<"ALL" | "AVAILABLE" | "OCCUPIED">("ALL");
+  const [initialTableSearch, setInitialTableSearch] = useState("");
 
   // Customer CRM Recognition State
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -424,6 +473,154 @@ export const POSPage: React.FC = () => {
     },
   });
 
+  const handleQuickCodeSubmit = (overrideCode?: string) => {
+    const query = (overrideCode !== undefined ? overrideCode : quickDishCode).trim();
+    if (!query) return;
+
+    // Search dish by item.code
+    const match = menuItems.find((item) => {
+      if (!item.code) return false;
+      const itemCodeClean = item.code.trim().toLowerCase();
+      const queryClean = query.toLowerCase();
+
+      // Exact match
+      if (itemCodeClean === queryClean) return true;
+
+      // Numeric-only match (e.g. cashier typed 101, item.code is "D-101" or "PIZ-101")
+      const itemDigits = itemCodeClean.replace(/\D/g, "");
+      const queryDigits = queryClean.replace(/\D/g, "");
+      if (queryDigits && itemDigits === queryDigits) return true;
+
+      // Prefix match
+      if (itemCodeClean.startsWith(queryClean)) return true;
+
+      return false;
+    });
+
+    if (!match) {
+      setCodeFeedbackMsg({ text: `Dish code "${query}" not found!`, type: "error" });
+      setTimeout(() => setCodeFeedbackMsg(null), 2500);
+      return;
+    }
+
+    if (!match.isAvailable) {
+      setCodeFeedbackMsg({ text: `"${match.name}" is OUT OF STOCK!`, type: "error" });
+      setTimeout(() => setCodeFeedbackMsg(null), 2500);
+      return;
+    }
+
+    // Pizza with portion sizes
+    if (isPizzaWithSizes(match)) {
+      setSizeSelectionItem(match);
+      setQuickDishCode("");
+      setCodeFeedbackMsg({
+        text: `Portion for ${match.name}: Press 1 (Small), 2 (Medium), 3 (Large)`,
+        type: "success",
+      });
+      setTimeout(() => setCodeFeedbackMsg(null), 3000);
+      return;
+    }
+
+    // Standard dish
+    addItem(match);
+    setQuickDishCode("");
+    setCodeFeedbackMsg({
+      text: `✓ Added: ${match.name} (₹${Number(match.price).toFixed(0)})`,
+      type: "success",
+    });
+    setTimeout(() => setCodeFeedbackMsg(null), 2000);
+  };
+
+  // Keyboard listeners for initial screen shortcuts & rush hour numpad quick-add
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Do not intercept if a modal is open
+      if (
+        sizeSelectionItem ||
+        isBillPayModalOpen ||
+        isAggregatorModalOpen ||
+        isAggregatorSettingsOpen ||
+        isPrinterConfigOpen ||
+        isFloorPlanOpen ||
+        showCapacityWarning ||
+        showQuickAddCustomer
+      ) {
+        return;
+      }
+
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isInputFocused =
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.tagName === "SELECT");
+
+      // CASE 1: On the Initial Screen (orderMode === null)
+      if (!orderMode) {
+        if (!isInputFocused) {
+          // Press 'T' or 't' for Takeaway
+          if (e.key.toLowerCase() === "t") {
+            e.preventDefault();
+            setSelectedTable(null);
+            setOrderMode("TAKEAWAY");
+            return;
+          }
+        }
+        return;
+      }
+
+      // CASE 2: Inside Menu & Billing View (orderMode != null)
+      // If user is focused inside the quick code input:
+      if (activeEl === quickCodeInputRef.current) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          handleQuickCodeSubmit();
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setQuickDishCode("");
+          quickCodeInputRef.current?.blur();
+          return;
+        }
+        return;
+      }
+
+      // If NOT focused on any input:
+      if (!isInputFocused) {
+        // Pressing digit 0-9 routes to quick dish code!
+        if (/^[0-9]$/.test(e.key)) {
+          e.preventDefault();
+          setQuickDishCode((prev) => prev + e.key);
+          quickCodeInputRef.current?.focus();
+          return;
+        }
+
+        // Pressing Enter if quickDishCode has content
+        if (e.key === "Enter" && quickDishCode.trim()) {
+          e.preventDefault();
+          handleQuickCodeSubmit();
+          return;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [
+    orderMode,
+    sizeSelectionItem,
+    isBillPayModalOpen,
+    isAggregatorModalOpen,
+    isAggregatorSettingsOpen,
+    isPrinterConfigOpen,
+    isFloorPlanOpen,
+    showCapacityWarning,
+    showQuickAddCustomer,
+    quickDishCode,
+    menuItems,
+  ]);
+
   // Handle Smart Table Selection with capacity check
   const handleTableChange = (tableId: string) => {
     if (!tableId) {
@@ -585,10 +782,10 @@ export const POSPage: React.FC = () => {
         footerMessage: "Thanks For Visiting Madrasi Dosa",
       };
 
-      // 7. INSTANT PRINT SPOOLER: Dispatches KOT FIRST, followed immediately by Customer Bill
+      // 7. INSTANT PRINT SPOOLER: Dispatches KOT FIRST (auto-cut), followed by Customer Bill (auto-cut)
       try {
         if (printKOT) {
-          printCombinedKOTAndBillDirectly({
+          printKOTThenBillSequentially({
             kotParams,
             billParams,
             paperSize,
@@ -614,6 +811,7 @@ export const POSPage: React.FC = () => {
       setSelectedCustomer(null);
       setPartyName("");
       setGuestCount(2);
+      setOrderMode(null); // Return directly to Big Screen Table / Takeaway selection for next customer!
 
       // 9. BACKGROUND CLOUD ASYNC SYNC: Syncs order, invoice, payment with Render & MongoDB
       const franchiseToUse = effectiveFranchiseId || (activeFranchises && activeFranchises[0]?.id) || user?.franchiseId;
@@ -738,6 +936,318 @@ export const POSPage: React.FC = () => {
     );
   }
 
+  // Table counts and filtering for Initial Big Screen Mode
+  const availableTablesCount = tables.filter((t) => t.status === "AVAILABLE").length;
+  const occupiedTablesCount = tables.filter((t) => t.status === "OCCUPIED" || t.status === "BILLING").length;
+
+  const initialFilteredTables = useMemo(() => {
+    let list = tables;
+    if (initialTableFilter === "AVAILABLE") {
+      list = list.filter((t) => t.status === "AVAILABLE");
+    } else if (initialTableFilter === "OCCUPIED") {
+      list = list.filter((t) => t.status === "OCCUPIED" || t.status === "BILLING");
+    }
+    if (initialTableSearch.trim()) {
+      const q = initialTableSearch.toLowerCase().trim();
+      list = list.filter((t) => t.tableNumber.toLowerCase().includes(q));
+    }
+    return list;
+  }, [tables, initialTableFilter, initialTableSearch]);
+
+  // INITIAL BIG SCREEN MODE: First select Table or Takeaway before opening menu
+  if (!orderMode) {
+    return (
+      <div className="h-[calc(100vh-6.5rem)] flex flex-col bg-slate-950 text-slate-100 rounded-3xl border border-slate-800 shadow-2xl overflow-hidden max-w-7xl mx-auto">
+        {/* Top Header of Initial Screen */}
+        <div className="px-6 py-4 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-indigo-600/30">
+              <UtensilsCrossed className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-black tracking-tight text-white">MADRASI DOSA POS</h1>
+                <span className="text-[10px] uppercase font-black tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  Ready
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                {activeFranchises.find((f) => f.id === effectiveFranchiseId)?.name || user?.franchise?.name || "Terminal 01"} • Select Table or Takeaway to Begin Billing
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Swiggy / Zomato pills */}
+            <div className="hidden md:flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs">
+              <span className="text-slate-400 font-bold">Aggregators:</span>
+              <span className={`inline-flex items-center gap-1 font-bold ${isSwiggyEnabled ? "text-[#FC8019]" : "text-slate-500"}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isSwiggyEnabled ? "bg-[#FC8019] animate-pulse" : "bg-slate-500"}`} />
+                Swiggy
+              </span>
+              <span className="text-slate-600">•</span>
+              <span className={`inline-flex items-center gap-1 font-bold ${isZomatoEnabled ? "text-[#E23744]" : "text-slate-500"}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isZomatoEnabled ? "bg-[#E23744] animate-pulse" : "bg-slate-500"}`} />
+                Zomato
+              </span>
+            </div>
+
+            {/* Printer Button */}
+            <button
+              type="button"
+              onClick={() => setIsPrinterConfigOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition-colors cursor-pointer"
+            >
+              <Printer className="w-4 h-4 text-slate-400" />
+              <span>🖨️ {paperSize}</span>
+            </button>
+
+            {/* Fullscreen Big Screen Mode Toggle */}
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-lg shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
+              title="Toggle Fullscreen Big Screen Terminal"
+            >
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              <span>{isFullscreen ? "Exit Fullscreen" : "⛶ Big Screen"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Content Body: Split Left (Takeaway / Packing) & Right (Dining Table Grid) */}
+        <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden p-6 gap-6">
+          {/* Left Column: Takeaway / Packing Hero Card */}
+          <div className="w-full lg:w-96 flex flex-col gap-5 shrink-0">
+            {/* Takeaway / Packing Action Card */}
+            <div
+              onClick={() => {
+                setSelectedTable(null);
+                setOrderMode("TAKEAWAY");
+              }}
+              className="group relative flex-1 min-h-[220px] rounded-3xl p-6 bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900/80 border-2 border-indigo-500/40 hover:border-indigo-400 transition-all duration-200 cursor-pointer shadow-xl hover:shadow-indigo-500/20 flex flex-col justify-between overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-36 h-36 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none group-hover:bg-indigo-500/20 transition-all" />
+
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-500/20 border border-indigo-400/40 text-indigo-400 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
+                    <ShoppingBag className="w-7 h-7" />
+                  </div>
+                  <span className="text-[11px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 px-3 py-1 rounded-full border border-indigo-500/30">
+                    Hot Shortcut: [T]
+                  </span>
+                </div>
+                <h2 className="text-2xl font-black text-white group-hover:text-indigo-200 transition-colors">
+                  Takeaway / Packing
+                </h2>
+                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                  Direct counter walk-in, parcel packaging, or phone pickup order. No dining table assigned.
+                </p>
+              </div>
+
+              <div className="mt-6 flex items-center justify-between pt-4 border-t border-slate-800">
+                <span className="text-xs font-bold text-indigo-400">Open Billing Menu</span>
+                <span className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center group-hover:translate-x-1 transition-transform">
+                  <ArrowRight className="w-5 h-5" />
+                </span>
+              </div>
+            </div>
+
+            {/* Rush Hour Speed Tips & Guest Defaults */}
+            <div className="bg-slate-900/90 rounded-3xl p-5 border border-slate-800/80 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-400" />
+                Rush Hour Terminal Shortcuts
+              </h3>
+
+              <div className="space-y-2 text-xs text-slate-300">
+                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/50">
+                  <span className="text-slate-400">Select Takeaway</span>
+                  <kbd className="px-2 py-0.5 rounded-md bg-slate-700 font-mono font-bold text-amber-300 text-[11px]">T</kbd>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/50">
+                  <span className="text-slate-400">Add Dish by Code</span>
+                  <kbd className="px-2 py-0.5 rounded-md bg-slate-700 font-mono font-bold text-emerald-300 text-[11px]">Numpad + Enter</kbd>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/50">
+                  <span className="text-slate-400">Pizza Size Select</span>
+                  <kbd className="px-2 py-0.5 rounded-md bg-slate-700 font-mono font-bold text-indigo-300 text-[11px]">1=S, 2=M, 3=L</kbd>
+                </div>
+              </div>
+
+              {/* Guest Count for Dine-In selection */}
+              <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-slate-300">Default Guests</span>
+                  <p className="text-[10px] text-slate-500">Applies to selected table</p>
+                </div>
+                <div className="flex items-center gap-1.5 bg-slate-800 px-2 py-1 rounded-xl border border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
+                    className="w-6 h-6 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center justify-center text-xs"
+                  >
+                    -
+                  </button>
+                  <span className="w-6 text-center font-black text-amber-400 text-sm">{guestCount}</span>
+                  <button
+                    type="button"
+                    onClick={() => setGuestCount(guestCount + 1)}
+                    className="w-6 h-6 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center justify-center text-xs"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Dining Tables Grid */}
+          <div className="flex-1 flex flex-col min-w-0 bg-slate-900/60 rounded-3xl border border-slate-800 p-5 overflow-hidden">
+            {/* Table Control Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800 shrink-0">
+              <div>
+                <h2 className="text-lg font-black text-white flex items-center gap-2">
+                  <span>🍽️ Dine-In Table Selection</span>
+                  <span className="text-xs font-bold text-slate-400">
+                    ({availableTablesCount} Available / {tables.length} Total)
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Click any table below to seat customers and open the menu & billing terminal.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Search */}
+                <input
+                  type="text"
+                  placeholder="Find Table #..."
+                  value={initialTableSearch}
+                  onChange={(e) => setInitialTableSearch(e.target.value)}
+                  className="w-32 sm:w-40 bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+
+                {/* Status Filter Pills */}
+                <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setInitialTableFilter("ALL")}
+                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      initialTableFilter === "ALL" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    All ({tables.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInitialTableFilter("AVAILABLE")}
+                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      initialTableFilter === "AVAILABLE" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-emerald-300"
+                    }`}
+                  >
+                    🟢 Available ({availableTablesCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInitialTableFilter("OCCUPIED")}
+                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      initialTableFilter === "OCCUPIED" ? "bg-rose-600 text-white" : "text-slate-400 hover:text-rose-300"
+                    }`}
+                  >
+                    🔴 Occupied ({occupiedTablesCount})
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Table Cards Grid */}
+            <div className="flex-1 overflow-y-auto pt-4 pr-1 scrollbar-thin">
+              {tables.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-500">
+                  <UtensilsCrossed className="w-12 h-12 mb-3 text-slate-600" />
+                  <p className="text-base font-bold text-slate-300">No tables configured for this franchise</p>
+                  <p className="text-xs text-slate-500 mt-1">Start with Takeaway or add tables in Floor Plan.</p>
+                  <button
+                    type="button"
+                    onClick={() => setIsFloorPlanOpen(true)}
+                    className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    + Open Floor Plan & Add Tables
+                  </button>
+                </div>
+              ) : initialFilteredTables.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-500">
+                  <p className="text-sm font-bold text-slate-400">No tables match your filter</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3.5">
+                  {initialFilteredTables.map((t) => {
+                    const isAvail = t.status === "AVAILABLE";
+                    const isOcc = t.status === "OCCUPIED";
+
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          handleTableChange(t.id);
+                          setOrderMode("DINE_IN");
+                        }}
+                        className={`p-4 rounded-2xl border text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative ${
+                          isAvail
+                            ? "bg-slate-800/80 hover:bg-slate-800 border-emerald-500/40 hover:border-emerald-400 hover:shadow-lg hover:shadow-emerald-900/20"
+                            : isOcc
+                            ? "bg-rose-950/30 hover:bg-rose-950/50 border-rose-500/40 hover:border-rose-400"
+                            : "bg-indigo-950/30 hover:bg-indigo-950/50 border-indigo-500/40 hover:border-indigo-400"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span
+                              className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
+                                isAvail
+                                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                                  : isOcc
+                                  ? "bg-rose-500/20 text-rose-400 border-rose-500/30"
+                                  : "bg-indigo-500/20 text-indigo-400 border-indigo-500/30"
+                              }`}
+                            >
+                              {isAvail ? "🟢 Available" : isOcc ? "🔴 Occupied" : "🔵 Billing"}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-400">
+                              🪑 {t.capacity}P
+                            </span>
+                          </div>
+
+                          <h3 className="text-xl font-black text-white group-hover:text-amber-300 transition-colors">
+                            Table {t.tableNumber}
+                          </h3>
+
+                          {isOcc && (
+                            <p className="text-[11px] text-rose-300 font-semibold mt-1">
+                              Seated: {t.currentOccupancy || 0}/{t.capacity}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="mt-4 pt-2 border-t border-slate-700/60 flex items-center justify-between text-xs font-bold text-slate-400 group-hover:text-white">
+                          <span>Select Table</span>
+                          <span className="text-amber-400 group-hover:translate-x-1 transition-transform">→</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-[calc(100vh-6.5rem)] flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto overflow-hidden">
       {/* LEFT COLUMN: Catalog & Item Selection */}
@@ -853,6 +1363,70 @@ export const POSPage: React.FC = () => {
             </div>
           )}
 
+          {/* Active Order Mode Indicator & Switch Table / Mode Button */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-2xs shrink-0">
+            {selectedTable ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-amber-400 font-black flex items-center gap-1">
+                  🍽️ Table {selectedTable.tableNumber}
+                </span>
+                <span className="text-slate-400 text-[11px] font-normal">
+                  ({guestCount}p)
+                </span>
+              </div>
+            ) : (
+              <span className="text-emerald-400 font-black flex items-center gap-1">
+                <ShoppingBag className="w-3.5 h-3.5 text-emerald-400" />
+                Takeaway / Packing
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setOrderMode(null)}
+              className="ml-1 text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-2 py-0.5 rounded-lg border border-slate-700 transition-colors cursor-pointer"
+              title="Return to Table Selection / Takeaway Screen"
+            >
+              ⇄ Switch
+            </button>
+          </div>
+
+          {/* Rush Hour Numpad Quick-Add Input */}
+          <div className="relative flex items-center shrink-0">
+            <div className="flex items-center gap-1.5 bg-amber-50 border-2 border-amber-400/80 rounded-xl px-2.5 py-1.5 shadow-2xs">
+              <span className="text-[11px] font-black text-amber-800 flex items-center gap-1">
+                <Zap className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
+                <span className="hidden xl:inline">Code:</span>
+              </span>
+              <input
+                ref={quickCodeInputRef}
+                type="text"
+                value={quickDishCode}
+                onChange={(e) => setQuickDishCode(e.target.value)}
+                placeholder="Numpad # + ↵"
+                className="w-24 sm:w-28 text-xs font-mono font-black text-amber-950 bg-white border border-amber-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-500 uppercase placeholder:text-amber-400 placeholder:font-normal"
+                title="Type dish code from keyboard numpad and press Enter to instantly add to cart"
+              />
+              <button
+                type="button"
+                onClick={() => handleQuickCodeSubmit()}
+                className="text-[10px] font-black bg-amber-500 hover:bg-amber-600 text-white px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                title="Press Enter to add dish"
+              >
+                ↵
+              </button>
+            </div>
+
+            {codeFeedbackMsg && (
+              <div
+                className={`absolute top-full left-0 mt-1 z-30 px-2.5 py-1 rounded-lg text-xs font-bold shadow-md whitespace-nowrap animate-in fade-in slide-in-from-top-1 ${
+                  codeFeedbackMsg.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
+                }`}
+              >
+                {codeFeedbackMsg.text}
+              </div>
+            )}
+          </div>
+
           <Input
             placeholder="Search dish by name..."
             value={searchTerm}
@@ -861,7 +1435,7 @@ export const POSPage: React.FC = () => {
             className="w-full sm:max-w-xs"
           />
 
-          {/* Table Selector & Guests */}
+          {/* Quick Actions & Guests */}
           <div className="w-full sm:w-auto flex-1 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -882,20 +1456,15 @@ export const POSPage: React.FC = () => {
               <span>🖨️ Printer ({paperSize})</span>
             </button>
 
-            <div className="flex-1 min-w-[180px]">
-              <Select
-                options={[
-                  { value: "", label: "🛍️ Takeaway / Direct Counter" },
-                  ...tables.map((t) => ({
-                    value: t.id,
-                    label: `🪑 Table ${t.tableNumber} (${t.currentOccupancy || 0}/${t.capacity} seated - ${t.status})`,
-                  })),
-                ]}
-                value={selectedTable?.id || ""}
-                onChange={(e) => handleTableChange(e.target.value)}
-                className="w-full font-semibold"
-              />
-            </div>
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 shadow-2xs transition-colors cursor-pointer"
+              title="Toggle Fullscreen Big Screen Terminal"
+            >
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{isFullscreen ? "Exit" : "⛶ Big Screen"}</span>
+            </button>
 
             {selectedTable && (
               <div className="flex items-center gap-2">
