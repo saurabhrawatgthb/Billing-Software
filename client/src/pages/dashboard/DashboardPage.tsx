@@ -20,6 +20,7 @@ import { StatCard } from "../../components/common/StatCard.js";
 import { Card } from "../../components/common/Card.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { Button } from "../../components/common/Button.js";
+import { InstallDesktopButton } from "../../components/common/InstallDesktopButton.js";
 
 export const DashboardPage: React.FC = () => {
   const { user, selectedFranchiseId } = useAuthStore();
@@ -77,6 +78,9 @@ export const DashboardPage: React.FC = () => {
           </Link>
         </div>
       </div>
+
+      {/* Desktop App Download & Install Banner */}
+      <InstallDesktopButton variant="banner" />
 
       {/* KPI Cards */}
       {isSuperAdmin ? (

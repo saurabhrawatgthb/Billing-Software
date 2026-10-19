@@ -54,6 +54,7 @@ import { AggregatorSettingsModal } from "../../components/pos/AggregatorSettings
 import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
 import { Globe, Bell, LayoutGrid, Store, Cpu, Check } from "lucide-react";
 import { usePermissions } from "../../hooks/usePermissions.js";
+import { InstallDesktopButton } from "../../components/common/InstallDesktopButton.js";
 
 export const POSPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -1213,6 +1214,9 @@ export const POSPage: React.FC = () => {
               </span>
             </div>
 
+            {/* Download / Install Desktop App Button */}
+            <InstallDesktopButton variant="pos" />
+
             {/* Printer Button */}
             <button
               type="button"
@@ -1626,6 +1630,8 @@ export const POSPage: React.FC = () => {
               <Printer className="w-4 h-4 text-slate-600" />
               <span>🖨️ Printer ({paperSize})</span>
             </button>
+
+            <InstallDesktopButton variant="navbar" />
 
             <button
               type="button"
