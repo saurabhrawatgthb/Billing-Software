@@ -96,8 +96,19 @@ export async function global(req: AuthenticatedRequest, res: Response, next: Nex
 export async function dashboard(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const isSuperAdmin = req.user?.role === "SUPER_ADMIN";
+    const isCashier = req.user?.role === "CASHIER";
     const franchiseId = getFranchiseId(req);
     const stats = await getDashboardStats(franchiseId, isSuperAdmin);
+
+    // Remove total revenue metrics for CASHIER role
+    if (isCashier && stats) {
+      const sanitizedStats: any = { ...stats };
+      delete sanitizedStats.todayRevenue;
+      delete sanitizedStats.monthlyRevenue;
+      delete sanitizedStats.revenue;
+      return res.json({ success: true, data: sanitizedStats });
+    }
+
     return res.json({ success: true, data: stats });
   } catch (error) {
     next(error);

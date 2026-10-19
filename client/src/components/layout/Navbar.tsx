@@ -10,8 +10,9 @@ import {
   ChevronDown,
   LogOut,
   Shield,
+  ShieldCheck,
   Lock,
-  KeyRound,
+  Unlock,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore.js";
 import { usePinLockStore } from "../../store/pinLockStore.js";
@@ -193,24 +194,34 @@ export const Navbar: React.FC = () => {
           {user?.role.replace("_", " ")}
         </Badge>
 
-        {/* Quick Lock / PIN Button */}
+        {/* Quick Lock / App Lock Settings Button */}
         {user?.id && hasPin(user.id) ? (
-          <button
-            onClick={() => lock()}
-            title="Lock Terminal (Enter PIN to unlock)"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-xs font-bold text-amber-900 shadow-2xs transition-all cursor-pointer"
-          >
-            <Lock className="w-3.5 h-3.5 text-amber-700" />
-            <span className="hidden sm:inline">Lock</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => lock()}
+              title="Lock Terminal Screen (Require PIN to unlock)"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-xs font-bold text-amber-900 shadow-2xs transition-all cursor-pointer"
+            >
+              <Lock className="w-3.5 h-3.5 text-amber-700" />
+              <span className="hidden sm:inline">Lock</span>
+            </button>
+            <button
+              onClick={() => setIsPinModalOpen(true)}
+              title="App Lock Settings (Turn Off / Change PIN)"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 shadow-2xs transition-all cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="hidden sm:inline">App Lock: ON</span>
+            </button>
+          </div>
         ) : (
           <button
             onClick={() => setIsPinModalOpen(true)}
-            title="Setup Quick PIN for 1-click login on this computer"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-indigo-300 bg-indigo-50/50 hover:bg-indigo-50 text-xs font-bold text-indigo-700 transition-all cursor-pointer"
+            title="App Lock Settings (Click to turn on App Lock / Quick PIN)"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-gray-300 bg-gray-50 hover:bg-indigo-50 hover:border-indigo-300 text-xs font-bold text-gray-600 hover:text-indigo-700 transition-all cursor-pointer"
           >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Setup PIN</span>
+            <Unlock className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">App Lock: OFF</span>
           </button>
         )}
 
@@ -249,17 +260,32 @@ export const Navbar: React.FC = () => {
                 </div>
               </div>
 
-              {/* Quick PIN Options */}
+              {/* Quick PIN / App Lock Options */}
               <div className="p-1 border-b border-gray-100">
                 <button
                   onClick={() => {
                     setIsProfileDropdownOpen(false);
                     setIsPinModalOpen(true);
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
                 >
-                  <KeyRound className="w-4 h-4 text-indigo-600" />
-                  <span>{user?.id && hasPin(user.id) ? "Change Quick PIN" : "Setup Quick PIN (Desktop)"}</span>
+                  <div className="flex items-center gap-2">
+                    {user?.id && hasPin(user.id) ? (
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    ) : (
+                      <Unlock className="w-4 h-4 text-gray-400" />
+                    )}
+                    <span>App Lock Settings</span>
+                  </div>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      user?.id && hasPin(user.id)
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {user?.id && hasPin(user.id) ? "ON (Manage)" : "OFF (Enable)"}
+                  </span>
                 </button>
 
                 {user?.id && hasPin(user.id) && (

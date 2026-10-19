@@ -15,8 +15,8 @@ const router = Router();
 router.use(authenticate);
 
 router.get("/dashboard", dashboard);
-router.get("/sales", authorizeWithPermission("canViewReports", "ACCOUNTANT", "CASHIER"), sales);
-router.get("/payments", authorizeWithPermission("canViewReports", "ACCOUNTANT", "CASHIER"), payments);
+router.get("/sales", authorizeWithPermission("canViewReports", "ACCOUNTANT"), sales);
+router.get("/payments", authorizeWithPermission("canViewReports", "ACCOUNTANT"), payments);
 router.get("/menu", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "CHEF"), menu);
 router.get("/attendance", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "HR"), attendance);
 router.get("/payroll", authorize("SUPER_ADMIN", "FRANCHISE_MANAGER", "HR", "ACCOUNTANT"), payroll);

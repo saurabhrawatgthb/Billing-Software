@@ -158,7 +158,7 @@ const navItems: NavItem[] = [
     name: "Reports & Analytics",
     to: "/reports",
     icon: <BarChart3 className="w-5 h-5" />,
-    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "ACCOUNTANT", "CASHIER"],
+    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "ACCOUNTANT"],
   },
   {
     name: "Audit Logs",

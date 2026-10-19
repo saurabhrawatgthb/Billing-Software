@@ -24,7 +24,8 @@ import {
   ShoppingBag,
   Zap,
   Lock,
-  KeyRound,
+  Unlock,
+  ShieldCheck,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
@@ -1228,26 +1229,37 @@ export const POSPage: React.FC = () => {
               <span>🖨️ {paperSize}</span>
             </button>
 
-            {/* Quick PIN Lock Button */}
+            {/* Quick PIN Lock & Settings Button */}
             {user?.id && hasPin(user.id) ? (
-              <button
-                type="button"
-                onClick={() => lock()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition-colors cursor-pointer"
-                title="Lock Terminal Screen (Require PIN to unlock)"
-              >
-                <Lock className="w-4 h-4 text-amber-600" />
-                <span className="hidden sm:inline">Lock</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => lock()}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition-colors cursor-pointer"
+                  title="Lock Terminal Screen (Require PIN to unlock)"
+                >
+                  <Lock className="w-4 h-4 text-amber-600" />
+                  <span className="hidden sm:inline">Lock</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPinModalOpen(true)}
+                  className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-xs font-bold text-emerald-800 shadow-2xs transition-colors cursor-pointer"
+                  title="App Lock Settings (Turn Off / Change PIN)"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span className="hidden sm:inline">PIN: ON</span>
+                </button>
+              </div>
             ) : (
               <button
                 type="button"
                 onClick={() => setIsPinModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50/70 hover:bg-indigo-100 border border-dashed border-indigo-300 text-xs font-bold text-indigo-700 shadow-2xs transition-colors cursor-pointer"
-                title="Setup Quick PIN for this terminal"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-50 hover:bg-indigo-50 border border-dashed border-gray-300 hover:border-indigo-300 text-xs font-bold text-gray-600 hover:text-indigo-700 shadow-2xs transition-colors cursor-pointer"
+                title="Setup Quick PIN / Turn On App Lock"
               >
-                <KeyRound className="w-4 h-4 text-indigo-600" />
-                <span className="hidden sm:inline">Set PIN</span>
+                <Unlock className="w-4 h-4" />
+                <span className="hidden sm:inline">PIN: OFF</span>
               </button>
             )}
 
@@ -1656,24 +1668,35 @@ export const POSPage: React.FC = () => {
             </button>
 
             {user?.id && hasPin(user.id) ? (
-              <button
-                type="button"
-                onClick={() => lock()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition-colors cursor-pointer"
-                title="Lock Terminal Screen (Require PIN to unlock)"
-              >
-                <Lock className="w-4 h-4 text-amber-600" />
-                <span>Lock</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => lock()}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition-colors cursor-pointer"
+                  title="Lock Terminal Screen (Require PIN to unlock)"
+                >
+                  <Lock className="w-4 h-4 text-amber-600" />
+                  <span>Lock</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPinModalOpen(true)}
+                  className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-xs font-bold text-emerald-800 shadow-2xs transition-colors cursor-pointer"
+                  title="App Lock Settings (Turn Off / Change PIN)"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>PIN: ON</span>
+                </button>
+              </div>
             ) : (
               <button
                 type="button"
                 onClick={() => setIsPinModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50/70 hover:bg-indigo-100 border border-dashed border-indigo-300 text-xs font-bold text-indigo-700 shadow-2xs transition-colors cursor-pointer"
-                title="Setup Quick PIN for this terminal"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-50 hover:bg-indigo-50 border border-dashed border-gray-300 hover:border-indigo-300 text-xs font-bold text-gray-600 hover:text-indigo-700 shadow-2xs transition-colors cursor-pointer"
+                title="Setup Quick PIN / Turn On App Lock"
               >
-                <KeyRound className="w-4 h-4 text-indigo-600" />
-                <span>Set PIN</span>
+                <Unlock className="w-4 h-4" />
+                <span>PIN: OFF</span>
               </button>
             )}
 
