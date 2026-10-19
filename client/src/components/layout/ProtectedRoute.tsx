@@ -14,9 +14,8 @@ export function getDefaultRoleHome(role?: string): string {
   switch (role) {
     case "SUPER_ADMIN":
     case "FRANCHISE_MANAGER":
-      return "/dashboard";
     case "CASHIER":
-      return "/pos";
+      return "/dashboard";
     case "CHEF":
       return "/kitchen";
     case "WAITER":
