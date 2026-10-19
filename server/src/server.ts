@@ -117,8 +117,8 @@ const clientDist = fs.existsSync(path.resolve(process.cwd(), "../client/dist"))
 
 if (fs.existsSync(clientDist)) {
   app.use(express.static(clientDist));
-  app.get("*", (req: Request, res: Response, next) => {
-    if (req.path.startsWith("/api")) {
+  app.use((req: Request, res: Response, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api")) {
       return next();
     }
     const indexPath = path.join(clientDist, "index.html");
@@ -132,10 +132,10 @@ if (fs.existsSync(clientDist)) {
 // Centralized error handler
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
 
 if (process.env.NODE_ENV !== "test") {
-  server.listen(PORT, () => {
+  server.listen(PORT, "0.0.0.0", () => {
     console.log(`Server listening on port ${PORT}`);
   });
 }
