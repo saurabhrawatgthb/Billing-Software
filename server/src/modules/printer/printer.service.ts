@@ -150,21 +150,21 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
       throw new AppError("KOT not found", 404);
     }
 
-    const tableStr = kot.order.tableSession?.table ? `मेज / Table: ${kot.order.tableSession.table.tableNumber}` : "पार्सल / Takeaway";
+    const tableStr = kot.order.tableSession?.table ? `Table: ${kot.order.tableSession.table.tableNumber}` : "Takeaway";
     const stationStr = kot.station ? kot.station.name : "Main Kitchen";
     const dateStr = new Date(kot.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
     let lines = [
       "================================",
-      "     किचन ऑर्डर टिकट • KOT      ",
+      "     KITCHEN ORDER TICKET       ",
       `          ${stationStr}         `,
       "================================",
-      `टोकन / KOT #: ${kot.kotNumber}`,
-      `आर्डर / Order: ${kot.order.orderNumber}`,
+      `KOT #: ${kot.kotNumber}`,
+      `Order: ${kot.order.orderNumber}`,
       `${tableStr}`,
-      `समय / Time  : ${dateStr}`,
+      `Time : ${dateStr}`,
       "--------------------------------",
-      "व्यंजन / Item                Qty",
+      "Item                         Qty",
       "--------------------------------",
     ];
 
@@ -178,7 +178,7 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
     }
 
     lines.push("--------------------------------");
-    lines.push("*** रसोई प्रति • KITCHEN COPY ***");
+    lines.push("*** KITCHEN COPY ***");
     lines.push("================================");
 
     return {
@@ -218,15 +218,13 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
 
   const isDineIn = !!invoice.order.tableSession?.table;
   const tableStr = isDineIn
-    ? `डाइन-इन / Table ${invoice.order.tableSession!.table.tableNumber}`
-    : "पार्सल / Takeaway";
+    ? `Dine-In (Table ${invoice.order.tableSession!.table.tableNumber})`
+    : "Takeaway";
   const dateStr = new Date(invoice.createdAt).toLocaleString();
 
   let lines = [
     "================================",
-    "     || श्री गणेशाय नमः ||     ",
     `     ${brandName}     `,
-    "  मद्रासी डोसा • असली दक्षिण भारतीय स्वाद  ",
     `--- ${franchiseName} ---`,
   ];
 
@@ -234,7 +232,7 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
     lines.push(`  ${franchiseAddress}  `);
   }
   if (franchisePhone) {
-    lines.push(`  दूरभाष / Phone: ${franchisePhone}  `);
+    lines.push(`  Phone: ${franchisePhone}  `);
   }
   if (gstin) {
     lines.push(`  ${gstin}  `);
@@ -243,12 +241,12 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
     lines.push(`  ${fssai}  `);
   }
   lines.push("================================");
-  lines.push(`बिल / Tax Invoice: ${invoice.invoiceNumber}`);
-  lines.push(`आर्डर / Order   : ${invoice.order.orderNumber}`);
+  lines.push(`Tax Invoice: ${invoice.invoiceNumber}`);
+  lines.push(`Order      : ${invoice.order.orderNumber}`);
   lines.push(`${tableStr}`);
-  lines.push(`दिनांक / Date   : ${dateStr}`);
+  lines.push(`Date       : ${dateStr}`);
   lines.push("--------------------------------");
-  lines.push("व्यंजन / Item    मात्रा/Qty   मूल्य");
+  lines.push("Item             Qty      Price");
   lines.push("--------------------------------");
 
   for (const item of invoice.order.items) {
@@ -259,27 +257,19 @@ export async function generatePrintPayload(type: "KOT" | "RECEIPT", targetId: st
   }
 
   lines.push("--------------------------------");
-  lines.push(`उपयोग / Subtotal:     ${currSym}${Number(invoice.subtotal).toFixed(2)}`);
+  lines.push(`Subtotal:             ${currSym}${Number(invoice.subtotal).toFixed(2)}`);
   if (Number(invoice.discount) > 0) {
-    lines.push(`छूट / Discount:      -${currSym}${Number(invoice.discount).toFixed(2)}`);
+    lines.push(`Discount:            -${currSym}${Number(invoice.discount).toFixed(2)}`);
   }
-  lines.push(`कर / Tax (GST):       ${currSym}${Number(invoice.tax).toFixed(2)}`);
+  lines.push(`Tax (GST):            ${currSym}${Number(invoice.tax).toFixed(2)}`);
   lines.push("================================");
-  lines.push(`कुल देय / TOTAL:      ${currSym}${Number(invoice.total).toFixed(2)}`);
+  lines.push(`TOTAL:                ${currSym}${Number(invoice.total).toFixed(2)}`);
   lines.push("================================");
 
   if (invoice.payments.length > 0) {
-    lines.push("भुगतान विवरण / PAYMENTS:");
+    lines.push("PAYMENTS:");
     for (const p of invoice.payments) {
-      const pMethodUpper = (p.method || "").toUpperCase();
-      const methodHindi = pMethodUpper.includes("CASH")
-        ? "नकद / CASH"
-        : pMethodUpper.includes("UPI")
-        ? "यूपीआई / UPI"
-        : pMethodUpper.includes("CARD")
-        ? "कार्ड / CARD"
-        : p.method;
-      lines.push(`  ${methodHindi.padEnd(14, " ")}: ${currSym}${Number(p.amount).toFixed(2)} [${p.status}]`);
+      lines.push(`  ${p.method.padEnd(10, " ")}: ${currSym}${Number(p.amount).toFixed(2)} [${p.status}]`);
     }
   }
 

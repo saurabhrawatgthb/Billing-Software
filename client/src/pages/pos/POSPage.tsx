@@ -942,7 +942,7 @@ export const POSPage: React.FC = () => {
         total: totalSnapshot,
         payments: paymentRecords,
         instagramId: "madrasidosaoffical",
-        footerMessage: "धन्यवाद! पुनः पधारें • Visit Again",
+        footerMessage: "Thank You! Please Visit Again",
       };
 
       // 7. INSTANT PRINT SPOOLER: Dispatches KOT FIRST (auto-cut), followed by Customer Bill (auto-cut)

@@ -132,7 +132,7 @@ export const MADRASI_DOSA_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" vi
     <path d="M20,-12 Q23,-19 18,-24 Q13,-29 18,-34" fill="none" stroke="#000000" stroke-width="1.6" stroke-linecap="round"/>
   </g>
   <text x="170" y="102" class="brand-title">MADRASI DOSA</text>
-  <text x="170" y="118" class="brand-sub">मद्रासी डोसा • AUTHENTIC TASTE</text>
+  <text x="170" y="118" class="brand-sub">AUTHENTIC SOUTH INDIAN TASTE</text>
   <line x1="20" y1="128" x2="135" y2="128" stroke="#000" stroke-width="1.5"/>
   <circle cx="145" cy="128" r="2" fill="#000"/>
   <text x="170" y="131" class="brand-badge">ESTD 2024</text>
@@ -206,20 +206,20 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
   const lines: string[] = [];
 
   lines.push(divider);
-  lines.push(centerLine("किचन ऑर्डर टिकट • KOT", 32));
+  lines.push(centerLine("KITCHEN ORDER TICKET (KOT)", 32));
   lines.push(divider);
 
   const tableLabel = data.tableNumber
-    ? `मेज / TABLE: ${String(data.tableNumber).toUpperCase().startsWith("TABLE") ? data.tableNumber : `Table ${data.tableNumber}`}`
-    : `पार्सल / ORDER: ${data.orderType || "TAKEAWAY / COUNTER"}`;
+    ? `TABLE: ${String(data.tableNumber).toUpperCase().startsWith("TABLE") ? data.tableNumber : `Table ${data.tableNumber}`}`
+    : `ORDER: ${data.orderType || "TAKEAWAY / COUNTER"}`;
   lines.push(tableLabel);
 
   if (data.orderNumber) {
-    lines.push(`टोकन / Token: ${data.orderNumber}`);
+    lines.push(`Token: ${data.orderNumber}`);
   }
-  lines.push(`समय / Time  : ${data.date || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+  lines.push(`Time : ${data.date || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
   lines.push(thinDivider);
-  lines.push("व्यंजन / Item                Qty");
+  lines.push("Item                         Qty");
   lines.push(thinDivider);
 
   for (const item of data.items) {
@@ -240,11 +240,11 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
 
   if (data.instructions && data.instructions.trim()) {
     lines.push(thinDivider);
-    lines.push(`निर्देश: ${data.instructions.trim()}`);
+    lines.push(`Special: ${data.instructions.trim()}`);
   }
 
   lines.push(divider);
-  lines.push(centerLine("*** रसोई प्रति • KITCHEN COPY ***", 32));
+  lines.push(centerLine("*** KITCHEN COPY ***", 32));
   lines.push(divider);
 
   return lines.join("\n");
@@ -253,7 +253,7 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
 /**
  * Builds formatted thermal receipt raw text locally on the client with zero network latency.
  * All header items (Brand name, Franchise name, Address, Phone, GSTIN) and Footer are strictly center-aligned.
- * Includes authentic Hindi greetings and labels, and Instagram handle.
+ * Everything is in English, with Hindi greeting kept strictly below payments.
  */
 export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: ThermalPaperSize = "80mm"): string {
   const currSym = data.currencySymbol || "₹";
@@ -264,9 +264,7 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
 
   const lines: string[] = [];
   lines.push(divider);
-  lines.push(centerLine("|| श्री गणेशाय नमः ||", 32));
   lines.push(centerLine(brandName, 32));
-  lines.push(centerLine("मद्रासी डोसा • असली दक्षिण भारतीय स्वाद", 32));
 
   if (franchiseName) {
     const branchLabel = franchiseName.startsWith("---") ? franchiseName : `--- ${franchiseName} ---`;
@@ -276,7 +274,7 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
     lines.push(centerLine(data.franchiseAddress, 32));
   }
   if (data.franchisePhone) {
-    lines.push(centerLine(`दूरभाष / Phone: ${data.franchisePhone.trim()}`, 32));
+    lines.push(centerLine(`Phone: ${data.franchisePhone.trim()}`, 32));
   }
   if (data.gstin) {
     lines.push(centerLine(`GSTIN: ${data.gstin.trim()}`, 32));
@@ -285,17 +283,15 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
     lines.push(centerLine(`FSSAI: ${data.fssaiNumber.trim()}`, 32));
   }
   lines.push(divider);
-  lines.push(`बिल / Tax Invoice: ${data.invoiceNumber}`);
+  lines.push(`Tax Invoice: ${data.invoiceNumber}`);
   if (data.orderNumber) {
-    lines.push(`आर्डर / Order   : ${data.orderNumber}`);
+    lines.push(`Order      : ${data.orderNumber}`);
   }
   const typeStr = data.orderType || "Takeaway";
-  const isDineIn = typeStr.toLowerCase().includes("dine") || typeStr.toLowerCase().includes("table");
-  const hindiType = isDineIn ? `डाइन-इन / ${typeStr}` : `पार्सल / ${typeStr}`;
-  lines.push(hindiType);
-  lines.push(`दिनांक / Date   : ${data.date || new Date().toLocaleString()}`);
+  lines.push(typeStr);
+  lines.push(`Date       : ${data.date || new Date().toLocaleString()}`);
   lines.push(thinDivider);
-  lines.push("व्यंजन / Item    मात्रा/Qty   मूल्य");
+  lines.push("Item             Qty      Price");
   lines.push(thinDivider);
 
   for (const item of data.items) {
@@ -312,27 +308,21 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
   }
 
   lines.push(thinDivider);
-  lines.push(`उपयोग / Subtotal:     ${currSym}${data.subtotal.toFixed(2)}`);
+  lines.push(`Subtotal:             ${currSym}${data.subtotal.toFixed(2)}`);
   if (data.discount && data.discount > 0) {
-    lines.push(`छूट / Discount:      -${currSym}${data.discount.toFixed(2)}`);
+    lines.push(`Discount:            -${currSym}${data.discount.toFixed(2)}`);
   }
-  lines.push(`कर / Tax (GST):       ${currSym}${(data.tax || 0).toFixed(2)}`);
+  lines.push(`Tax (GST):            ${currSym}${(data.tax || 0).toFixed(2)}`);
   lines.push(divider);
-  lines.push(`कुल देय / TOTAL:      ${currSym}${data.total.toFixed(2)}`);
+  lines.push(`TOTAL:                ${currSym}${data.total.toFixed(2)}`);
   lines.push(divider);
-  lines.push("भुगतान विवरण / PAYMENTS:");
+  lines.push("PAYMENTS:");
   for (const p of data.payments) {
-    const pMethodUpper = (p.method || "").toUpperCase();
-    const methodHindi = pMethodUpper.includes("CASH")
-      ? "नकद / CASH"
-      : pMethodUpper.includes("UPI")
-      ? "यूपीआई / UPI"
-      : pMethodUpper.includes("CARD")
-      ? "कार्ड / CARD"
-      : p.method;
-    lines.push(`  ${methodHindi.padEnd(14, " ")}: ${currSym}${p.amount.toFixed(2)} [${p.status || "COMPLETED"}]`);
+    lines.push(`  ${p.method.padEnd(10, " ")}: ${currSym}${p.amount.toFixed(2)} [${p.status || "COMPLETED"}]`);
   }
   lines.push(thinDivider);
+
+  // HINDI CONTENT STRICTLY BELOW PAYMENTS:
   lines.push(centerLine("धन्यवाद! पुनः पधारें", 32));
   lines.push(centerLine(data.footerMessage || "Thank You! Please Visit Again", 32));
 
@@ -443,10 +433,10 @@ function formatReceiptBodyHtml(bodyLines: string[]): string {
  */
 function formatKOTBodyHtml(kotData: BuildKOTParams, _is58mm?: boolean): string {
   const tableStr = kotData.tableNumber
-    ? String(kotData.tableNumber).toUpperCase().startsWith("TABLE") || String(kotData.tableNumber).startsWith("मेज")
+    ? String(kotData.tableNumber).toUpperCase().startsWith("TABLE")
       ? String(kotData.tableNumber)
-      : `मेज / TABLE ${kotData.tableNumber}`
-    : `पार्सल / ${(kotData.orderType || "TAKEAWAY / COUNTER").toUpperCase()}`;
+      : `TABLE ${kotData.tableNumber}`
+    : (kotData.orderType || "TAKEAWAY / COUNTER").toUpperCase();
 
   const itemsHtml = kotData.items
     .map((item) => {
@@ -463,16 +453,16 @@ function formatKOTBodyHtml(kotData: BuildKOTParams, _is58mm?: boolean): string {
 
   return `
     <div class="kot-container">
-      <div class="kot-header-badge">किचन ऑर्डर टिकट • KITCHEN TICKET (KOT)</div>
+      <div class="kot-header-badge">KITCHEN ORDER TICKET (KOT)</div>
       <div class="kot-table-banner">${escapeHtml(tableStr)}</div>
       <div class="kot-meta-row">
-        ${kotData.orderNumber ? `<span>टोकन/Token: ${escapeHtml(kotData.orderNumber)}</span>` : ""}
-        <span>समय/Time: ${escapeHtml(kotData.date || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>
+        ${kotData.orderNumber ? `<span>Token: ${escapeHtml(kotData.orderNumber)}</span>` : ""}
+        <span>Time: ${escapeHtml(kotData.date || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>
       </div>
       <div class="kot-divider">================================</div>
       <div class="kot-table-head">
-        <span>व्यंजन (ITEM)</span>
-        <span>मात्रा (QTY)</span>
+        <span>ITEM</span>
+        <span>QTY</span>
       </div>
       <div class="kot-divider">--------------------------------</div>
       <div class="kot-items-list">
@@ -481,11 +471,11 @@ function formatKOTBodyHtml(kotData: BuildKOTParams, _is58mm?: boolean): string {
       ${
         kotData.instructions && kotData.instructions.trim()
           ? `<div class="kot-divider">--------------------------------</div>
-             <div class="kot-special-note">विशेष निर्देश / Special: ${escapeHtml(kotData.instructions.trim())}</div>`
+             <div class="kot-special-note">Special: ${escapeHtml(kotData.instructions.trim())}</div>`
           : ""
       }
       <div class="kot-divider">================================</div>
-      <div class="kot-footer">*** रसोई प्रति • KITCHEN COPY ***</div>
+      <div class="kot-footer">*** KITCHEN COPY ***</div>
     </div>
   `;
 }
