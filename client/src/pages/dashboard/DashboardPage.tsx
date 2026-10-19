@@ -70,11 +70,13 @@ export const DashboardPage: React.FC = () => {
               </Button>
             </Link>
           )}
-          <Link to="/reports">
-            <Button variant="secondary" size="md" icon={<TrendingUp className="w-4 h-4" />}>
-              View Analytics
-            </Button>
-          </Link>
+          {user?.role !== "CASHIER" && (
+            <Link to="/reports">
+              <Button variant="secondary" size="md" icon={<TrendingUp className="w-4 h-4" />}>
+                View Analytics
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -112,13 +114,23 @@ export const DashboardPage: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          <StatCard
-            title="Today's Revenue"
-            value={`₹${(stats?.todayRevenue || 0).toLocaleString("en-IN")}`}
-            subtitle={`${stats?.todayOrdersCount || 0} Orders Placed`}
-            icon={<DollarSign className="w-6 h-6" />}
-            color="emerald"
-          />
+          {user?.role !== "CASHIER" ? (
+            <StatCard
+              title="Today's Revenue"
+              value={`₹${(stats?.todayRevenue || 0).toLocaleString("en-IN")}`}
+              subtitle={`${stats?.todayOrdersCount || 0} Orders Placed`}
+              icon={<DollarSign className="w-6 h-6" />}
+              color="emerald"
+            />
+          ) : (
+            <StatCard
+              title="Today's Orders"
+              value={stats?.todayOrdersCount || 0}
+              subtitle="Orders Processed Today"
+              icon={<ShoppingCart className="w-6 h-6" />}
+              color="indigo"
+            />
+          )}
           <StatCard
             title="Active Tables"
             value={`${stats?.occupiedTables || 0} / ${stats?.totalTables || 0}`}
@@ -133,13 +145,23 @@ export const DashboardPage: React.FC = () => {
             icon={<ChefHat className="w-6 h-6" />}
             color="amber"
           />
-          <StatCard
-            title="Staff on Shift"
-            value={`${stats?.presentStaffCount || 0} / ${stats?.totalEmployees || 0}`}
-            subtitle="Present Today"
-            icon={<Users className="w-6 h-6" />}
-            color="purple"
-          />
+          {user?.role !== "CASHIER" ? (
+            <StatCard
+              title="Staff on Shift"
+              value={`${stats?.presentStaffCount || 0} / ${stats?.totalEmployees || 0}`}
+              subtitle="Present Today"
+              icon={<Users className="w-6 h-6" />}
+              color="purple"
+            />
+          ) : (
+            <StatCard
+              title="Available Tables"
+              value={stats?.availableTables || 0}
+              subtitle="Ready for Seating"
+              icon={<Grid3X3 className="w-6 h-6" />}
+              color="emerald"
+            />
+          )}
         </div>
       )}
 
@@ -234,190 +256,262 @@ export const DashboardPage: React.FC = () => {
                   <span>POS Billing</span>
                 </div>
               </Link>
+              <Link to="/tables">
+                <div className="p-3.5 rounded-xl border border-indigo-100 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-700 font-semibold text-xs flex flex-col items-center justify-center text-center transition-all cursor-pointer">
+                  <Grid3X3 className="w-5 h-5 mb-1.5" />
+                  <span>Tables / Floor</span>
+                </div>
+              </Link>
               <Link to="/kitchen">
                 <div className="p-3.5 rounded-xl border border-amber-100 bg-amber-50/50 hover:bg-amber-50 text-amber-700 font-semibold text-xs flex flex-col items-center justify-center text-center transition-all cursor-pointer">
                   <ChefHat className="w-5 h-5 mb-1.5" />
                   <span>Kitchen (KDS)</span>
                 </div>
               </Link>
-              <Link to="/inventory">
-                <div className="p-3.5 rounded-xl border border-emerald-100 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-700 font-semibold text-xs flex flex-col items-center justify-center text-center transition-all cursor-pointer">
-                  <Grid3X3 className="w-5 h-5 mb-1.5" />
-                  <span>Inventory</span>
-                </div>
-              </Link>
-              <Link to="/expenses">
-                <div className="p-3.5 rounded-xl border border-rose-100 bg-rose-50/50 hover:bg-rose-50 text-rose-700 font-semibold text-xs flex flex-col items-center justify-center text-center transition-all cursor-pointer">
-                  <Banknote className="w-5 h-5 mb-1.5" />
-                  <span>Expenses</span>
-                </div>
-              </Link>
+              {user?.role !== "CASHIER" ? (
+                <Link to="/expenses">
+                  <div className="p-3.5 rounded-xl border border-rose-100 bg-rose-50/50 hover:bg-rose-50 text-rose-700 font-semibold text-xs flex flex-col items-center justify-center text-center transition-all cursor-pointer">
+                    <Banknote className="w-5 h-5 mb-1.5" />
+                    <span>Expenses</span>
+                  </div>
+                </Link>
+              ) : (
+                <Link to="/orders">
+                  <div className="p-3.5 rounded-xl border border-emerald-100 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-700 font-semibold text-xs flex flex-col items-center justify-center text-center transition-all cursor-pointer">
+                    <Clock className="w-5 h-5 mb-1.5" />
+                    <span>Orders History</span>
+                  </div>
+                </Link>
+              )}
             </div>
           </Card>
 
-          {/* Franchise Staff & Team Section */}
-          <Card
-            title="Franchise Staff & Active Team"
-            subtitle={`Showing registered employees and staff in ${user?.franchise?.name || "your outlet"}`}
-            className="md:col-span-2"
-            action={
-              <div className="flex items-center gap-2">
-                <Link to="/attendance">
-                  <Button variant="outline" size="sm" icon={<Clock className="w-3.5 h-3.5" />}>
-                    Attendance Sheet
-                  </Button>
-                </Link>
-                <Link to="/employees">
-                  <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />}>
-                    Manage Staff
-                  </Button>
-                </Link>
-              </div>
-            }
-          >
-            <div className="space-y-4">
-              {/* Shift Attendance Snapshot Bar */}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
-                    <Users className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-900">
-                      {stats?.presentStaffCount || 0} of {stats?.totalEmployees || 0} Staff Present Today
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Total {stats?.totalEmployees || 0} registered employees • {stats?.activeUsersCount || 0} active login accounts
-                    </p>
-                  </div>
-                </div>
+          {/* Franchise Staff Section (Hidden for CASHIER to keep staff & finance confidential) */}
+          {user?.role !== "CASHIER" ? (
+            <Card
+              title="Franchise Staff & Active Team"
+              subtitle={`Showing registered employees and staff in ${user?.franchise?.name || "your outlet"}`}
+              className="md:col-span-2"
+              action={
                 <div className="flex items-center gap-2">
-                  <Link to="/advances">
-                    <Button variant="secondary" size="sm">
-                      Advances
-                    </Button>
-                  </Link>
                   <Link to="/attendance">
-                    <Button variant="primary" size="sm">
-                      Mark Attendance
+                    <Button variant="outline" size="sm" icon={<Clock className="w-3.5 h-3.5" />}>
+                      Attendance Sheet
+                    </Button>
+                  </Link>
+                  <Link to="/employees">
+                    <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />}>
+                      Manage Staff
                     </Button>
                   </Link>
                 </div>
-              </div>
-
-              {/* Employees Table */}
-              {!stats?.employees || stats.employees.length === 0 ? (
-                <div className="text-center py-8 text-gray-400 border border-dashed border-gray-200 rounded-xl">
-                  <Users className="w-10 h-10 mx-auto mb-2 opacity-40 text-indigo-400" />
-                  <p className="text-sm font-semibold text-gray-600">No employees registered yet</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Add staff members to track attendance and manage salary advances.
-                  </p>
-                  <Link to="/employees" className="mt-3 inline-block">
-                    <Button variant="outline" size="sm" icon={<Plus className="w-3.5 h-3.5" />}>
-                      Add Employee
-                    </Button>
-                  </Link>
-                </div>
-              ) : (
-                <div className="overflow-x-auto border border-gray-100 rounded-xl">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                      <tr>
-                        <th className="px-4 py-2.5">Employee</th>
-                        <th className="px-4 py-2.5">Code</th>
-                        <th className="px-4 py-2.5">Designation</th>
-                        <th className="px-4 py-2.5">Contact</th>
-                        <th className="px-4 py-2.5">Today's Shift</th>
-                        <th className="px-4 py-2.5">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {stats.employees.map((emp: any) => (
-                        <tr key={emp.id} className="hover:bg-gray-50/80 transition-colors">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
-                                {emp.name?.charAt(0)?.toUpperCase() || "E"}
-                              </div>
-                              <span className="font-semibold text-gray-900 text-xs">{emp.name}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-mono font-bold text-xs text-indigo-600">
-                            {emp.employeeCode}
-                          </td>
-                          <td className="px-4 py-3 font-medium text-xs text-gray-700">
-                            {emp.designation || "Staff"}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-600">
-                            {emp.phone || emp.email || "—"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                emp.todayAttendance === "PRESENT"
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : emp.todayAttendance === "HALF_DAY"
-                                  ? "bg-blue-50 text-blue-700 border border-blue-200"
-                                  : "bg-amber-50 text-amber-700 border border-amber-200"
-                              }`}
-                            >
-                              {emp.todayAttendance === "PRESENT"
-                                ? "✓ Present Today"
-                                : emp.todayAttendance === "HALF_DAY"
-                                ? "Half Day"
-                                : "Not Marked Yet"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                emp.status === "ACTIVE"
-                                  ? "bg-emerald-50 text-emerald-700"
-                                  : "bg-gray-100 text-gray-600"
-                              }`}
-                            >
-                              {emp.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Login Accounts Row */}
-              {stats?.users && stats.users.length > 0 && (
-                <div className="pt-2 border-t border-gray-100">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                      Franchise System Accounts ({stats.users.length})
-                    </span>
-                    <Link to="/users" className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold">
-                      Manage Logins →
+              }
+            >
+              <div className="space-y-4">
+                {/* Shift Attendance Snapshot Bar */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">
+                        {stats?.presentStaffCount || 0} of {stats?.totalEmployees || 0} Staff Present Today
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Total {stats?.totalEmployees || 0} registered employees • {stats?.activeUsersCount || 0} active login accounts
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Link to="/advances">
+                      <Button variant="secondary" size="sm">
+                        Advances
+                      </Button>
+                    </Link>
+                    <Link to="/attendance">
+                      <Button variant="primary" size="sm">
+                        Mark Attendance
+                      </Button>
                     </Link>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {stats.users.map((u: any) => (
-                      <div
-                        key={u.id}
-                        className="p-2.5 rounded-lg border border-gray-200/80 bg-white flex items-center justify-between gap-2 shadow-2xs"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-gray-900 truncate">{u.name}</p>
-                          <p className="text-[11px] text-gray-400 font-mono truncate">{u.email}</p>
+                </div>
+
+                {/* Employees Table */}
+                {!stats?.employees || stats.employees.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400 border border-dashed border-gray-200 rounded-xl">
+                    <Users className="w-10 h-10 mx-auto mb-2 opacity-40 text-indigo-400" />
+                    <p className="text-sm font-semibold text-gray-600">No employees registered yet</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Add staff members to track attendance and manage salary advances.
+                    </p>
+                    <Link to="/employees" className="mt-3 inline-block">
+                      <Button variant="outline" size="sm" icon={<Plus className="w-3.5 h-3.5" />}>
+                        Add Employee
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                        <tr>
+                          <th className="px-4 py-2.5">Employee</th>
+                          <th className="px-4 py-2.5">Code</th>
+                          <th className="px-4 py-2.5">Designation</th>
+                          <th className="px-4 py-2.5">Contact</th>
+                          <th className="px-4 py-2.5">Today's Shift</th>
+                          <th className="px-4 py-2.5">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {stats.employees.map((emp: any) => (
+                          <tr key={emp.id} className="hover:bg-gray-50/80 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                  {emp.name?.charAt(0)?.toUpperCase() || "E"}
+                                </div>
+                                <span className="font-semibold text-gray-900 text-xs">{emp.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 font-mono font-bold text-xs text-indigo-600">
+                              {emp.employeeCode}
+                            </td>
+                            <td className="px-4 py-3 font-medium text-xs text-gray-700">
+                              {emp.designation || "Staff"}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-600">
+                              {emp.phone || emp.email || "—"}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                  emp.todayAttendance === "PRESENT"
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : emp.todayAttendance === "HALF_DAY"
+                                    ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                                }`}
+                              >
+                                {emp.todayAttendance === "PRESENT"
+                                  ? "✓ Present Today"
+                                  : emp.todayAttendance === "HALF_DAY"
+                                  ? "Half Day"
+                                  : "Not Marked Yet"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                  emp.status === "ACTIVE"
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : "bg-gray-100 text-gray-600"
+                                }`}
+                              >
+                                {emp.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Login Accounts Row */}
+                {stats?.users && stats.users.length > 0 && (
+                  <div className="pt-2 border-t border-gray-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        Franchise System Accounts ({stats.users.length})
+                      </span>
+                      <Link to="/users" className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold">
+                        Manage Logins →
+                      </Link>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {stats.users.map((u: any) => (
+                        <div
+                          key={u.id}
+                          className="p-2.5 rounded-lg border border-gray-200/80 bg-white flex items-center justify-between gap-2 shadow-2xs"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-gray-900 truncate">{u.name}</p>
+                            <p className="text-[11px] text-gray-400 font-mono truncate">{u.email}</p>
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                            {u.role}
+                          </span>
                         </div>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
-                          {u.role}
-                        </span>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+          ) : (
+            /* Cashier Operational Guidance & Fast POS Card */
+            <Card
+              title="Cashier Terminal Station"
+              subtitle={`Active Counter Workspace • ${user?.franchise?.name || "Madrasi Dosa"}`}
+              className="md:col-span-2"
+              action={
+                <Link to="/pos">
+                  <Button variant="primary" size="sm" icon={<ShoppingCart className="w-4 h-4" />}>
+                    Open POS Terminal
+                  </Button>
+                </Link>
+              }
+            >
+              <div className="space-y-4">
+                <div className="p-4 bg-indigo-50 border border-indigo-200/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-black shadow-md shadow-indigo-600/20">
+                      <ShoppingCart className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-base font-black text-gray-950">Hardware POS Billing Terminal Ready</h4>
+                      <p className="text-xs text-gray-600 mt-0.5">
+                        Direct fullscreen mode, numpad table/takeaway selection & instant dish code entry.
+                      </p>
+                    </div>
+                  </div>
+                  <Link to="/pos">
+                    <Button variant="primary" size="md">
+                      Start Billing →
+                    </Button>
+                  </Link>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="p-3.5 rounded-xl border border-gray-200 bg-white shadow-2xs">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                      Dining Room Status
+                    </span>
+                    <p className="text-xl font-black text-gray-950">
+                      {stats?.availableTables || 0} / {stats?.totalTables || 0} Tables Available
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {stats?.occupiedTables || 0} tables currently seated with guests
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border border-gray-200 bg-white shadow-2xs">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                      Live Kitchen KOT Queue
+                    </span>
+                    <p className="text-xl font-black text-amber-700">
+                      {stats?.activeKOTsCount || 0} Active Kitchen Slips
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Tickets currently preparing in the kitchen
+                    </p>
                   </div>
                 </div>
-              )}
-            </div>
-          </Card>
+              </div>
+            </Card>
+          )}
         </div>
       )}
     </div>

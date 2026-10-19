@@ -23,10 +23,14 @@ import {
   Printer,
   ShoppingBag,
   Zap,
+  Lock,
+  KeyRound,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
 import { useCartStore } from "../../store/cartStore.js";
+import { usePinLockStore } from "../../store/pinLockStore.js";
+import { PinSetupModal } from "../../components/auth/PinSetupModal.js";
 import {
   printReceiptDirectly,
   printKOTDirectly,
@@ -59,6 +63,8 @@ export const POSPage: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { selectedFranchiseId, user, setSelectedFranchise } = useAuthStore();
+  const { hasPin, lock } = usePinLockStore();
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const { isSuperAdmin: isPermAdmin, canApplyDiscounts, maxDiscountPercent } = usePermissions();
   const isSuperAdmin = user?.role === "SUPER_ADMIN" || isPermAdmin;
   const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId;
@@ -1224,6 +1230,29 @@ export const POSPage: React.FC = () => {
               <span>🖨️ {paperSize}</span>
             </button>
 
+            {/* Quick PIN Lock Button */}
+            {user?.id && hasPin(user.id) ? (
+              <button
+                type="button"
+                onClick={() => lock()}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition-colors cursor-pointer"
+                title="Lock Terminal Screen (Require PIN to unlock)"
+              >
+                <Lock className="w-4 h-4 text-amber-600" />
+                <span className="hidden sm:inline">Lock</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsPinModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50/70 hover:bg-indigo-100 border border-dashed border-indigo-300 text-xs font-bold text-indigo-700 shadow-2xs transition-colors cursor-pointer"
+                title="Setup Quick PIN for this terminal"
+              >
+                <KeyRound className="w-4 h-4 text-indigo-600" />
+                <span className="hidden sm:inline">Set PIN</span>
+              </button>
+            )}
+
             {/* Exit POS Button */}
             <button
               type="button"
@@ -1627,6 +1656,28 @@ export const POSPage: React.FC = () => {
               <Printer className="w-4 h-4 text-gray-500" />
               <span>🖨️ Printer ({paperSize})</span>
             </button>
+
+            {user?.id && hasPin(user.id) ? (
+              <button
+                type="button"
+                onClick={() => lock()}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition-colors cursor-pointer"
+                title="Lock Terminal Screen (Require PIN to unlock)"
+              >
+                <Lock className="w-4 h-4 text-amber-600" />
+                <span>Lock</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsPinModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50/70 hover:bg-indigo-100 border border-dashed border-indigo-300 text-xs font-bold text-indigo-700 shadow-2xs transition-colors cursor-pointer"
+                title="Setup Quick PIN for this terminal"
+              >
+                <KeyRound className="w-4 h-4 text-indigo-600" />
+                <span>Set PIN</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -2861,6 +2912,12 @@ Thanks For Visiting Madrasi Dosa`;
           </Modal>
         );
       })()}
+
+      {/* Quick PIN Setup / Change Modal */}
+      <PinSetupModal
+        isOpen={isPinModalOpen}
+        onClose={() => setIsPinModalOpen(false)}
+      />
     </div>
   );
 };

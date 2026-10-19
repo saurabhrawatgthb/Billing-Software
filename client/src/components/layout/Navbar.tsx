@@ -10,12 +10,16 @@ import {
   ChevronDown,
   LogOut,
   Shield,
+  Lock,
+  KeyRound,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore.js";
+import { usePinLockStore } from "../../store/pinLockStore.js";
 import { api, extractErrorMessage } from "../../services/api.js";
 import type { Franchise } from "../../types/index.js";
 import { Badge } from "../common/Badge.js";
 import { DailyRegisterModal } from "../register/DailyRegisterModal.js";
+import { PinSetupModal } from "../auth/PinSetupModal.js";
 import { getDefaultRoleHome } from "./ProtectedRoute.js";
 
 export const Navbar: React.FC = () => {
@@ -24,10 +28,12 @@ export const Navbar: React.FC = () => {
   const isFetchingCount = useIsFetching();
   const isSyncing = isFetchingCount > 0;
   const { user, selectedFranchiseId, setSelectedFranchise, login, logout } = useAuthStore();
+  const { hasPin, lock } = usePinLockStore();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
 
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
@@ -187,6 +193,27 @@ export const Navbar: React.FC = () => {
           {user?.role.replace("_", " ")}
         </Badge>
 
+        {/* Quick Lock / PIN Button */}
+        {user?.id && hasPin(user.id) ? (
+          <button
+            onClick={() => lock()}
+            title="Lock Terminal (Enter PIN to unlock)"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-xs font-bold text-amber-900 shadow-2xs transition-all cursor-pointer"
+          >
+            <Lock className="w-3.5 h-3.5 text-amber-700" />
+            <span className="hidden sm:inline">Lock</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => setIsPinModalOpen(true)}
+            title="Setup Quick PIN for 1-click login on this computer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-indigo-300 bg-indigo-50/50 hover:bg-indigo-50 text-xs font-bold text-indigo-700 transition-all cursor-pointer"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Setup PIN</span>
+          </button>
+        )}
+
         {/* User Profile & Account Switcher Dropdown */}
         <div className="relative" ref={dropdownRef}>
           <button
@@ -220,6 +247,33 @@ export const Navbar: React.FC = () => {
                     <span className="text-gray-400">• {user.franchise.name}</span>
                   )}
                 </div>
+              </div>
+
+              {/* Quick PIN Options */}
+              <div className="p-1 border-b border-gray-100">
+                <button
+                  onClick={() => {
+                    setIsProfileDropdownOpen(false);
+                    setIsPinModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+                >
+                  <KeyRound className="w-4 h-4 text-indigo-600" />
+                  <span>{user?.id && hasPin(user.id) ? "Change Quick PIN" : "Setup Quick PIN (Desktop)"}</span>
+                </button>
+
+                {user?.id && hasPin(user.id) && (
+                  <button
+                    onClick={() => {
+                      setIsProfileDropdownOpen(false);
+                      lock();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-amber-800 hover:bg-amber-50 transition-colors cursor-pointer"
+                  >
+                    <Lock className="w-4 h-4 text-amber-600" />
+                    <span>Lock Terminal Now</span>
+                  </button>
+                )}
               </div>
 
               {/* Multi-Account Switching Section */}
@@ -279,6 +333,12 @@ export const Navbar: React.FC = () => {
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
         franchiseId={activeFranchiseId}
+      />
+
+      {/* Quick PIN Setup / Change Modal */}
+      <PinSetupModal
+        isOpen={isPinModalOpen}
+        onClose={() => setIsPinModalOpen(false)}
       />
     </header>
   );
