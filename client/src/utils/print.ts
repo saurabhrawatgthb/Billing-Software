@@ -96,6 +96,32 @@ export function centerLine(text: string, width = 32): string {
     .join("\n");
 }
 
+/**
+ * Safely format item display name with size/portion/scoop, avoiding any double suffix
+ * such as "Tandoori Paneer (Large) (Large)" or "Vanilla (1 Scoop) (1 Scoop)".
+ */
+export function formatItemDisplayName(name: string, selectedSize?: string | null): string {
+  if (!name) return "";
+  const cleanName = name.trim();
+  if (!selectedSize || !selectedSize.trim()) return cleanName;
+
+  const cleanSize = selectedSize.trim();
+  const lowerName = cleanName.toLowerCase();
+  const lowerSize = cleanSize.toLowerCase();
+
+  // If name already contains (size) or [size] or ends with size, don't duplicate
+  if (
+    lowerName.includes(`(${lowerSize})`) ||
+    lowerName.includes(`[${lowerSize}]`) ||
+    lowerName.endsWith(` ${lowerSize}`) ||
+    lowerName.endsWith(`-${lowerSize}`)
+  ) {
+    return cleanName;
+  }
+
+  return `${cleanName} (${cleanSize})`;
+}
+
 export const MADRASI_DOSA_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 140" width="100%">
   <defs>
     <style>
@@ -224,7 +250,7 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
   lines.push(thinDivider);
 
   for (const item of data.items) {
-    const displayName = item.selectedSize ? `${item.name} (${item.selectedSize})` : item.name;
+    const displayName = formatItemDisplayName(item.name, item.selectedSize);
     const qtyStr = String(item.quantity).padStart(3, " ");
 
     if (displayName.length > 28) {
@@ -543,7 +569,7 @@ function formatKOTBodyHtml(kotData: BuildKOTParams, _is58mm?: boolean): string {
 
   const itemsHtml = kotData.items
     .map((item) => {
-      const displayName = item.selectedSize ? `${item.name} (${item.selectedSize})` : item.name;
+      const displayName = formatItemDisplayName(item.name, item.selectedSize);
       return `
         <div class="kot-item-row">
           <span class="kot-item-name">${escapeHtml(displayName)}</span>
@@ -1009,7 +1035,7 @@ export function buildReceiptHtmlFromParams(
   const itemsHtml = data.items
     .map((item) => {
       const itemTotal = item.totalPrice !== undefined ? item.totalPrice : item.price * item.quantity;
-      const displayName = item.selectedSize ? `${item.name} (${item.selectedSize})` : item.name;
+      const displayName = formatItemDisplayName(item.name, item.selectedSize);
       return `
         <tr>
           <td class="col-item">${escapeHtml(displayName)}</td>

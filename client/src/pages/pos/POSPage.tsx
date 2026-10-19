@@ -123,6 +123,11 @@ export const POSPage: React.FC = () => {
   useEffect(() => {
     if (!sizeSelectionItem) return;
 
+    // Immediately remove focus from any active input so keypresses don't get typed into search
+    if (document.activeElement && (document.activeElement as HTMLElement).blur) {
+      (document.activeElement as HTMLElement).blur();
+    }
+
     const isIceCream = isIceCreamWithScoops(sizeSelectionItem);
     const hasThreeSizes = sizeSelectionItem.priceMedium != null && Number(sizeSelectionItem.priceMedium) > 0;
     const pSmall = sizeSelectionItem.priceSmall != null ? Number(sizeSelectionItem.priceSmall) : Number(sizeSelectionItem.price);
@@ -130,61 +135,56 @@ export const POSPage: React.FC = () => {
     const pLarge = sizeSelectionItem.priceLarge != null ? Number(sizeSelectionItem.priceLarge) : Number(sizeSelectionItem.price);
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSizeSelectionItem(null);
+        return;
+      }
 
       if (isIceCream) {
         // Ice cream scoop selection: 1 = 1 Scoop, 2 = 2 Scoops
-        if (e.key === "1") {
+        if (e.key === "1" || e.code === "Numpad1") {
           e.preventDefault();
           addItem(sizeSelectionItem, "1 Scoop", pSmall);
           setSizeSelectionItem(null);
-        } else if (e.key === "2") {
+        } else if (e.key === "2" || e.code === "Numpad2") {
           e.preventDefault();
           addItem(sizeSelectionItem, "2 Scoops", pLarge);
-          setSizeSelectionItem(null);
-        } else if (e.key === "Escape") {
-          e.preventDefault();
           setSizeSelectionItem(null);
         }
         return;
       }
 
       if (hasThreeSizes) {
-        if (e.key === "1" || e.key.toLowerCase() === "s") {
+        if (e.key === "1" || e.code === "Numpad1" || e.key.toLowerCase() === "s") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Small", pSmall);
           setSizeSelectionItem(null);
-        } else if (e.key === "2" || e.key.toLowerCase() === "m") {
+        } else if (e.key === "2" || e.code === "Numpad2" || e.key.toLowerCase() === "m") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Medium", pMedium);
           setSizeSelectionItem(null);
-        } else if (e.key === "3" || e.key.toLowerCase() === "l") {
+        } else if (e.key === "3" || e.code === "Numpad3" || e.key.toLowerCase() === "l") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Large", pLarge);
-          setSizeSelectionItem(null);
-        } else if (e.key === "Escape") {
-          e.preventDefault();
           setSizeSelectionItem(null);
         }
       } else {
         // Normal & Loaded variations
-        if (e.key === "1" || e.key.toLowerCase() === "n") {
+        if (e.key === "1" || e.code === "Numpad1" || e.key.toLowerCase() === "n") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Normal", pSmall);
           setSizeSelectionItem(null);
-        } else if (e.key === "2" || e.key.toLowerCase() === "l") {
+        } else if (e.key === "2" || e.code === "Numpad2" || e.key.toLowerCase() === "l") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Loaded", pLarge);
-          setSizeSelectionItem(null);
-        } else if (e.key === "Escape") {
-          e.preventDefault();
           setSizeSelectionItem(null);
         }
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [sizeSelectionItem, addItem]);
 
   // Printer Paper Size (58mm vs 80mm) & Hardware Port Detection
@@ -728,7 +728,16 @@ export const POSPage: React.FC = () => {
       if (activeEl === quickCodeInputRef.current) {
         if (e.key === "Enter") {
           e.preventDefault();
-          handleQuickCodeSubmit();
+          if (quickDishCode.trim()) {
+            handleQuickCodeSubmit();
+          } else if (cartItems.length > 0) {
+            // When input is empty and cart has items, Enter opens Bill & Pay!
+            const tot = getTotal();
+            setPayMode("CASH");
+            setSplitCashAmount(tot);
+            setSplitUpiAmount(0);
+            setIsBillPayModalOpen(true);
+          }
           return;
         }
         if (e.key === "Escape") {
@@ -746,6 +755,17 @@ export const POSPage: React.FC = () => {
 
       // If NOT focused on any input:
       if (!isInputFocused) {
+        // Pressing Enter when cart has items opens Bill & Pay!
+        if (e.key === "Enter" && cartItems.length > 0 && !quickDishCode.trim()) {
+          e.preventDefault();
+          const tot = getTotal();
+          setPayMode("CASH");
+          setSplitCashAmount(tot);
+          setSplitUpiAmount(0);
+          setIsBillPayModalOpen(true);
+          return;
+        }
+
         // Pressing digit 0-9 routes to quick dish code!
         if (/^[0-9]$/.test(e.key)) {
           e.preventDefault();
@@ -854,6 +874,10 @@ export const POSPage: React.FC = () => {
     },
   });
 
+  const subtotal = getSubtotal();
+  const tax = getTax();
+  const total = getTotal();
+
   const [isBilling, setIsBilling] = useState(false);
 
   // Instant Optimistic Thermal Billing & Direct Spooler (0ms Latency)
@@ -893,7 +917,7 @@ export const POSPage: React.FC = () => {
       const itemsSnapshot = cartItems.map((i) => {
         const itemUnitPrice = Number(i.price ?? i.menuItem.price);
         return {
-          name: i.selectedSize ? `${i.menuItem.name} (${i.selectedSize})` : i.menuItem.name,
+          name: i.menuItem.name,
           rawName: i.menuItem.name,
           quantity: i.quantity,
           price: itemUnitPrice,
@@ -1030,6 +1054,71 @@ export const POSPage: React.FC = () => {
     }
   };
 
+  // Dedicated keyboard shortcuts for Bill & Pay Settlement Modal (1=Cash, 2=UPI, 3=Card, 4=Split, Enter=Complete & Print, Esc=Cancel)
+  useEffect(() => {
+    if (!isBillPayModalOpen) return;
+
+    // Immediately blur any non-number inputs (e.g. search boxes) so digit keys select payment mode
+    if (document.activeElement && (document.activeElement as HTMLElement).blur) {
+      const activeEl = document.activeElement as HTMLElement;
+      if (activeEl.tagName === "INPUT" && activeEl.getAttribute("type") !== "number") {
+        activeEl.blur();
+      }
+    }
+
+    const handleBillPayKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isTypingSplit = activeEl && activeEl.tagName === "INPUT" && activeEl.getAttribute("type") === "number";
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setIsBillPayModalOpen(false);
+        return;
+      }
+
+      // Enter key (standard or numpad): Completes payment and prints KOT + bill!
+      if (e.key === "Enter" || e.code === "NumpadEnter") {
+        e.preventDefault();
+        if (
+          !isBilling &&
+          !(payMode === "SPLIT" && Math.abs((splitCashAmount + splitUpiAmount) - total) > 0.05)
+        ) {
+          handleCompletePaymentAndPrint();
+        }
+        return;
+      }
+
+      // If user is actively typing a split number in cash/upi input, let digits pass
+      if (isTypingSplit) return;
+
+      if (e.key === "1" || e.code === "Numpad1") {
+        e.preventDefault();
+        setPayMode("CASH");
+        setSplitCashAmount(total);
+        setSplitUpiAmount(0);
+      } else if (e.key === "2" || e.code === "Numpad2") {
+        e.preventDefault();
+        setPayMode("UPI");
+        setSplitCashAmount(0);
+        setSplitUpiAmount(total);
+      } else if (e.key === "3" || e.code === "Numpad3") {
+        e.preventDefault();
+        setPayMode("CARD");
+        setSplitCashAmount(0);
+        setSplitUpiAmount(0);
+      } else if (e.key === "4" || e.code === "Numpad4") {
+        e.preventDefault();
+        setPayMode("SPLIT");
+        const half = Math.round((total / 2) * 100) / 100;
+        setSplitCashAmount(half);
+        setSplitUpiAmount(Number((total - half).toFixed(2)));
+      }
+    };
+
+    window.addEventListener("keydown", handleBillPayKeyDown, true);
+    return () => window.removeEventListener("keydown", handleBillPayKeyDown, true);
+  }, [isBillPayModalOpen, payMode, splitCashAmount, splitUpiAmount, total, isBilling]);
+
 
   const filteredItems = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -1042,10 +1131,6 @@ export const POSPage: React.FC = () => {
       return matchesCategory && matchesSearch;
     });
   }, [menuItems, activeCategory, searchTerm]);
-
-  const subtotal = getSubtotal();
-  const tax = getTax();
-  const total = getTotal();
 
   // If Super Admin has not selected a specific franchise outlet yet, prompt to pick one
   if (isSuperAdmin && !selectedFranchiseId) {
@@ -2373,15 +2458,20 @@ export const POSPage: React.FC = () => {
 
           {/* Payment Method Selector */}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">
-              Select Payment Method *
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">
+                Select Payment Method *
+              </label>
+              <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                Press [1, 2, 3, 4] then [Enter ↵]
+              </span>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
-                { id: "CASH", label: "Cash", icon: "💵" },
-                { id: "UPI", label: "UPI", icon: "📱" },
-                { id: "SPLIT", label: "UPI + Cash", icon: "💵+📱" },
-                { id: "CARD", label: "Card", icon: "💳" },
+                { id: "CASH", label: "Cash", icon: "💵", key: "1" },
+                { id: "UPI", label: "UPI", icon: "📱", key: "2" },
+                { id: "CARD", label: "Card", icon: "💳", key: "3" },
+                { id: "SPLIT", label: "UPI + Cash", icon: "💵+📱", key: "4" },
               ].map((m) => (
                 <button
                   key={m.id}
@@ -2393,6 +2483,12 @@ export const POSPage: React.FC = () => {
                       const half = Math.round((total / 2) * 100) / 100;
                       setSplitCashAmount(half);
                       setSplitUpiAmount(Number((total - half).toFixed(2)));
+                    } else if (mode === "CASH") {
+                      setSplitCashAmount(total);
+                      setSplitUpiAmount(0);
+                    } else if (mode === "UPI") {
+                      setSplitCashAmount(0);
+                      setSplitUpiAmount(total);
                     }
                   }}
                   className={`p-3 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 ${
@@ -2401,7 +2497,18 @@ export const POSPage: React.FC = () => {
                       : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50 font-bold"
                   }`}
                 >
-                  <span className="text-xl">{m.icon}</span>
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-xl">{m.icon}</span>
+                    <span
+                      className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded ${
+                        payMode === m.id
+                          ? "bg-indigo-600 text-white"
+                          : "bg-gray-100 text-gray-700 border border-gray-200"
+                      }`}
+                    >
+                      [{m.key}]
+                    </span>
+                  </div>
                   <span className="text-xs">{m.label}</span>
                 </button>
               ))}
@@ -2515,7 +2622,7 @@ export const POSPage: React.FC = () => {
               size="md"
               onClick={() => setIsBillPayModalOpen(false)}
             >
-              Cancel
+              Cancel (Esc)
             </Button>
             <Button
               variant="primary"
@@ -2530,7 +2637,12 @@ export const POSPage: React.FC = () => {
               icon={<Printer className="w-4 h-4" />}
               className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/25 px-5 font-bold cursor-pointer"
             >
-              Complete Payment & Print {printKOT ? "KOT + Bill" : "Bill"}
+              <span className="flex items-center gap-1.5">
+                <span>Complete Payment & Print {printKOT ? "KOT + Bill" : "Bill"}</span>
+                <span className="bg-emerald-800 text-emerald-100 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold">
+                  [Enter ↵]
+                </span>
+              </span>
             </Button>
           </div>
         </div>
@@ -2734,8 +2846,8 @@ Thanks For Visiting Madrasi Dosa`;
         const modalTitle = isIceCream
           ? `🍨 Select Scoops: ${sizeSelectionItem.name}`
           : hasThreeSizes
-          ? `🍕 Select Pizza Size: ${sizeSelectionItem.name}`
-          : `🍕 Select Pizza Style: ${sizeSelectionItem.name}`;
+          ? `🍕 Select Size: ${sizeSelectionItem.name}`
+          : `✨ Select Portion: ${sizeSelectionItem.name}`;
 
         return (
           <Modal
@@ -2745,13 +2857,18 @@ Thanks For Visiting Madrasi Dosa`;
             maxWidth="sm"
           >
             <div className="space-y-4 pt-1">
-              <p className="text-xs text-gray-500 font-medium">
-                {isIceCream
-                  ? "Choose 1 Scoop or 2 Scoops to add to order (or press 1 or 2):"
-                  : hasThreeSizes
-                  ? "Choose size to immediately add to order (or press 1, 2, 3 / S, M, L):"
-                  : "Choose style to immediately add to order (or press 1, 2 / N, L):"}
-              </p>
+              <div className="flex items-center justify-between p-2.5 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs">
+                <span className="font-semibold text-indigo-950">
+                  {isIceCream
+                    ? "Press [1] for 1 Scoop or [2] for 2 Scoops:"
+                    : hasThreeSizes
+                    ? "Press [1] Small, [2] Medium, or [3] Large:"
+                    : "Press [1] Normal or [2] Loaded:"}
+                </span>
+                <span className="text-[11px] font-mono font-bold text-indigo-600 bg-white px-2 py-0.5 rounded border border-indigo-200">
+                  Esc to Cancel
+                </span>
+              </div>
 
               {isIceCream ? (
                 /* Ice Cream Scoop Selection (1 Scoop vs 2 Scoops) */
@@ -2765,14 +2882,14 @@ Thanks For Visiting Madrasi Dosa`;
                     }}
                     className="p-4 rounded-2xl border-2 border-pink-200 hover:border-pink-600 bg-white hover:bg-pink-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
                   >
-                    <span className="w-10 h-10 rounded-full bg-pink-100 text-pink-700 font-black text-sm flex items-center justify-center group-hover:bg-pink-600 group-hover:text-white transition-colors">
+                    <span className="w-10 h-10 rounded-full bg-pink-100 text-pink-700 font-black text-base flex items-center justify-center group-hover:bg-pink-600 group-hover:text-white transition-colors">
                       1
                     </span>
                     <div className="text-center">
                       <span className="text-sm font-black text-gray-900 group-hover:text-pink-950 block">
                         1 Scoop 🍨
                       </span>
-                      <span className="text-[10px] text-gray-400 font-mono">[Key 1]</span>
+                      <span className="text-xs text-pink-700 font-mono font-bold">[Key 1]</span>
                     </div>
                     <span className="text-sm font-extrabold text-pink-600">
                       ₹{pSmall.toFixed(2)}
@@ -2788,14 +2905,14 @@ Thanks For Visiting Madrasi Dosa`;
                     }}
                     className="p-4 rounded-2xl border-2 border-pink-400 hover:border-pink-600 bg-pink-50/60 hover:bg-pink-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-pink-300/40"
                   >
-                    <span className="w-10 h-10 rounded-full bg-pink-600 text-white font-black text-sm flex items-center justify-center shadow-xs">
+                    <span className="w-10 h-10 rounded-full bg-pink-600 text-white font-black text-base flex items-center justify-center shadow-xs">
                       2
                     </span>
                     <div className="text-center">
                       <span className="text-sm font-black text-gray-900 group-hover:text-pink-950 block">
                         2 Scoops 🍨🍨
                       </span>
-                      <span className="text-[10px] text-pink-700 font-mono font-bold">[Key 2]</span>
+                      <span className="text-xs text-pink-700 font-mono font-bold">[Key 2]</span>
                     </div>
                     <span className="text-sm font-extrabold text-pink-600">
                       ₹{pLarge.toFixed(2)}
@@ -2813,14 +2930,14 @@ Thanks For Visiting Madrasi Dosa`;
                     }}
                     className="p-3.5 rounded-2xl border-2 border-indigo-100 hover:border-indigo-600 bg-white hover:bg-indigo-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
                   >
-                    <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 font-black text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                      S
+                    <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-800 font-black text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                      1
                     </span>
                     <div className="text-center">
                       <span className="text-xs font-black text-gray-900 group-hover:text-indigo-900 block">
                         Small (7")
                       </span>
-                      <span className="text-[10px] text-gray-400 font-mono">[Key 1 / S]</span>
+                      <span className="text-[11px] text-indigo-700 font-mono font-bold">[Key 1]</span>
                     </div>
                     <span className="text-sm font-extrabold text-emerald-600">
                       ₹{pSmall.toFixed(2)}
@@ -2837,13 +2954,13 @@ Thanks For Visiting Madrasi Dosa`;
                     className="p-3.5 rounded-2xl border-2 border-indigo-300 hover:border-indigo-600 bg-indigo-50/50 hover:bg-indigo-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-indigo-400/30"
                   >
                     <span className="w-9 h-9 rounded-full bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-xs">
-                      M
+                      2
                     </span>
                     <div className="text-center">
                       <span className="text-xs font-black text-gray-900 group-hover:text-indigo-900 block">
                         Medium (10")
                       </span>
-                      <span className="text-[10px] text-indigo-600 font-mono font-bold">[Key 2 / M]</span>
+                      <span className="text-[11px] text-indigo-700 font-mono font-bold">[Key 2]</span>
                     </div>
                     <span className="text-sm font-extrabold text-emerald-600">
                       ₹{pMedium.toFixed(2)}
@@ -2859,14 +2976,14 @@ Thanks For Visiting Madrasi Dosa`;
                     }}
                     className="p-3.5 rounded-2xl border-2 border-indigo-100 hover:border-indigo-600 bg-white hover:bg-indigo-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
                   >
-                    <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 font-black text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                      L
+                    <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-800 font-black text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                      3
                     </span>
                     <div className="text-center">
                       <span className="text-xs font-black text-gray-900 group-hover:text-indigo-900 block">
                         Large (12")
                       </span>
-                      <span className="text-[10px] text-gray-400 font-mono">[Key 3 / L]</span>
+                      <span className="text-[11px] text-indigo-700 font-mono font-bold">[Key 3]</span>
                     </div>
                     <span className="text-sm font-extrabold text-emerald-600">
                       ₹{pLarge.toFixed(2)}
@@ -2885,14 +3002,14 @@ Thanks For Visiting Madrasi Dosa`;
                     }}
                     className="p-4 rounded-2xl border-2 border-emerald-100 hover:border-emerald-600 bg-white hover:bg-emerald-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
                   >
-                    <span className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                      N
+                    <span className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 font-black text-base flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                      1
                     </span>
                     <div className="text-center">
                       <span className="text-sm font-black text-gray-900 group-hover:text-emerald-950 block">
-                        Normal Pizza
+                        Normal
                       </span>
-                      <span className="text-[10px] text-gray-400 font-mono">[Key 1 / N]</span>
+                      <span className="text-xs text-emerald-700 font-mono font-bold">[Key 1]</span>
                     </div>
                     <span className="text-sm font-extrabold text-emerald-600">
                       ₹{pSmall.toFixed(2)}
@@ -2908,14 +3025,14 @@ Thanks For Visiting Madrasi Dosa`;
                     }}
                     className="p-4 rounded-2xl border-2 border-emerald-300 hover:border-emerald-600 bg-emerald-50/60 hover:bg-emerald-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-emerald-400/30"
                   >
-                    <span className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black text-sm flex items-center justify-center shadow-xs">
-                      L
+                    <span className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black text-base flex items-center justify-center shadow-xs">
+                      2
                     </span>
                     <div className="text-center">
                       <span className="text-sm font-black text-gray-900 group-hover:text-emerald-950 block">
-                        Loaded Pizza 🧀
+                        Loaded / Special 🧀
                       </span>
-                      <span className="text-[10px] text-emerald-700 font-mono font-bold">[Key 2 / L]</span>
+                      <span className="text-xs text-emerald-700 font-mono font-bold">[Key 2]</span>
                     </div>
                     <span className="text-sm font-extrabold text-emerald-600">
                       ₹{pLarge.toFixed(2)}
