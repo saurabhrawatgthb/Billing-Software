@@ -7,9 +7,11 @@ const SOCKET_BASE_URL =
   (import.meta.env.VITE_API_URL
     ? String(import.meta.env.VITE_API_URL).replace(/\/api\/?$/, "")
     : typeof window !== "undefined"
-      ? window.location.port === "5000"
-        ? window.location.origin
-        : `${window.location.protocol}//${window.location.hostname}:5000`
+      ? window.location.hostname.includes("onrender.com")
+        ? "https://restaurent-pos-api.onrender.com"
+        : window.location.port === "5000"
+          ? window.location.origin
+          : `${window.location.protocol}//${window.location.hostname}:5000`
       : "http://localhost:5000");
 
 export function getSocket(): Socket {
