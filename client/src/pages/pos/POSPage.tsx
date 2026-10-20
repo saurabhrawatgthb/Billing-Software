@@ -26,6 +26,7 @@ import {
   Lock,
   Unlock,
   ShieldCheck,
+  RotateCcw,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
@@ -213,13 +214,6 @@ export const POSPage: React.FC = () => {
     if (cartItems.length > 0) return "TAKEAWAY";
     return null;
   });
-
-  // Automatically keep orderMode in sync if table is selected
-  useEffect(() => {
-    if (selectedTable && !orderMode) {
-      setOrderMode("DINE_IN");
-    }
-  }, [selectedTable, orderMode]);
 
   // Attempt HTML5 browser fullscreen directly on mount
   useEffect(() => {
@@ -683,7 +677,11 @@ export const POSPage: React.FC = () => {
           if (e.key === "Escape") {
             e.preventDefault();
             setInitialNumpadCode("");
-            navigate("/");
+            if (selectedTable) {
+              setOrderMode("DINE_IN");
+            } else {
+              navigate("/");
+            }
             return;
           }
           return;
@@ -713,10 +711,14 @@ export const POSPage: React.FC = () => {
             return;
           }
 
-          // Press Escape to exit POS to dashboard
+          // Press Escape to resume order or exit POS to dashboard
           if (e.key === "Escape") {
             e.preventDefault();
-            navigate("/");
+            if (selectedTable) {
+              setOrderMode("DINE_IN");
+            } else {
+              navigate("/");
+            }
             return;
           }
         }
@@ -809,7 +811,7 @@ export const POSPage: React.FC = () => {
     navigate,
   ]);
 
-  // Handle Smart Table Selection with capacity check
+  // Handle Smart Table Selection
   const handleTableChange = (tableId: string) => {
     if (!tableId) {
       setSelectedTable(null);
@@ -819,10 +821,9 @@ export const POSPage: React.FC = () => {
     const table = tables.find((t) => t.id === tableId);
     if (!table) return;
 
-    const remainingSeats = table.capacity - (table.currentOccupancy || 0);
-    if (guestCount > remainingSeats) {
+    if (guestCount > table.capacity) {
       const alternatives = tables.filter(
-        (t) => t.id !== table.id && (t.capacity - (t.currentOccupancy || 0)) >= guestCount
+        (t) => t.id !== table.id && t.capacity >= guestCount
       );
       setSuggestedTables(alternatives);
       setPendingTableSelection(table);
@@ -1366,6 +1367,51 @@ export const POSPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Active Selected Table Bar (when switching table or customer not ordering now) */}
+        {selectedTable && (
+          <div className="px-6 py-2.5 bg-indigo-600 text-white flex flex-wrap items-center justify-between gap-3 text-xs font-bold shadow-md shrink-0 border-b border-indigo-700 animate-in fade-in slide-in-from-top-1">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-indigo-200 uppercase tracking-wider text-[10px]">Active Selection:</span>
+              <span className="bg-white text-indigo-900 px-3 py-1 rounded-lg font-black text-sm shadow-xs flex items-center gap-1.5">
+                🍽️ Table {selectedTable.tableNumber}
+              </span>
+              {cartItems.length > 0 ? (
+                <span className="bg-indigo-700/90 text-indigo-100 px-2.5 py-1 rounded-lg text-xs font-medium">
+                  🛒 {cartItems.length} item{cartItems.length > 1 ? "s" : ""} in cart (₹{getTotal().toFixed(0)}) — Click another table below to switch table
+                </span>
+              ) : (
+                <span className="text-indigo-200 text-xs font-medium">
+                  Click another table below to switch, or click Release if customer is not ordering now.
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTable(null);
+                  if (cartItems.length > 0) clearCart();
+                }}
+                className="bg-rose-500 hover:bg-rose-600 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                title="Customer not ordering now: Release table and clear selection"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Release Table (Not Ordering Now)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOrderMode("DINE_IN")}
+                className="bg-white hover:bg-indigo-50 text-indigo-900 px-3.5 py-1.5 rounded-lg text-xs font-black transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                title="Return to cart & menu for this table"
+              >
+                <span>Resume Order →</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Filter & Guest Controls Toolbar */}
         <div className="px-6 py-3 bg-white/90 border-b border-gray-200/90 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
@@ -1480,6 +1526,7 @@ export const POSPage: React.FC = () => {
             {initialFilteredTables.map((t) => {
               const isAvail = t.status === "AVAILABLE";
               const isOcc = t.status === "OCCUPIED";
+              const isSelected = selectedTable?.id === t.id;
 
               return (
                 <button
@@ -1490,7 +1537,9 @@ export const POSPage: React.FC = () => {
                     setOrderMode("DINE_IN");
                   }}
                   className={`p-5 rounded-2xl border-2 text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative min-h-[170px] ${
-                    isAvail
+                    isSelected
+                      ? "bg-indigo-50/90 border-indigo-600 ring-4 ring-indigo-500/40 shadow-xl"
+                      : isAvail
                       ? "bg-white hover:bg-emerald-50/50 border-emerald-300 hover:border-emerald-500 shadow-xs hover:shadow-xl"
                       : isOcc
                       ? "bg-rose-50/60 hover:bg-rose-50 border-rose-300 hover:border-rose-400 shadow-xs"
@@ -1501,14 +1550,16 @@ export const POSPage: React.FC = () => {
                     <div className="flex items-center justify-between mb-2.5">
                       <span
                         className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
-                          isAvail
+                          isSelected
+                            ? "bg-indigo-600 text-white border-indigo-700 shadow-xs"
+                            : isAvail
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                             : isOcc
                             ? "bg-rose-100 text-rose-800 border-rose-200"
                             : "bg-indigo-100 text-indigo-800 border-indigo-200"
                         }`}
                       >
-                        {isAvail ? "🟢 Available" : isOcc ? "🔴 Occupied" : "🔵 Billing"}
+                        {isSelected ? "👑 Current Table" : isAvail ? "🟢 Available" : isOcc ? "🔴 Occupied" : "🔵 Billing"}
                       </span>
                       <span className="text-[10px] font-mono font-bold bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200">
                         Key [{t.tableNumber}]
@@ -1532,7 +1583,9 @@ export const POSPage: React.FC = () => {
                   </div>
 
                   <div className="mt-4 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs font-bold text-gray-500 group-hover:text-gray-900">
-                    <span>Select Table</span>
+                    <span className={isSelected ? "text-indigo-700 font-black" : selectedTable ? "text-indigo-600 font-bold" : ""}>
+                      {isSelected ? "Current Table (Resume)" : selectedTable ? `Switch to Table ${t.tableNumber}` : "Select Table"}
+                    </span>
                     <span className="text-indigo-600 group-hover:translate-x-1 transition-transform font-black">→</span>
                   </div>
                 </button>
@@ -1660,29 +1713,59 @@ export const POSPage: React.FC = () => {
           )}
 
           {/* Active Order Mode Indicator & Switch Table / Mode Button */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 text-xs font-bold shadow-2xs shrink-0">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 text-xs font-bold shadow-2xs shrink-0">
             {selectedTable ? (
-              <div className="flex items-center gap-1.5">
-                <span className="text-indigo-700 font-black flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setOrderMode(null)}
+                className="flex items-center gap-1.5 text-indigo-700 hover:text-indigo-950 font-black cursor-pointer group"
+                title="Click to Change Table Number or Switch to Takeaway"
+              >
+                <span className="flex items-center gap-1 group-hover:underline">
                   🍽️ Table {selectedTable.tableNumber}
                 </span>
                 <span className="text-gray-500 text-[11px] font-normal">
                   ({guestCount}p)
                 </span>
-              </div>
+                <span className="text-[10px] bg-white group-hover:bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-200 transition-colors font-bold ml-1 shadow-2xs">
+                  ⇄ Change Table
+                </span>
+              </button>
             ) : (
-              <span className="text-emerald-700 font-black flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setOrderMode(null)}
+                className="flex items-center gap-1.5 text-emerald-700 hover:text-emerald-950 font-black cursor-pointer group"
+                title="Click to Switch to Dine-In Table"
+              >
                 <ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />
-                Takeaway / Packing
-              </span>
+                <span className="group-hover:underline">Takeaway / Packing</span>
+                <span className="text-[10px] bg-white group-hover:bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200 transition-colors font-bold ml-1 shadow-2xs">
+                  ⇄ Switch
+                </span>
+              </button>
             )}
+
+            {/* Direct button to Release Table / Go Back to Select Table Menu if customer doesn't want to order */}
             <button
               type="button"
-              onClick={() => setOrderMode(null)}
-              className="ml-1 text-[11px] bg-white hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-lg border border-indigo-200 transition-colors cursor-pointer shadow-2xs font-bold"
-              title="Return to Table Selection / Takeaway Screen"
+              onClick={() => {
+                if (cartItems.length === 0) {
+                  setSelectedTable(null);
+                  setOrderMode(null);
+                } else {
+                  if (window.confirm("Release this table and return to table selection? (Cart items will be cleared)")) {
+                    clearCart();
+                    setSelectedTable(null);
+                    setOrderMode(null);
+                  }
+                }
+              }}
+              className="ml-1 text-[11px] bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-900 px-2.5 py-1 rounded-lg border border-rose-200 hover:border-rose-300 transition-colors cursor-pointer shadow-2xs font-bold flex items-center gap-1"
+              title="Customer not ordering now: Release table and return to table selection"
             >
-              ⇄ Switch
+              <RotateCcw className="w-3 h-3 text-rose-500" />
+              <span>← Back to Tables</span>
             </button>
           </div>
 
@@ -1930,20 +2013,62 @@ export const POSPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-indigo-600" />
             <div>
-              <h3 className="font-bold text-sm leading-none text-gray-950">Current Order</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm leading-none text-gray-950">Current Order</h3>
+                {selectedTable && (
+                  <button
+                    type="button"
+                    onClick={() => setOrderMode(null)}
+                    className="text-[10px] text-indigo-600 hover:text-indigo-800 font-extrabold underline cursor-pointer"
+                    title="Change Table Number"
+                  >
+                    ⇄ Change Table
+                  </button>
+                )}
+              </div>
               <p className="text-[11px] text-gray-500 mt-1">
-                {selectedTable ? `Table ${selectedTable.tableNumber}` : "Takeaway / Walk-in"}
+                {selectedTable ? (
+                  <span className="font-bold text-indigo-700">🍽️ Table {selectedTable.tableNumber} ({guestCount}p)</span>
+                ) : (
+                  <span>Takeaway / Walk-in</span>
+                )}
               </p>
             </div>
           </div>
-          {cartItems.length > 0 && (
-            <button
-              onClick={clearCart}
-              className="text-xs text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer font-semibold"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Clear
-            </button>
-          )}
+
+          <div className="flex items-center gap-1.5">
+            {/* If cart is empty and a table was selected (customer not ordering now) */}
+            {selectedTable && cartItems.length === 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTable(null);
+                  setOrderMode(null);
+                }}
+                className="text-xs text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                title="Customer not ordering now: Release table and return to table selection"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Release Table</span>
+              </button>
+            )}
+
+            {cartItems.length > 0 && (
+              <button
+                onClick={() => {
+                  clearCart();
+                  if (selectedTable && window.confirm("Also release this table and go back to table selection?")) {
+                    setSelectedTable(null);
+                    setOrderMode(null);
+                  }
+                }}
+                className="text-xs text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer font-semibold px-2 py-1 rounded-lg hover:bg-rose-50 transition-colors"
+                title="Clear all items in cart"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Customer CRM Recognition & Lookup */}
@@ -2427,6 +2552,7 @@ export const POSPage: React.FC = () => {
           setSelectedTable(table);
           if (table) {
             setGuestCount(table.capacity || 2);
+            setOrderMode("DINE_IN");
           }
         }}
         franchiseId={effectiveFranchiseId}
