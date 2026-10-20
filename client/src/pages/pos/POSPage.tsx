@@ -27,6 +27,7 @@ import {
   Unlock,
   ShieldCheck,
   RotateCcw,
+  Package,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
@@ -78,6 +79,7 @@ export const POSPage: React.FC = () => {
     addItem,
     updateQuantity,
     updateItemNotes,
+    toggleItemTakeaway,
     setSelectedTable,
     setDiscount,
     setTaxRate,
@@ -851,7 +853,9 @@ export const POSPage: React.FC = () => {
           quantity: i.quantity,
           selectedSize: i.selectedSize || undefined,
           unitPrice: Number(i.price ?? i.menuItem.price),
-          notes: i.notes || null,
+          notes: i.isTakeaway
+            ? (i.notes ? `[PACKING / PARCEL] ${i.notes}` : "[PACKING / PARCEL]")
+            : (i.notes || null),
         })),
       };
 
@@ -926,6 +930,7 @@ export const POSPage: React.FC = () => {
           menuItemId: i.menuItem.id,
           selectedSize: i.selectedSize || null,
           notes: i.notes || null,
+          isTakeaway: !!i.isTakeaway,
         };
       });
       const subtotalSnapshot = subtotal;
@@ -949,6 +954,7 @@ export const POSPage: React.FC = () => {
           quantity: i.quantity,
           selectedSize: i.selectedSize,
           notes: i.notes,
+          isTakeaway: i.isTakeaway,
         })),
         instructions: partyNameSnapshot ? `Party: ${partyNameSnapshot}` : undefined,
       };
@@ -2217,6 +2223,12 @@ export const POSPage: React.FC = () => {
                           {item.selectedSize}
                         </span>
                       )}
+                      {item.isTakeaway && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-amber-500 text-white shadow-2xs flex items-center gap-1 animate-in fade-in">
+                          <Package className="w-3 h-3" />
+                          <span>PACKING</span>
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] text-gray-500 font-mono mt-0.5">
                       ₹{Number(item.price ?? item.menuItem.price).toFixed(2)} each
@@ -2236,6 +2248,27 @@ export const POSPage: React.FC = () => {
                     onChange={(e) => updateItemNotes(item.cartItemId, e.target.value)}
                     className="flex-1 text-[11px] bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
+
+                  {/* Pack / Parcel toggle button */}
+                  <button
+                    type="button"
+                    onClick={() => toggleItemTakeaway(item.cartItemId)}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors flex items-center gap-1 cursor-pointer shrink-0 shadow-2xs ${
+                      item.isTakeaway
+                        ? "bg-amber-500 text-white border-amber-600 hover:bg-amber-600"
+                        : "bg-white text-gray-700 border-gray-200 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300"
+                    }`}
+                    title={
+                      item.isTakeaway
+                        ? "Marked for Packing / Parcel (Click to switch to Dine-In)"
+                        : item.quantity > 1
+                        ? "Click to split 1 unit for Packing / Parcel"
+                        : "Click to mark for Packing / Parcel"
+                    }
+                  >
+                    <Package className="w-3 h-3" />
+                    <span>{item.isTakeaway ? "📦 Packed" : item.quantity > 1 ? "Pack 1" : "Pack"}</span>
+                  </button>
 
                   {/* Quantity controls */}
                   <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden shrink-0">
@@ -2353,6 +2386,7 @@ export const POSPage: React.FC = () => {
                     quantity: i.quantity,
                     selectedSize: i.selectedSize || null,
                     notes: i.notes || null,
+                    isTakeaway: !!i.isTakeaway,
                   })),
                   instructions: partyName ? `Party: ${partyName}` : undefined,
                 };

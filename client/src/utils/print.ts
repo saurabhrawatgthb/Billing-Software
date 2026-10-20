@@ -179,6 +179,7 @@ export interface BuildReceiptItem {
   price: number;
   totalPrice?: number;
   selectedSize?: string | null;
+  isTakeaway?: boolean;
 }
 
 export interface BuildReceiptParams {
@@ -212,6 +213,7 @@ export interface BuildKOTItem {
   quantity: number;
   selectedSize?: string | null;
   notes?: string | null;
+  isTakeaway?: boolean;
 }
 
 export interface BuildKOTParams {
@@ -250,7 +252,10 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
   lines.push(thinDivider);
 
   for (const item of data.items) {
-    const displayName = formatItemDisplayName(item.name, item.selectedSize);
+    let displayName = formatItemDisplayName(item.name, item.selectedSize);
+    if (item.isTakeaway) {
+      displayName += " [PACKING]";
+    }
     const qtyStr = String(item.quantity).padStart(3, " ");
 
     if (displayName.length > 28) {
@@ -258,6 +263,10 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
       lines.push(`${"".padEnd(28, " ")} ${qtyStr}`);
     } else {
       lines.push(`${displayName.padEnd(28, " ")} ${qtyStr}`);
+    }
+
+    if (item.isTakeaway) {
+      lines.push("  ** PACKING / PARCEL **");
     }
 
     if (item.notes && item.notes.trim()) {
@@ -569,12 +578,16 @@ function formatKOTBodyHtml(kotData: BuildKOTParams, _is58mm?: boolean): string {
 
   const itemsHtml = kotData.items
     .map((item) => {
-      const displayName = formatItemDisplayName(item.name, item.selectedSize);
+      let displayName = formatItemDisplayName(item.name, item.selectedSize);
+      if (item.isTakeaway) {
+        displayName += " [📦 PACKING]";
+      }
       return `
         <div class="kot-item-row">
           <span class="kot-item-name">${escapeHtml(displayName)}</span>
           <span class="kot-item-qty">x${escapeHtml(String(item.quantity))}</span>
         </div>
+        ${item.isTakeaway ? `<div class="kot-item-notes" style="font-weight:900; font-size:11.5px; color:#000;">↳ *** 📦 PACKING / PARCEL ***</div>` : ""}
         ${item.notes && item.notes.trim() ? `<div class="kot-item-notes">↳ * ${escapeHtml(item.notes.trim())}</div>` : ""}
       `;
     })
@@ -1035,7 +1048,10 @@ export function buildReceiptHtmlFromParams(
   const itemsHtml = data.items
     .map((item) => {
       const itemTotal = item.totalPrice !== undefined ? item.totalPrice : item.price * item.quantity;
-      const displayName = formatItemDisplayName(item.name, item.selectedSize);
+      let displayName = formatItemDisplayName(item.name, item.selectedSize);
+      if (item.isTakeaway) {
+        displayName += " [Parcel]";
+      }
       return `
         <tr>
           <td class="col-item">${escapeHtml(displayName)}</td>

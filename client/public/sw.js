@@ -1,5 +1,5 @@
 // Service Worker for Madrasi Dosa POS PWA
-const CACHE_NAME = 'madrasi-dosa-pos-v2';
+const CACHE_NAME = 'madrasi-dosa-pos-v3';
 
 const STATIC_ASSETS = [
   '/',
