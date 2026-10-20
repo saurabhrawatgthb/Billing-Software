@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Malyana - Quick Counter Reference Menu</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 8mm 8mm 8mm 8mm;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      padding: 16px;
+    }
+    .no-print-bar {
+      max-width: 1200px;
+      margin: 0 auto 16px auto;
+      padding: 14px 20px;
+      background: #1e293b;
+      color: #fff;
+      border-radius: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .no-print-bar h2 {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+    }
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary {
+      background: #2563eb;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+    .btn-success {
+      background: #16a34a;
+      color: white;
+    }
+    .btn-success:hover {
+      background: #15803d;
+    }
+    .btn-light {
+      background: #475569;
+      color: white;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      border: 1px solid #e2e8f0;
+    }
+    .header {
+      text-align: center;
+      padding-bottom: 14px;
+      margin-bottom: 16px;
+      border-bottom: 2px solid #e2e8f0;
+      position: relative;
+    }
+    .store-title {
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      color: #0f172a;
+      text-transform: uppercase;
+    }
+    .store-sub {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 4px;
+      font-weight: 500;
+    }
+    .meta-pills {
+      margin-top: 8px;
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .meta-pill {
+      background: #f1f5f9;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      color: #334155;
+    }
+    .categories-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+    @media (min-width: 1024px) {
+      .categories-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+    .cat-card {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #ffffff;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .cat-header {
+      background: #0f172a;
+      color: white;
+      padding: 7px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+    .cat-badge {
+      background: #334155;
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 9999px;
+      font-weight: 700;
+    }
+    .item-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .item-table tr {
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .item-table tr:last-child {
+      border-bottom: none;
+    }
+    .item-table tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    .col-code {
+      width: 58px;
+      padding: 6px 6px 6px 10px;
+      font-weight: 800;
+      color: #0284c7;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .code-pill {
+      display: inline-block;
+      background: #e0f2fe;
+      color: #0369a1;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid #bae6fd;
+    }
+    .col-name {
+      padding: 6px 8px;
+      font-weight: 600;
+      color: #1e293b;
+      line-height: 1.25;
+    }
+    .col-price {
+      width: 75px;
+      padding: 6px 10px 6px 6px;
+      font-weight: 800;
+      color: #0f172a;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .size-badge {
+      display: block;
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      margin-top: 1px;
+    }
+    .footer {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 10px;
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+      }
+      .no-print-bar {
+        display: none !important;
+      }
+      .container {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+        max-width: 100%;
+      }
+      .categories-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 10px;
+      }
+      .cat-card {
+        border: 1px solid #94a3b8;
+      }
+      .cat-header {
+        background: #1e293b !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .code-pill {
+        background: #e0f2fe !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="no-print-bar">
+    <h2>📋 Counter Menu Quick Reference Card (Paste Next to POS)</h2>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="window.print()">🖨️ Print Document</button>
+      <button class="btn btn-success" onclick="downloadHTML()">📥 Download HTML File</button>
+      <button class="btn btn-light" onclick="downloadCSV()">📊 Download CSV (Excel)</button>
+    </div>
+  </div>
+
+  <div class="container" id="printable-sheet">
+    <div class="header">
+      <div class="store-title">🍽️ Malyana</div>
+      <div class="store-sub">BILLING COUNTER QUICK ITEM CODE REFERENCE SHEET</div>
+      <div class="meta-pills">
+        <span class="meta-pill">Total Items: <strong>87</strong></span>
+        <span class="meta-pill">Categories: <strong>13</strong></span>
+        <span class="meta-pill">Generated: <strong>20 Oct 2026</strong></span>
+        <span class="meta-pill">⚡ Type item code in POS for instant billing</span>
+      </div>
+    </div>
+
+    <div class="categories-grid">
+      
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>Beverages</span>
+          <span class="cat-badge">10 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">26</span></td>
+              <td class="col-name">Hot Coffee</td>
+              <td class="col-price">₹60</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">68</span></td>
+              <td class="col-name">Virgin Mojito</td>
+              <td class="col-price">₹70</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">69</span></td>
+              <td class="col-name">Strawberry Shake</td>
+              <td class="col-price">₹80</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">70</span></td>
+              <td class="col-name">Vanilla Shake</td>
+              <td class="col-price">₹80</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">71</span></td>
+              <td class="col-name">Cold Coffee</td>
+              <td class="col-price">₹90</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">72</span></td>
+              <td class="col-name">Chocolate Shake</td>
+              <td class="col-price">₹90</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">73</span></td>
+              <td class="col-name">Kitkat Shake</td>
+              <td class="col-price">₹120</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">74</span></td>
+              <td class="col-name">Oreo Shake</td>
+              <td class="col-price">₹120</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">WTR10</span></td>
+              <td class="col-name">Water Bottle 10</td>
+              <td class="col-price">₹10</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">WTR20</span></td>
+              <td class="col-name">Water Bottle 20</td>
+              <td class="col-price">₹20</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>Burger</span>
+          <span class="cat-badge">5 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">58</span></td>
+              <td class="col-name">Potato Crispy Burger</td>
+              <td class="col-price">₹50</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">59</span></td>
+              <td class="col-name">Cheese Burger</td>
+              <td class="col-price">₹70</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">60</span></td>
+              <td class="col-name">Veg Delight Burger</td>
+              <td class="col-price">₹80</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">61</span></td>
+              <td class="col-name">Tandoori Paneer Burger</td>
+              <td class="col-price">₹100</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">62</span></td>
+              <td class="col-name">Pizza Burger</td>
+              <td class="col-price">₹110</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>Chinese</span>
+          <span class="cat-badge">10 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">10</span></td>
+              <td class="col-name">Veg Chowmein</td>
+              <td class="col-price">₹120</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">11</span></td>
+              <td class="col-name">Butter Chowmein</td>
+              <td class="col-price">₹140</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">12</span></td>
+              <td class="col-name">Butter Paneer Special Chowmein</td>
+              <td class="col-price">₹170</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">13</span></td>
+              <td class="col-name">Singapore Noodles</td>
+              <td class="col-price">₹200</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">14</span></td>
+              <td class="col-name">Hakka Noodles</td>
+              <td class="col-price">₹170</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">15</span></td>
+              <td class="col-name">Steam Momos</td>
+              <td class="col-price">₹90</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">16</span></td>
+              <td class="col-name">Fried Momos</td>
+              <td class="col-price">₹100</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">17</span></td>
+              <td class="col-name">Spring Roll</td>
+              <td class="col-price">₹90</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">18</span></td>
+              <td class="col-name">Chilli Potato</td>
+              <td class="col-price">₹120</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">19</span></td>
+              <td class="col-name">Honey Chilli Potato</td>
+              <td class="col-price">₹180</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>Cold Drink</span>
+          <span class="cat-badge">5 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">21</span></td>
+              <td class="col-name">Thumps Up</td>
+              <td class="col-price">₹30</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">22</span></td>
+              <td class="col-name">Sprite</td>
+              <td class="col-price">₹30</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">23</span></td>
+              <td class="col-name">Fanta</td>
+              <td class="col-price">₹30</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">24</span></td>
+              <td class="col-name">Mazza</td>
+              <td class="col-price">₹30</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">25</span></td>
+              <td class="col-name">Mountain Dew</td>
+              <td class="col-price">₹30</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>Double Topping Pizza</span>
+          <span class="cat-badge">3 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">55</span></td>
+              <td class="col-name">Onion and Capsicum</td>
+              <td class="col-price">₹110<span class="size-badge">S:₹110 | L:₹130</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">56</span></td>
+              <td class="col-name">Tomato and Corn Pizza</td>
+              <td class="col-price">₹110<span class="size-badge">S:₹110 | L:₹130</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">57</span></td>
+              <td class="col-name">Onion and Paneer Pizza</td>
+              <td class="col-price">₹130<span class="size-badge">S:₹130 | L:₹150</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>Ice Cream</span>
+          <span class="cat-badge">8 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">28</span></td>
+              <td class="col-name">Vanilla</td>
+              <td class="col-price">₹30<span class="size-badge">S:₹30 | L:₹50</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">29</span></td>
+              <td class="col-name">Strawberry</td>
+              <td class="col-price">₹30<span class="size-badge">S:₹30 | L:₹50</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">30</span></td>
+              <td class="col-name">Chocolate</td>
+              <td class="col-price">₹30<span class="size-badge">S:₹30 | L:₹50</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">31</span></td>
+              <td class="col-name">Butterscotch</td>
+              <td class="col-price">₹30<span class="size-badge">S:₹30 | L:₹50</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">32</span></td>
+              <td class="col-name">Tuti-Fruiti</td>
+              <td class="col-price">₹30<span class="size-badge">S:₹30 | L:₹50</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">33</span></td>
+              <td class="col-name">Mango</td>
+              <td class="col-price">₹30<span class="size-badge">S:₹30 | L:₹50</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">34</span></td>
+              <td class="col-name">Chocolate Cone</td>
+              <td class="col-price">₹40</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">35</span></td>
+              <td class="col-name">Butterscotch Cone</td>
+              <td class="col-price">₹40</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>Kulhad</span>
+          <span class="cat-badge">2 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">27</span></td>
+              <td class="col-name">Kulhad Pizza</td>
+              <td class="col-price">₹100</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">67</span></td>
+              <td class="col-name">Kulhad Momos</td>
+              <td class="col-price">₹100</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>Pav Bhaji</span>
+          <span class="cat-badge">1 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">20</span></td>
+              <td class="col-name">Pav Bhaji</td>
+              <td class="col-price">₹100</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>Pizza</span>
+          <span class="cat-badge">15 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">36</span></td>
+              <td class="col-name">Margherita</td>
+              <td class="col-price">₹220<span class="size-badge">S:₹120 | M:₹220 | L:₹350</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">37</span></td>
+              <td class="col-name">Double Cheese Margherita</td>
+              <td class="col-price">₹270<span class="size-badge">S:₹150 | M:₹270 | L:₹400</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">38</span></td>
+              <td class="col-name">Country Feast</td>
+              <td class="col-price">₹270<span class="size-badge">S:₹150 | M:₹270 | L:₹400</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">39</span></td>
+              <td class="col-name">Farmhouse Pizza</td>
+              <td class="col-price">₹300<span class="size-badge">S:₹180 | M:₹300 | L:₹450</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">40</span></td>
+              <td class="col-name">Spicy Tango Pizza</td>
+              <td class="col-price">₹300<span class="size-badge">S:₹180 | M:₹300 | L:₹450</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">41</span></td>
+              <td class="col-name">Veggie Delight</td>
+              <td class="col-price">₹300<span class="size-badge">S:₹180 | M:₹300 | L:₹450</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">42</span></td>
+              <td class="col-name">Peppy Paneer</td>
+              <td class="col-price">₹350<span class="size-badge">S:₹200 | M:₹350 | L:₹500</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">43</span></td>
+              <td class="col-name">Spicy Italian Heart</td>
+              <td class="col-price">₹350<span class="size-badge">S:₹200 | M:₹350 | L:₹500</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">44</span></td>
+              <td class="col-name">Tandoori Paneer</td>
+              <td class="col-price">₹350<span class="size-badge">S:₹200 | M:₹350 | L:₹500</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">45</span></td>
+              <td class="col-name">Paneer Delight</td>
+              <td class="col-price">₹350<span class="size-badge">S:₹200 | M:₹350 | L:₹500</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">46</span></td>
+              <td class="col-name">Mapango Pizza</td>
+              <td class="col-price">₹350<span class="size-badge">S:₹200 | M:₹350 | L:₹500</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">47</span></td>
+              <td class="col-name">Chef's Special</td>
+              <td class="col-price">₹350<span class="size-badge">S:₹200 | M:₹350 | L:₹500</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">48</span></td>
+              <td class="col-name">Paneer Makhani</td>
+              <td class="col-price">₹350<span class="size-badge">S:₹200 | M:₹350 | L:₹500</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">49</span></td>
+              <td class="col-name">Make My Pizza</td>
+              <td class="col-price">₹350<span class="size-badge">S:₹200 | M:₹350 | L:₹500</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">50</span></td>
+              <td class="col-name">African Peri-Peri Pizza</td>
+              <td class="col-price">₹350<span class="size-badge">S:₹200 | M:₹350 | L:₹500</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>Sandwich</span>
+          <span class="cat-badge">4 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">63</span></td>
+              <td class="col-name">Veg Club Sandwich</td>
+              <td class="col-price">₹70</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">64</span></td>
+              <td class="col-name">Cheese & Corn Sandwich</td>
+              <td class="col-price">₹80</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">65</span></td>
+              <td class="col-name">Tandoori Paneer Sandwich</td>
+              <td class="col-price">₹90</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">66</span></td>
+              <td class="col-name">Pizza Sandwich</td>
+              <td class="col-price">₹100</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>Side Order</span>
+          <span class="cat-badge">11 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">75</span></td>
+              <td class="col-name">Zingy Parcel</td>
+              <td class="col-price">₹50</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">76</span></td>
+              <td class="col-name">ChocoLava Cake</td>
+              <td class="col-price">₹70</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">77</span></td>
+              <td class="col-name">French Fries</td>
+              <td class="col-price">₹80</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">78</span></td>
+              <td class="col-name">Peri-Peri French Fries</td>
+              <td class="col-price">₹90</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">79</span></td>
+              <td class="col-name">Loaded French Fries</td>
+              <td class="col-price">₹100</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">80</span></td>
+              <td class="col-name">Cheese Garlic Bread</td>
+              <td class="col-price">₹90</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">81</span></td>
+              <td class="col-name">Stuffed Garlic Bread</td>
+              <td class="col-price">₹100</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">82</span></td>
+              <td class="col-name">Paneer Garlic Bread</td>
+              <td class="col-price">₹120</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">83</span></td>
+              <td class="col-name">White Sauce Pasta</td>
+              <td class="col-price">₹120</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">84</span></td>
+              <td class="col-name">Mix Sauce Pasta</td>
+              <td class="col-price">₹150</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">85</span></td>
+              <td class="col-name">Red Sauce Pasta</td>
+              <td class="col-price">₹140</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>Single Topping Pizza</span>
+          <span class="cat-badge">4 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">51</span></td>
+              <td class="col-name">Tomato Pizza</td>
+              <td class="col-price">₹90<span class="size-badge">S:₹90 | L:₹110</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">52</span></td>
+              <td class="col-name">Onion Pizza</td>
+              <td class="col-price">₹90<span class="size-badge">S:₹90 | L:₹110</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">53</span></td>
+              <td class="col-name">Capsicum Pizza</td>
+              <td class="col-price">₹100<span class="size-badge">S:₹100 | L:₹120</span></td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">54</span></td>
+              <td class="col-name">Corn Pizza</td>
+              <td class="col-price">₹100<span class="size-badge">S:₹100 | L:₹120</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cat-card">
+        <div class="cat-header">
+          <span>South Indian</span>
+          <span class="cat-badge">9 items</span>
+        </div>
+        <table class="item-table">
+          <tbody>
+            
+            <tr>
+              <td class="col-code"><span class="code-pill">1</span></td>
+              <td class="col-name">Masala Dosa</td>
+              <td class="col-price">₹100</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">2</span></td>
+              <td class="col-name">Paneer Masala Dosa</td>
+              <td class="col-price">₹130</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">3</span></td>
+              <td class="col-name">Butter Paneer Masala Dosa</td>
+              <td class="col-price">₹160</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">4</span></td>
+              <td class="col-name">Tandoori Paneer Masala Dosa</td>
+              <td class="col-price">₹160</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">5</span></td>
+              <td class="col-name">Cheese Corn Masala Dosa</td>
+              <td class="col-price">₹160</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">6</span></td>
+              <td class="col-name">Onion Cheese Masala Dosa</td>
+              <td class="col-price">₹160</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">7</span></td>
+              <td class="col-name">Idli Sambar(2PCs)</td>
+              <td class="col-price">₹70</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">8</span></td>
+              <td class="col-name">Sambar Vada(2PCs)</td>
+              <td class="col-price">₹70</td>
+            </tr>
+            <tr>
+              <td class="col-code"><span class="code-pill">9</span></td>
+              <td class="col-name">Papad Dosa</td>
+              <td class="col-price">₹90</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="footer">
+      Tip: Type the <strong>Code</strong> into the POS search or press number keys to quickly add items without touching the mouse.
+    </div>
+  </div>
+
+  <script>
+    function downloadHTML() {
+      const htmlContent = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+      const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Counter_Menu_Codes_Reference_2026-10-20.html";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function downloadCSV() {
+      const rows = [["Category", "Item Code", "Item Name", "Price (₹)", "Sizes / Variants"]];
+      [["Beverages","26","Hot Coffee",60,"-"],["Beverages","68","Virgin Mojito",70,"-"],["Beverages","69","Strawberry Shake",80,"-"],["Beverages","70","Vanilla Shake",80,"-"],["Beverages","71","Cold Coffee",90,"-"],["Beverages","72","Chocolate Shake",90,"-"],["Beverages","73","Kitkat Shake",120,"-"],["Beverages","74","Oreo Shake",120,"-"],["Beverages","WTR10","Water Bottle 10",10,"-"],["Beverages","WTR20","Water Bottle 20",20,"-"],["Burger","58","Potato Crispy Burger",50,"-"],["Burger","59","Cheese Burger",70,"-"],["Burger","60","Veg Delight Burger",80,"-"],["Burger","61","Tandoori Paneer Burger",100,"-"],["Burger","62","Pizza Burger",110,"-"],["Chinese","10","Veg Chowmein",120,"-"],["Chinese","11","Butter Chowmein",140,"-"],["Chinese","12","Butter Paneer Special Chowmein",170,"-"],["Chinese","13","Singapore Noodles",200,"-"],["Chinese","14","Hakka Noodles",170,"-"],["Chinese","15","Steam Momos",90,"-"],["Chinese","16","Fried Momos",100,"-"],["Chinese","17","Spring Roll",90,"-"],["Chinese","18","Chilli Potato",120,"-"],["Chinese","19","Honey Chilli Potato",180,"-"],["Cold Drink","21","Thumps Up",30,"-"],["Cold Drink","22","Sprite",30,"-"],["Cold Drink","23","Fanta",30,"-"],["Cold Drink","24","Mazza",30,"-"],["Cold Drink","25","Mountain Dew",30,"-"],["Double Topping Pizza","55","Onion and Capsicum",110,"S: ₹110 / L: ₹130"],["Double Topping Pizza","56","Tomato and Corn Pizza",110,"S: ₹110 / L: ₹130"],["Double Topping Pizza","57","Onion and Paneer Pizza",130,"S: ₹130 / L: ₹150"],["Ice Cream","28","Vanilla",30,"S: ₹30 / L: ₹50"],["Ice Cream","29","Strawberry",30,"S: ₹30 / L: ₹50"],["Ice Cream","30","Chocolate",30,"S: ₹30 / L: ₹50"],["Ice Cream","31","Butterscotch",30,"S: ₹30 / L: ₹50"],["Ice Cream","32","Tuti-Fruiti",30,"S: ₹30 / L: ₹50"],["Ice Cream","33","Mango",30,"S: ₹30 / L: ₹50"],["Ice Cream","34","Chocolate Cone",40,"-"],["Ice Cream","35","Butterscotch Cone",40,"-"],["Kulhad","27","Kulhad Pizza",100,"-"],["Kulhad","67","Kulhad Momos",100,"-"],["Pav Bhaji","20","Pav Bhaji",100,"-"],["Pizza","36","Margherita",220,"S: ₹120 / M: ₹220 / L: ₹350"],["Pizza","37","Double Cheese Margherita",270,"S: ₹150 / M: ₹270 / L: ₹400"],["Pizza","38","Country Feast",270,"S: ₹150 / M: ₹270 / L: ₹400"],["Pizza","39","Farmhouse Pizza",300,"S: ₹180 / M: ₹300 / L: ₹450"],["Pizza","40","Spicy Tango Pizza",300,"S: ₹180 / M: ₹300 / L: ₹450"],["Pizza","41","Veggie Delight",300,"S: ₹180 / M: ₹300 / L: ₹450"],["Pizza","42","Peppy Paneer",350,"S: ₹200 / M: ₹350 / L: ₹500"],["Pizza","43","Spicy Italian Heart",350,"S: ₹200 / M: ₹350 / L: ₹500"],["Pizza","44","Tandoori Paneer",350,"S: ₹200 / M: ₹350 / L: ₹500"],["Pizza","45","Paneer Delight",350,"S: ₹200 / M: ₹350 / L: ₹500"],["Pizza","46","Mapango Pizza",350,"S: ₹200 / M: ₹350 / L: ₹500"],["Pizza","47","Chef's Special",350,"S: ₹200 / M: ₹350 / L: ₹500"],["Pizza","48","Paneer Makhani",350,"S: ₹200 / M: ₹350 / L: ₹500"],["Pizza","49","Make My Pizza",350,"S: ₹200 / M: ₹350 / L: ₹500"],["Pizza","50","African Peri-Peri Pizza",350,"S: ₹200 / M: ₹350 / L: ₹500"],["Sandwich","63","Veg Club Sandwich",70,"-"],["Sandwich","64","Cheese & Corn Sandwich",80,"-"],["Sandwich","65","Tandoori Paneer Sandwich",90,"-"],["Sandwich","66","Pizza Sandwich",100,"-"],["Side Order","75","Zingy Parcel",50,"-"],["Side Order","76","ChocoLava Cake",70,"-"],["Side Order","77","French Fries",80,"-"],["Side Order","78","Peri-Peri French Fries",90,"-"],["Side Order","79","Loaded French Fries",100,"-"],["Side Order","80","Cheese Garlic Bread",90,"-"],["Side Order","81","Stuffed Garlic Bread",100,"-"],["Side Order","82","Paneer Garlic Bread",120,"-"],["Side Order","83","White Sauce Pasta",120,"-"],["Side Order","84","Mix Sauce Pasta",150,"-"],["Side Order","85","Red Sauce Pasta",140,"-"],["Single Topping Pizza","51","Tomato Pizza",90,"S: ₹90 / L: ₹110"],["Single Topping Pizza","52","Onion Pizza",90,"S: ₹90 / L: ₹110"],["Single Topping Pizza","53","Capsicum Pizza",100,"S: ₹100 / L: ₹120"],["Single Topping Pizza","54","Corn Pizza",100,"S: ₹100 / L: ₹120"],["South Indian","1","Masala Dosa",100,"-"],["South Indian","2","Paneer Masala Dosa",130,"-"],["South Indian","3","Butter Paneer Masala Dosa",160,"-"],["South Indian","4","Tandoori Paneer Masala Dosa",160,"-"],["South Indian","5","Cheese Corn Masala Dosa",160,"-"],["South Indian","6","Onion Cheese Masala Dosa",160,"-"],["South Indian","7","Idli Sambar(2PCs)",70,"-"],["South Indian","8","Sambar Vada(2PCs)",70,"-"],["South Indian","9","Papad Dosa",90,"-"]].forEach(row => rows.push(row));
+
+      const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.map(val => '"' + String(val).replace(/"/g, '""') + '"').join(",")).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "Counter_Menu_Codes_2026-10-20.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+</body>
+</html>
