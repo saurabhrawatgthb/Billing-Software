@@ -310,7 +310,6 @@ export async function createInvoiceForOrder(
       status: TableStatus.OCCUPIED,
     });
   }
-  }
 
   for (const pr of invoiceResult.paymentRecords) {
     emitToFranchise(franchiseId, "payment:received", pr);
