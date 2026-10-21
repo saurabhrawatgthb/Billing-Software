@@ -44,7 +44,24 @@ function RootRedirect() {
   return <Navigate to={getDefaultRoleHome(user.role)} replace />;
 }
 
+// Preload the most-frequently-used restaurant operation modules in background idle time
+const preloadOperationalModules = () => {
+  const idle = (window as any).requestIdleCallback || ((cb: () => void) => setTimeout(cb, 800));
+  idle(() => {
+    import("../pages/pos/POSPage.js").catch(() => {});
+    import("../pages/tables/TablesPage.js").catch(() => {});
+    import("../pages/orders/OrdersPage.js").catch(() => {});
+    import("../pages/billing/BillingPage.js").catch(() => {});
+    import("../pages/dashboard/DashboardPage.js").catch(() => {});
+    import("../pages/kitchen/KitchenPage.js").catch(() => {});
+  });
+};
+
 export const AppRoutes: React.FC = () => {
+  React.useEffect(() => {
+    preloadOperationalModules();
+  }, []);
+
   return (
     <Suspense fallback={<ModuleLoadingFallback />}>
       <Routes>

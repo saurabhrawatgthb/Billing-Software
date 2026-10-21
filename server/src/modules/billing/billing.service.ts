@@ -797,13 +797,59 @@ export async function fastBill(
 
   // 4. Atomic single transaction
   const result = await prisma.$transaction(async (tx) => {
-    // A. Create Order
+    // A. Handle Table & Session if tableId was provided
+    let finalSessionId: string | null = null;
+    let tableNumberFound: string | null = null;
+
+    if (data.tableId) {
+      const table = await tx.restaurantTable.findUnique({
+        where: { id: data.tableId },
+        select: { id: true, tableNumber: true },
+      });
+
+      if (table) {
+        tableNumberFound = table.tableNumber;
+      }
+
+      // Find an active session or create a closed session record for order history
+      let activeSession = await tx.tableSession.findFirst({
+        where: { tableId: data.tableId, endedAt: null },
+      });
+
+      if (!activeSession) {
+        activeSession = await tx.tableSession.create({
+          data: {
+            tableId: data.tableId,
+            partyName: data.partyName || (tableNumberFound ? `Table ${tableNumberFound}` : "Table Order"),
+            guestCount: data.guestCount || 1,
+            startedAt: now,
+            endedAt: now,
+          },
+        });
+      } else {
+        await tx.tableSession.update({
+          where: { id: activeSession.id },
+          data: { endedAt: now },
+        });
+      }
+
+      finalSessionId = activeSession.id;
+
+      // Free Table
+      await tx.restaurantTable.update({
+        where: { id: data.tableId },
+        data: { status: TableStatus.AVAILABLE, currentOccupancy: 0 },
+      });
+    }
+
+    // B. Create Order with linked table session and table label
     const order = await tx.order.create({
       data: {
         franchiseId,
+        tableSessionId: finalSessionId || null,
         customerId: data.customerId || null,
         orderNumber,
-        partyName: data.partyName,
+        partyName: data.partyName || (tableNumberFound ? `Table ${tableNumberFound}` : undefined),
         guestCount: data.guestCount || 1,
         status: OrderStatus.BILLED,
         kotDecision: "COMPLETED",
@@ -827,7 +873,7 @@ export async function fastBill(
       },
     });
 
-    // B. Create KOT record for kitchen order synchronization
+    // C. Create KOT record for kitchen order synchronization
     try {
       await tx.kOT.create({
         data: {
@@ -848,18 +894,6 @@ export async function fastBill(
       });
     } catch (kotErr) {
       console.warn("KOT generation note in fastBill:", kotErr);
-    }
-
-    // C. Free Table if selected
-    if (data.tableId) {
-      await tx.restaurantTable.update({
-        where: { id: data.tableId },
-        data: { status: TableStatus.AVAILABLE, currentOccupancy: 0 },
-      });
-      await tx.tableSession.updateMany({
-        where: { tableId: data.tableId, endedAt: null },
-        data: { endedAt: now },
-      });
     }
 
     // C. Create Invoice

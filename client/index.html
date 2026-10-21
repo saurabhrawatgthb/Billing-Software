@@ -14,6 +14,20 @@
     <meta name="application-name" content="Madrasi Dosa" />
     <meta name="description" content="Cloud POS, Rush-Hour Fast Billing & Restaurant Management Software" />
     <title>Madrasi Dosa - POS & Restaurant Billing</title>
+    <!-- Preconnect to API for instant DNS and TLS handshake -->
+    <link rel="preconnect" href="https://restaurent-pos-api.onrender.com" crossorigin />
+    <link rel="dns-prefetch" href="https://restaurent-pos-api.onrender.com" />
+    <script>
+      // Non-blocking early background wake-up ping for Render backend
+      (function() {
+        try {
+          var apiUrl = window.location.hostname === "localhost" 
+            ? "http://localhost:5000/api/health" 
+            : "https://restaurent-pos-api.onrender.com/api/health";
+          fetch(apiUrl, { mode: "no-cors", keepalive: true }).catch(function(){});
+        } catch(e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

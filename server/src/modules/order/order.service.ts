@@ -128,6 +128,7 @@ export async function createOrder(
 ) {
   const data = createOrderSchema.parse(input);
   let finalSessionId = data.tableSessionId;
+  let tableNumberFound: string | null = null;
 
   if (!finalSessionId && data.tableId) {
     const table = await prisma.restaurantTable.findUnique({
@@ -140,6 +141,8 @@ export async function createOrder(
     if (!table || table.franchiseId !== franchiseId) {
       throw new AppError("Table not found", 404);
     }
+
+    tableNumberFound = table.tableNumber;
 
     const guests = data.guestCount || 1;
     const currentOcc = table.currentOccupancy || 0;
@@ -269,7 +272,7 @@ export async function createOrder(
       tableSessionId: finalSessionId || null,
       customerId: data.customerId || null,
       orderNumber,
-      partyName: data.partyName,
+      partyName: data.partyName || (tableNumberFound ? `Table ${tableNumberFound}` : undefined),
       guestCount: data.guestCount || 1,
       status: OrderStatus.OPEN,
       kotDecision: "PENDING",

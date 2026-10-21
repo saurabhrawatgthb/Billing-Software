@@ -5,7 +5,7 @@ import path from "path";
 async function generateCheatSheet() {
   const brand = await prisma.brandSettings.findFirst();
   const franchise = await prisma.franchise.findFirst();
-  const storeName = brand?.restaurantName || franchise?.name || "MADRASI DOSA";
+  const storeName = brand?.businessName || franchise?.name || "MADRASI DOSA";
 
   const items = await prisma.menuItem.findMany({
     where: { isAvailable: true },
@@ -317,7 +317,7 @@ async function generateCheatSheet() {
         <ul class="item-list">
           ${cat.items
             .map(
-              (item) => `
+              (item: any) => `
           <li class="item-row">
             <span class="item-code">${item.code}</span>
             <span class="item-name">${item.name}</span>
@@ -352,10 +352,10 @@ async function generateCheatSheet() {
     function downloadCSV() {
       const rows = [["Category", "Code", "Item Name"]];
       ${JSON.stringify(
-        sortedCategories.flatMap((c) =>
-          c.items.map((i) => [c.name, i.code, i.name])
+        sortedCategories.flatMap((c: any) =>
+          c.items.map((i: any) => [c.name, i.code, i.name])
         )
-      )}.forEach(r => rows.push(r));
+      )}.forEach((r: any) => rows.push(r));
 
       const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.map(val => '"' + String(val).replace(/"/g, '""') + '"').join(",")).join("\\n");
       const encodedUri = encodeURI(csvContent);

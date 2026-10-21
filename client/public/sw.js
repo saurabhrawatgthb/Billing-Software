@@ -1,5 +1,5 @@
 // Service Worker for Madrasi Dosa POS PWA
-const CACHE_NAME = 'madrasi-dosa-pos-v3';
+const CACHE_NAME = 'madrasi-dosa-pos-v4';
 
 const STATIC_ASSETS = [
   '/',
@@ -63,7 +63,6 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // If valid response, update cache
           if (response && response.status === 200) {
             const responseClone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
@@ -79,10 +78,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For static assets (JS, CSS, images): Network-first with cache fallback
+  // For static assets (Vite JS chunks, CSS, fonts, images): CACHE-FIRST for 0ms instantaneous loading!
+  // Immutable chunks in /assets/ have content hashes and should be served immediately from cache.
   event.respondWith(
-    fetch(request)
-      .then((networkResponse) => {
+    caches.match(request).then((cachedResponse) => {
+      if (cachedResponse) {
+        // Optional background revalidate for non-hashed assets
+        if (!url.pathname.includes('/assets/')) {
+          fetch(request).then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, networkResponse));
+            }
+          }).catch(() => {});
+        }
+        return cachedResponse;
+      }
+
+      // If not in cache, fetch from network and store in cache
+      return fetch(request).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -90,9 +103,7 @@ self.addEventListener('fetch', (event) => {
           });
         }
         return networkResponse;
-      })
-      .catch(() => {
-        return caches.match(request);
-      })
+      });
+    })
   );
 });

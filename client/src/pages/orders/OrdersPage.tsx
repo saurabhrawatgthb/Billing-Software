@@ -124,11 +124,26 @@ export const OrdersPage: React.FC = () => {
     onError: (err) => alert(extractErrorMessage(err)),
   });
 
-  const filtered = orders.filter(
-    (o) =>
-      o.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (o.tableSession?.table?.tableNumber || "").toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const getOrderDestination = (order: Order) => {
+    if (order.tableSession?.table?.tableNumber) {
+      return `🍽️ Table ${order.tableSession.table.tableNumber}`;
+    }
+    if (order.partyName && /table/i.test(order.partyName)) {
+      return `🍽️ ${order.partyName}`;
+    }
+    if (order.orderSource === "SWIGGY" || order.orderSource === "ZOMATO") {
+      return `🛵 ${order.orderSource} #${order.aggregatorOrderId || ""}`;
+    }
+    return "🛍️ Takeaway / Counter";
+  };
+
+  const filtered = orders.filter((o) => {
+    const term = searchTerm.toLowerCase();
+    const tableNum = (o.tableSession?.table?.tableNumber || "").toLowerCase();
+    const party = (o.partyName || "").toLowerCase();
+    const orderNo = o.orderNumber.toLowerCase();
+    return orderNo.includes(term) || tableNum.includes(term) || party.includes(term);
+  });
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -190,7 +205,7 @@ export const OrdersPage: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filtered.map((order) => {
-            const tableStr = order.tableSession?.table ? `Table ${order.tableSession.table.tableNumber}` : "Takeaway";
+            const tableStr = getOrderDestination(order);
             const itemCount = order.items.reduce((sum, i) => sum + i.quantity, 0);
 
             return (
@@ -312,7 +327,7 @@ export const OrdersPage: React.FC = () => {
               <div>
                 <p className="text-gray-400">Destination:</p>
                 <p className="font-bold text-gray-900">
-                  {selectedOrder.tableSession?.table ? `Table ${selectedOrder.tableSession.table.tableNumber}` : "Takeaway / Walk-in"}
+                  {getOrderDestination(selectedOrder)}
                 </p>
               </div>
               <div>

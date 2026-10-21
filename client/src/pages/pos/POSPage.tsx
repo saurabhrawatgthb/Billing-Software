@@ -126,7 +126,11 @@ export const POSPage: React.FC = () => {
   useEffect(() => {
     if (!sizeSelectionItem) return;
 
-    // Immediately remove focus from any active input so keypresses don't get typed into search
+    // Immediately remove focus and clear any active dish code input
+    setQuickDishCode("");
+    if (quickCodeInputRef.current) {
+      quickCodeInputRef.current.blur();
+    }
     if (document.activeElement && (document.activeElement as HTMLElement).blur) {
       (document.activeElement as HTMLElement).blur();
     }
@@ -138,8 +142,13 @@ export const POSPage: React.FC = () => {
     const pLarge = sizeSelectionItem.priceLarge != null ? Number(sizeSelectionItem.priceLarge) : Number(sizeSelectionItem.price);
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Intercept and stop propagation of ALL keys while portion modal is open
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
       if (e.key === "Escape") {
         e.preventDefault();
+        setQuickDishCode("");
         setSizeSelectionItem(null);
         return;
       }
@@ -149,10 +158,12 @@ export const POSPage: React.FC = () => {
         if (e.key === "1" || e.code === "Numpad1") {
           e.preventDefault();
           addItem(sizeSelectionItem, "1 Scoop", pSmall);
+          setQuickDishCode("");
           setSizeSelectionItem(null);
         } else if (e.key === "2" || e.code === "Numpad2") {
           e.preventDefault();
           addItem(sizeSelectionItem, "2 Scoops", pLarge);
+          setQuickDishCode("");
           setSizeSelectionItem(null);
         }
         return;
@@ -162,14 +173,17 @@ export const POSPage: React.FC = () => {
         if (e.key === "1" || e.code === "Numpad1" || e.key.toLowerCase() === "s") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Small", pSmall);
+          setQuickDishCode("");
           setSizeSelectionItem(null);
         } else if (e.key === "2" || e.code === "Numpad2" || e.key.toLowerCase() === "m") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Medium", pMedium);
+          setQuickDishCode("");
           setSizeSelectionItem(null);
         } else if (e.key === "3" || e.code === "Numpad3" || e.key.toLowerCase() === "l") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Large", pLarge);
+          setQuickDishCode("");
           setSizeSelectionItem(null);
         }
       } else {
@@ -177,10 +191,12 @@ export const POSPage: React.FC = () => {
         if (e.key === "1" || e.code === "Numpad1" || e.key.toLowerCase() === "n") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Normal", pSmall);
+          setQuickDishCode("");
           setSizeSelectionItem(null);
         } else if (e.key === "2" || e.code === "Numpad2" || e.key.toLowerCase() === "l") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Loaded", pLarge);
+          setQuickDishCode("");
           setSizeSelectionItem(null);
         }
       }
@@ -586,8 +602,9 @@ export const POSPage: React.FC = () => {
 
     // Ice Cream with 1 & 2 Scoops
     if (isIceCreamWithScoops(match)) {
-      setSizeSelectionItem(match);
       setQuickDishCode("");
+      quickCodeInputRef.current?.blur();
+      setSizeSelectionItem(match);
       setCodeFeedbackMsg({
         text: `🍨 ${match.name}: Press 1 (1 Scoop), 2 (2 Scoops)`,
         type: "success",
@@ -598,8 +615,9 @@ export const POSPage: React.FC = () => {
 
     // Pizza with portion sizes
     if (isPizzaWithSizes(match)) {
-      setSizeSelectionItem(match);
       setQuickDishCode("");
+      quickCodeInputRef.current?.blur();
+      setSizeSelectionItem(match);
       const hasThreeSizes = match.priceMedium != null && Number(match.priceMedium) > 0;
       setCodeFeedbackMsg({
         text: hasThreeSizes
@@ -637,9 +655,11 @@ export const POSPage: React.FC = () => {
   // Keep dish code input auto-focused after closing portion/scoop modal
   useEffect(() => {
     if (!sizeSelectionItem && orderMode) {
+      setQuickDishCode("");
       const timer = setTimeout(() => {
+        setQuickDishCode("");
         quickCodeInputRef.current?.focus();
-      }, 50);
+      }, 80);
       return () => clearTimeout(timer);
     }
   }, [sizeSelectionItem, orderMode]);
@@ -1785,10 +1805,22 @@ export const POSPage: React.FC = () => {
               <input
                 ref={quickCodeInputRef}
                 type="text"
+                disabled={Boolean(sizeSelectionItem)}
                 value={quickDishCode}
-                onChange={(e) => setQuickDishCode(e.target.value)}
+                onChange={(e) => {
+                  if (sizeSelectionItem) return;
+                  setQuickDishCode(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (sizeSelectionItem) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }
+                }}
                 placeholder="Numpad # + ↵"
-                className="w-24 sm:w-28 text-xs font-mono font-black text-amber-950 bg-white border border-amber-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-500 uppercase placeholder:text-amber-400 placeholder:font-normal"
+                className={`w-24 sm:w-28 text-xs font-mono font-black text-amber-950 bg-white border border-amber-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-500 uppercase placeholder:text-amber-400 placeholder:font-normal ${
+                  sizeSelectionItem ? "opacity-50 cursor-not-allowed" : ""
+                }`}
                 title="Type dish code from keyboard numpad and press Enter to instantly add to cart"
               />
               <button
@@ -3038,6 +3070,7 @@ Thanks For Visiting Madrasi Dosa`;
                     type="button"
                     onClick={() => {
                       addItem(sizeSelectionItem, "1 Scoop", pSmall);
+                      setQuickDishCode("");
                       setSizeSelectionItem(null);
                     }}
                     className="p-4 rounded-2xl border-2 border-pink-200 hover:border-pink-600 bg-white hover:bg-pink-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
@@ -3061,6 +3094,7 @@ Thanks For Visiting Madrasi Dosa`;
                     type="button"
                     onClick={() => {
                       addItem(sizeSelectionItem, "2 Scoops", pLarge);
+                      setQuickDishCode("");
                       setSizeSelectionItem(null);
                     }}
                     className="p-4 rounded-2xl border-2 border-pink-400 hover:border-pink-600 bg-pink-50/60 hover:bg-pink-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-pink-300/40"
@@ -3086,6 +3120,7 @@ Thanks For Visiting Madrasi Dosa`;
                     type="button"
                     onClick={() => {
                       addItem(sizeSelectionItem, "Small", pSmall);
+                      setQuickDishCode("");
                       setSizeSelectionItem(null);
                     }}
                     className="p-3.5 rounded-2xl border-2 border-indigo-100 hover:border-indigo-600 bg-white hover:bg-indigo-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
@@ -3109,6 +3144,7 @@ Thanks For Visiting Madrasi Dosa`;
                     type="button"
                     onClick={() => {
                       addItem(sizeSelectionItem, "Medium", pMedium);
+                      setQuickDishCode("");
                       setSizeSelectionItem(null);
                     }}
                     className="p-3.5 rounded-2xl border-2 border-indigo-300 hover:border-indigo-600 bg-indigo-50/50 hover:bg-indigo-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-indigo-400/30"
@@ -3132,6 +3168,7 @@ Thanks For Visiting Madrasi Dosa`;
                     type="button"
                     onClick={() => {
                       addItem(sizeSelectionItem, "Large", pLarge);
+                      setQuickDishCode("");
                       setSizeSelectionItem(null);
                     }}
                     className="p-3.5 rounded-2xl border-2 border-indigo-100 hover:border-indigo-600 bg-white hover:bg-indigo-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
@@ -3158,6 +3195,7 @@ Thanks For Visiting Madrasi Dosa`;
                     type="button"
                     onClick={() => {
                       addItem(sizeSelectionItem, "Normal", pSmall);
+                      setQuickDishCode("");
                       setSizeSelectionItem(null);
                     }}
                     className="p-4 rounded-2xl border-2 border-emerald-100 hover:border-emerald-600 bg-white hover:bg-emerald-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
@@ -3181,6 +3219,7 @@ Thanks For Visiting Madrasi Dosa`;
                     type="button"
                     onClick={() => {
                       addItem(sizeSelectionItem, "Loaded", pLarge);
+                      setQuickDishCode("");
                       setSizeSelectionItem(null);
                     }}
                     className="p-4 rounded-2xl border-2 border-emerald-300 hover:border-emerald-600 bg-emerald-50/60 hover:bg-emerald-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-emerald-400/30"
