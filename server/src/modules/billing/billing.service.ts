@@ -781,6 +781,28 @@ export async function fastBill(
   const invoiceNumber = data.invoiceNumber || `INV-${datePrefix}-${randomSuffix}`;
   const kotNumber = `KOT-${datePrefix}-${randomSuffix}`;
 
+  // Idempotency: If this offline-queued invoice was already created, return it without error
+  if (data.invoiceNumber) {
+    const existingInvoice = await prisma.invoice.findFirst({
+      where: { franchiseId, invoiceNumber: data.invoiceNumber },
+      include: {
+        order: { include: { items: true, tableSession: { include: { table: true } } } },
+        payments: true,
+        franchise: { select: { name: true, address: true, phone: true } },
+      },
+    });
+
+    if (existingInvoice) {
+      return {
+        order: existingInvoice.order,
+        invoice: existingInvoice,
+        payments: existingInvoice.payments,
+        kot: null,
+        tableNumber: existingInvoice.order?.tableSession?.table?.tableNumber || null,
+      };
+    }
+  }
+
   // 4. Atomic single transaction
   const result = await prisma.$transaction(async (tx) => {
     // A. Handle Table & Session if tableId was provided

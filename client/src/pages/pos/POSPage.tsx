@@ -60,7 +60,20 @@ import { AggregatorOrderModal } from "../../components/pos/AggregatorOrderModal.
 import { AggregatorSettingsModal } from "../../components/pos/AggregatorSettingsModal.js";
 import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
 import { KitchenPrepModal } from "../../components/kitchen/KitchenPrepModal.js";
-import { Globe, Bell, LayoutGrid, Store, Cpu, Check } from "lucide-react";
+import { OfflineQueueModal } from "../../components/pos/OfflineQueueModal.js";
+import { useOfflineSync } from "../../hooks/useOfflineSync.js";
+import {
+  cacheMenuItems,
+  getCachedMenuItems,
+  cacheTables,
+  getCachedTables,
+  cacheCategories,
+  getCachedCategories,
+  cacheBrandSettings,
+  getCachedBrandSettings,
+  enqueueOfflineOrder,
+} from "../../utils/offlineQueue.js";
+import { Globe, Bell, LayoutGrid, Store, Cpu, Check, Wifi, WifiOff, RefreshCw } from "lucide-react";
 import { usePermissions } from "../../hooks/usePermissions.js";
 
 export const POSPage: React.FC = () => {
@@ -69,6 +82,15 @@ export const POSPage: React.FC = () => {
   const { selectedFranchiseId, user, setSelectedFranchise } = useAuthStore();
   const { hasPin, lock } = usePinLockStore();
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
+  const {
+    isOnline,
+    queue: offlineQueue,
+    pendingCount: offlinePendingCount,
+    isSyncing: isOfflineSyncing,
+    syncStatusMsg: offlineSyncStatusMsg,
+    syncQueueNow,
+  } = useOfflineSync();
   const { isSuperAdmin: isPermAdmin, canApplyDiscounts, maxDiscountPercent } = usePermissions();
   const isSuperAdmin = user?.role === "SUPER_ADMIN" || isPermAdmin;
   const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId;
@@ -277,8 +299,17 @@ export const POSPage: React.FC = () => {
   const { data: brandSettings } = useQuery<BrandSettings>({
     queryKey: ["brand-settings"],
     queryFn: async () => {
-      const res = await api.get("/brand-settings");
-      return res.data.data;
+      try {
+        const res = await api.get("/brand-settings");
+        if (res.data?.data) {
+          cacheBrandSettings(res.data.data);
+          return res.data.data;
+        }
+      } catch (err) {
+        const cached = getCachedBrandSettings();
+        if (cached) return cached;
+      }
+      return getCachedBrandSettings() || ({} as BrandSettings);
     },
   });
 
@@ -487,30 +518,57 @@ export const POSPage: React.FC = () => {
     },
   });
 
-  // Fetch Tables
+  // Fetch Tables with resilient offline cache fallback
   const { data: tables = [] } = useQuery<RestaurantTable[]>({
     queryKey: ["tables", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get(effectiveFranchiseId ? `/tables?franchiseId=${effectiveFranchiseId}` : "/tables");
-      return res.data.data;
+      try {
+        const res = await api.get(effectiveFranchiseId ? `/tables?franchiseId=${effectiveFranchiseId}` : "/tables");
+        if (res.data?.data) {
+          cacheTables(res.data.data);
+          return res.data.data;
+        }
+      } catch (err) {
+        const cached = getCachedTables();
+        if (cached && cached.length > 0) return cached;
+      }
+      return getCachedTables() || [];
     },
   });
 
-  // Fetch Categories
+  // Fetch Categories with resilient offline cache fallback
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ["categories", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get(effectiveFranchiseId ? `/menu/categories?franchiseId=${effectiveFranchiseId}` : "/menu/categories");
-      return res.data.data;
+      try {
+        const res = await api.get(effectiveFranchiseId ? `/menu/categories?franchiseId=${effectiveFranchiseId}` : "/menu/categories");
+        if (res.data?.data) {
+          cacheCategories(res.data.data);
+          return res.data.data;
+        }
+      } catch (err) {
+        const cached = getCachedCategories();
+        if (cached && cached.length > 0) return cached;
+      }
+      return getCachedCategories() || [];
     },
   });
 
-  // Fetch Menu Items
+  // Fetch Menu Items with resilient offline cache fallback
   const { data: menuItems = [], isLoading: isLoadingMenu } = useQuery<MenuItem[]>({
     queryKey: ["menu-items", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get(effectiveFranchiseId ? `/menu/items?franchiseId=${effectiveFranchiseId}` : "/menu/items");
-      return res.data.data;
+      try {
+        const res = await api.get(effectiveFranchiseId ? `/menu/items?franchiseId=${effectiveFranchiseId}` : "/menu/items");
+        if (res.data?.data) {
+          cacheMenuItems(res.data.data);
+          return res.data.data;
+        }
+      } catch (err) {
+        const cached = getCachedMenuItems();
+        if (cached && cached.length > 0) return cached;
+      }
+      return getCachedMenuItems() || [];
     },
   });
 
@@ -1074,18 +1132,37 @@ export const POSPage: React.FC = () => {
           : { paymentMethod: payModeSnapshot }),
       };
 
-      // Fire in background without blocking UI
+      // Fire in background with resilient offline queue fallback
       const fastBillUrl = franchiseToUse ? `/billing/fast-bill?franchiseId=${franchiseToUse}` : "/billing/fast-bill";
-      api.post(fastBillUrl, payload)
-        .then(() => {
+
+      const executeBackgroundSync = async () => {
+        try {
+          if (!navigator.onLine) {
+            throw new Error("Device is currently offline");
+          }
+          await api.post(fastBillUrl, payload);
           queryClient.invalidateQueries({ queryKey: ["tables"] });
           queryClient.invalidateQueries({ queryKey: ["orders"] });
           queryClient.invalidateQueries({ queryKey: ["invoices"] });
-        })
-        .catch((err) => {
-          console.warn("Background billing sync notice:", err);
-          setPosError("Bill printed locally! Cloud sync delayed: " + extractErrorMessage(err));
-        });
+        } catch (syncErr: any) {
+          console.warn("Fast-bill background network notice, queueing offline:", syncErr);
+          enqueueOfflineOrder({
+            franchiseId: String(franchiseToUse || ""),
+            url: fastBillUrl,
+            payload,
+            displayInvoiceNumber: invoiceNumber,
+            displayTotal: total,
+            itemSummary: itemsSnapshot.map((i) => `${i.quantity}x ${i.rawName}`).join(", "),
+            tableName: tableSnapshot ? `Table ${tableSnapshot.tableNumber}` : "Takeaway",
+          });
+          setPosError(
+            `Receipt printed! Bill #${invoiceNumber} queued locally (Offline). Will auto-sync when online.`
+          );
+          setTimeout(() => setPosError(null), 5000);
+        }
+      };
+
+      executeBackgroundSync();
     } catch (err: any) {
       console.error("Billing error:", err);
       setPosError("Billing error: " + (err?.message || "Failed to complete payment and print bill"));
@@ -1335,6 +1412,43 @@ export const POSPage: React.FC = () => {
                 Zomato
               </span>
             </div>
+
+            {/* Live Online / Offline Sync Indicator */}
+            <button
+              type="button"
+              onClick={() => setIsOfflineModalOpen(true)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                !isOnline
+                  ? "bg-rose-50 border-rose-400 text-rose-800 animate-pulse"
+                  : offlinePendingCount > 0
+                  ? "bg-amber-50 border-amber-300 text-amber-900"
+                  : "bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+              }`}
+              title={
+                !isOnline
+                  ? "Offline Mode Active (Bills saved locally, click to view queue)"
+                  : offlinePendingCount > 0
+                  ? `${offlinePendingCount} offline bills pending sync (Click to sync now)`
+                  : "Cloud Connected (Online & Synced)"
+              }
+            >
+              {!isOnline ? (
+                <>
+                  <WifiOff className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Offline {offlinePendingCount > 0 ? `(${offlinePendingCount})` : ""}</span>
+                </>
+              ) : offlinePendingCount > 0 ? (
+                <>
+                  <RefreshCw className={`w-3.5 h-3.5 text-amber-600 ${isOfflineSyncing ? "animate-spin" : ""}`} />
+                  <span>Sync ({offlinePendingCount})</span>
+                </>
+              ) : (
+                <>
+                  <Wifi className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">Online</span>
+                </>
+              )}
+            </button>
 
             {/* Printer Button */}
             <button
@@ -1879,6 +1993,43 @@ export const POSPage: React.FC = () => {
               <span>🪑 Floor Plan ({tables.length})</span>
             </button>
 
+            {/* Live Online / Offline Sync Indicator */}
+            <button
+              type="button"
+              onClick={() => setIsOfflineModalOpen(true)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                !isOnline
+                  ? "bg-rose-50 border-rose-400 text-rose-800 animate-pulse"
+                  : offlinePendingCount > 0
+                  ? "bg-amber-50 border-amber-300 text-amber-900"
+                  : "bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+              }`}
+              title={
+                !isOnline
+                  ? "Offline Mode Active (Bills saved locally, click to view queue)"
+                  : offlinePendingCount > 0
+                  ? `${offlinePendingCount} offline bills pending sync (Click to sync now)`
+                  : "Cloud Connected (Online & Synced)"
+              }
+            >
+              {!isOnline ? (
+                <>
+                  <WifiOff className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Offline {offlinePendingCount > 0 ? `(${offlinePendingCount})` : ""}</span>
+                </>
+              ) : offlinePendingCount > 0 ? (
+                <>
+                  <RefreshCw className={`w-3.5 h-3.5 text-amber-600 ${isOfflineSyncing ? "animate-spin" : ""}`} />
+                  <span>Sync ({offlinePendingCount})</span>
+                </>
+              ) : (
+                <>
+                  <Wifi className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="hidden xl:inline">Online</span>
+                </>
+              )}
+            </button>
+
             <button
               type="button"
               onClick={() => setIsPrinterConfigOpen(true)}
@@ -2248,6 +2399,22 @@ export const POSPage: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Offline sync status notification */}
+        {offlineSyncStatusMsg && (
+          <div
+            className={`p-2.5 px-3 border-b text-xs font-bold flex items-center gap-2 ${
+              offlineSyncStatusMsg.type === "success"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : offlineSyncStatusMsg.type === "warning"
+                ? "bg-amber-50 border-amber-200 text-amber-800"
+                : "bg-indigo-50 border-indigo-200 text-indigo-800"
+            }`}
+          >
+            <Wifi className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{offlineSyncStatusMsg.text}</span>
+          </div>
+        )}
 
         {/* Error notification */}
         {posError && (
@@ -3293,6 +3460,16 @@ Thanks For Visiting Madrasi Dosa`;
           brandSettings?.businessName ||
           "Madrasi Dosa"
         }
+      />
+
+      {/* Offline Sync Queue Modal */}
+      <OfflineQueueModal
+        isOpen={isOfflineModalOpen}
+        onClose={() => setIsOfflineModalOpen(false)}
+        isOnline={isOnline}
+        isSyncing={isOfflineSyncing}
+        queue={offlineQueue}
+        onSyncNow={syncQueueNow}
       />
     </div>
   );

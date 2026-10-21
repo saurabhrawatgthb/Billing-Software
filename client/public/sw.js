@@ -1,5 +1,5 @@
 // Service Worker for Madrasi Dosa POS PWA
-const CACHE_NAME = 'madrasi-dosa-pos-v4';
+const CACHE_NAME = 'madrasi-dosa-pos-v5';
 
 const STATIC_ASSETS = [
   '/',
@@ -39,19 +39,46 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: Always pass API and WebSocket calls directly to network; network-first for navigation
+// Fetch: Always pass mutations directly; network-first with cache-fallback for critical POS queries
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
-  // Ignore non-GET requests (POST, PUT, DELETE etc. must go to server)
+  // Ignore non-GET requests (POST, PUT, DELETE etc. must go to server or offline queue)
   if (request.method !== 'GET') {
     return;
   }
 
-  // Never cache API calls, Socket.io, or external analytics
+  // Network-First with Cache-Fallback for critical POS menu & table queries
   if (
-    url.pathname.startsWith('/api') ||
+    url.pathname.includes('/menu/items') ||
+    url.pathname.includes('/tables') ||
+    url.pathname.includes('/menu/categories') ||
+    url.pathname.includes('/brand-settings')
+  ) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(request).then((cached) => {
+            if (cached) return cached;
+            return new Response(JSON.stringify({ success: true, data: [] }), {
+              headers: { 'Content-Type': 'application/json' },
+            });
+          });
+        })
+    );
+    return;
+  }
+
+  // Never cache WebSockets, live telemetry, or external analytics
+  if (
     url.pathname.startsWith('/socket.io') ||
     url.origin !== self.location.origin
   ) {
