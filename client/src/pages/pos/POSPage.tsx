@@ -44,6 +44,7 @@ import {
   type BuildKOTParams,
   type BuildReceiptParams,
 } from "../../utils/print.js";
+import { searchMenuItems } from "../../utils/menuSearch.js";
 import {
   detectSerialPrinter,
   detectUsbPrinter,
@@ -58,6 +59,7 @@ import { LoadingState } from "../../components/common/LoadingState.js";
 import { AggregatorOrderModal } from "../../components/pos/AggregatorOrderModal.js";
 import { AggregatorSettingsModal } from "../../components/pos/AggregatorSettingsModal.js";
 import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
+import { KitchenPrepModal } from "../../components/kitchen/KitchenPrepModal.js";
 import { Globe, Bell, LayoutGrid, Store, Cpu, Check } from "lucide-react";
 import { usePermissions } from "../../hooks/usePermissions.js";
 
@@ -319,6 +321,7 @@ export const POSPage: React.FC = () => {
   // Aggregator Online Orders (Swiggy / Zomato) State
   const [isAggregatorModalOpen, setIsAggregatorModalOpen] = useState(false);
   const [isAggregatorSettingsOpen, setIsAggregatorSettingsOpen] = useState(false);
+  const [isKitchenPrepOpen, setIsKitchenPrepOpen] = useState(false);
 
   // Fetch Pending Aggregator Orders
   const { data: pendingAggregatorOrders = [] } = useQuery<any[]>({
@@ -1158,15 +1161,7 @@ export const POSPage: React.FC = () => {
 
 
   const filteredItems = useMemo(() => {
-    const term = searchTerm.toLowerCase();
-    return menuItems.filter((item) => {
-      const matchesCategory = activeCategory ? item.categoryId === activeCategory : true;
-      const matchesSearch =
-        item.name.toLowerCase().includes(term) ||
-        (item.code || "").toLowerCase().includes(term) ||
-        (item.category?.name || "").toLowerCase().includes(term);
-      return matchesCategory && matchesSearch;
-    });
+    return searchMenuItems(menuItems, searchTerm, activeCategory || null);
   }, [menuItems, activeCategory, searchTerm]);
 
   // If Super Admin has not selected a specific franchise outlet yet, prompt to pick one
@@ -1894,6 +1889,16 @@ export const POSPage: React.FC = () => {
               <span>🖨️ Printer ({paperSize})</span>
             </button>
 
+            <button
+              type="button"
+              onClick={() => setIsKitchenPrepOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition-colors cursor-pointer"
+              title="Daily Kitchen Prep Forecaster & Batter Sheet"
+            >
+              <ChefHat className="w-4 h-4 text-amber-600" />
+              <span className="hidden xl:inline">Prep Sheet</span>
+            </button>
+
             {user?.id && hasPin(user.id) ? (
               <div className="flex items-center gap-1.5">
                 <button
@@ -2306,10 +2311,10 @@ export const POSPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => toggleItemTakeaway(item.cartItemId)}
-                    className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors flex items-center gap-1 cursor-pointer shrink-0 shadow-2xs ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors flex items-center gap-1 cursor-pointer shrink-0 shadow-2xs active:scale-95 ${
                       item.isTakeaway
                         ? "bg-amber-500 text-white border-amber-600 hover:bg-amber-600"
-                        : "bg-white text-gray-700 border-gray-200 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300"
+                        : "bg-white text-gray-700 border-gray-300 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-400"
                     }`}
                     title={
                       item.isTakeaway
@@ -2319,26 +2324,28 @@ export const POSPage: React.FC = () => {
                         : "Click to mark for Packing / Parcel"
                     }
                   >
-                    <Package className="w-3 h-3" />
+                    <Package className="w-3.5 h-3.5" />
                     <span>{item.isTakeaway ? "📦 Packed" : item.quantity > 1 ? "Pack 1" : "Pack"}</span>
                   </button>
 
                   {/* Quantity controls */}
-                  <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden shrink-0">
+                  <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden shrink-0 bg-white">
                     <button
                       onClick={() => updateQuantity(item.cartItemId, item.quantity - 1)}
-                      className="p-1 hover:bg-gray-100 text-gray-600 cursor-pointer"
+                      className="p-2 sm:p-1.5 hover:bg-rose-50 hover:text-rose-600 text-gray-600 cursor-pointer active:scale-90 transition-transform"
+                      title="Decrease quantity"
                     >
-                      <Minus className="w-3.5 h-3.5" />
+                      <Minus className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                     </button>
-                    <span className="px-2 text-xs font-bold text-gray-900 min-w-[20px] text-center">
+                    <span className="px-2.5 text-xs font-black text-gray-900 min-w-[24px] text-center select-none">
                       {item.quantity}
                     </span>
                     <button
                       onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)}
-                      className="p-1 hover:bg-gray-100 text-gray-600 cursor-pointer"
+                      className="p-2 sm:p-1.5 hover:bg-emerald-50 hover:text-emerald-600 text-gray-600 cursor-pointer active:scale-90 transition-transform"
+                      title="Increase quantity"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -3275,6 +3282,17 @@ Thanks For Visiting Madrasi Dosa`;
       <PinSetupModal
         isOpen={isPinModalOpen}
         onClose={() => setIsPinModalOpen(false)}
+      />
+
+      {/* Daily Kitchen Prep & Batter Forecaster Modal */}
+      <KitchenPrepModal
+        isOpen={isKitchenPrepOpen}
+        onClose={() => setIsKitchenPrepOpen(false)}
+        franchiseName={
+          activeFranchises.find((f) => f.id === effectiveFranchiseId)?.name ||
+          brandSettings?.businessName ||
+          "Madrasi Dosa"
+        }
       />
     </div>
   );

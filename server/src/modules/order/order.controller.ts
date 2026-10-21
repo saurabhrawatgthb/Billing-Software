@@ -22,6 +22,8 @@ export async function list(req: AuthenticatedRequest, res: Response, next: NextF
       tableId: req.query.tableId as string | undefined,
       startDate: req.query.startDate as string | undefined,
       endDate: req.query.endDate as string | undefined,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
+      page: req.query.page ? parseInt(req.query.page as string, 10) : undefined,
     };
     const orders = await listOrders(franchiseId, filters);
     return res.json({ success: true, data: orders });
