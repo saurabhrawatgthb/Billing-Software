@@ -218,27 +218,32 @@ export const TablesPage: React.FC = () => {
             const currentSubtotal = activeOrders.reduce((sum, o) => sum + Number(o.total), 0);
 
             const isAvailable = table.status === "AVAILABLE";
-            const isOccupied = table.status === "OCCUPIED";
+            const isOccupied = table.status === "OCCUPIED" || (table.currentOccupancy || 0) > 0;
             const isBilling = table.status === "BILLING";
 
             return (
               <div
                 key={table.id}
                 className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col justify-between shadow-xs ${
-                  isAvailable
-                    ? "bg-white border-gray-200/80 hover:border-emerald-300"
-                    : isOccupied
-                    ? "bg-indigo-50/40 border-indigo-200 shadow-indigo-100/50"
+                  isOccupied
+                    ? "bg-rose-50/90 border-2 border-rose-400 shadow-md shadow-rose-200/50 ring-2 ring-rose-300"
+                    : isAvailable
+                    ? "bg-white border-2 border-emerald-300 hover:border-emerald-500 shadow-xs"
                     : isBilling
-                    ? "bg-amber-50/40 border-amber-200 shadow-amber-100/50"
+                    ? "bg-amber-50/60 border-2 border-amber-300 shadow-amber-100/50"
                     : "bg-gray-50 border-gray-200"
                 }`}
               >
                 <div>
                   <div className="flex items-start justify-between mb-2">
                     <div>
-                      <h3 className="text-xl font-black text-gray-900 tracking-tight">
+                      <h3 className="text-xl font-black text-gray-900 tracking-tight flex items-center gap-2">
                         Table {table.tableNumber}
+                        {isOccupied && (
+                          <span className="text-[11px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">
+                            Fully Occupied
+                          </span>
+                        )}
                       </h3>
                       <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
                         <Users className="w-3.5 h-3.5" />
@@ -246,14 +251,24 @@ export const TablesPage: React.FC = () => {
                       </p>
                     </div>
 
-                    <Badge variant={getStatusBadgeVariant(table.status)} dot>
-                      {table.status}
-                    </Badge>
+                    {isOccupied ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-600 text-white shadow-xs tracking-wide">
+                        🔴 OCCUPIED
+                      </span>
+                    ) : isAvailable ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-600 text-white shadow-xs tracking-wide">
+                        🟢 AVAILABLE
+                      </span>
+                    ) : (
+                      <Badge variant={getStatusBadgeVariant(table.status)} dot>
+                        {table.status}
+                      </Badge>
+                    )}
                   </div>
 
                   {/* Active Session telemetry */}
                   {activeSession && (
-                    <div className="my-3 p-3 bg-white rounded-xl border border-gray-100 text-xs space-y-1.5">
+                    <div className="my-3 p-3 bg-white/90 rounded-xl border border-gray-100 text-xs space-y-1.5">
                       <div className="flex justify-between text-gray-500">
                         <span>Seated at:</span>
                         <span className="font-semibold text-gray-800">
@@ -282,7 +297,7 @@ export const TablesPage: React.FC = () => {
                 </div>
 
                 {/* Card Action Bar */}
-                <div className="pt-3 border-t border-gray-100/80 mt-2 flex flex-col gap-2">
+                <div className="pt-3 border-t border-gray-200/80 mt-2 flex flex-col gap-2">
                   {isAvailable ? (
                     <div className="grid grid-cols-2 gap-2">
                       <Button
@@ -311,27 +326,17 @@ export const TablesPage: React.FC = () => {
                         onClick={() => handleOrderForTable(table)}
                         icon={<ShoppingCart className="w-3 h-3" />}
                       >
-                        Add Items
+                        New Bill / Order
                       </Button>
-                      {isBilling || activeOrdersCount === 0 ? (
-                        <Button
-                          size="sm"
-                          variant="success"
-                          onClick={() => closeSessionMutation.mutate(table.id)}
-                          isLoading={closeSessionMutation.isPending}
-                          icon={<CheckCircle className="w-3 h-3" />}
-                        >
-                          Free Table
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => navigate("/billing")}
-                        >
-                          View Bill
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        variant="success"
+                        onClick={() => closeSessionMutation.mutate(table.id)}
+                        isLoading={closeSessionMutation.isPending}
+                        icon={<CheckCircle className="w-3 h-3" />}
+                      >
+                        Mark Vacant
+                      </Button>
                     </div>
                   )}
                 </div>

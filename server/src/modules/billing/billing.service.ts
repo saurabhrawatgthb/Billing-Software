@@ -296,17 +296,9 @@ export async function createInvoiceForOrder(
       await tx.restaurantTable.update({
         where: { id: order.tableSession.tableId },
         data: {
-          status: shouldCompletePayment ? TableStatus.AVAILABLE : TableStatus.BILLING,
-          currentOccupancy: shouldCompletePayment ? 0 : undefined,
+          status: TableStatus.OCCUPIED,
         },
       });
-
-      if (shouldCompletePayment) {
-        await tx.tableSession.update({
-          where: { id: order.tableSession.id },
-          data: { endedAt: now },
-        });
-      }
     }
 
     return { newInvoice, paymentRecords };
@@ -315,14 +307,9 @@ export async function createInvoiceForOrder(
   if (order.tableSession?.tableId) {
     emitToFranchise(franchiseId, "table:status_changed", {
       tableId: order.tableSession.tableId,
-      status: shouldCompletePayment ? TableStatus.AVAILABLE : TableStatus.BILLING,
+      status: TableStatus.OCCUPIED,
     });
-    if (shouldCompletePayment) {
-      emitToFranchise(franchiseId, "table:session_closed", {
-        tableId: order.tableSession.tableId,
-        sessionId: order.tableSession.id,
-      });
-    }
+  }
   }
 
   for (const pr of invoiceResult.paymentRecords) {
@@ -804,41 +791,41 @@ export async function fastBill(
     if (data.tableId) {
       const table = await tx.restaurantTable.findUnique({
         where: { id: data.tableId },
-        select: { id: true, tableNumber: true },
+        select: { id: true, tableNumber: true, capacity: true },
       });
 
       if (table) {
         tableNumberFound = table.tableNumber;
       }
 
-      // Find an active session or create a closed session record for order history
-      let activeSession = await tx.tableSession.findFirst({
+      // If the table was previously occupied from an earlier bill, close the prior session (old party left)
+      await tx.tableSession.updateMany({
         where: { tableId: data.tableId, endedAt: null },
+        data: { endedAt: now },
       });
 
-      if (!activeSession) {
-        activeSession = await tx.tableSession.create({
-          data: {
-            tableId: data.tableId,
-            partyName: data.partyName || (tableNumberFound ? `Table ${tableNumberFound}` : "Table Order"),
-            guestCount: data.guestCount || 1,
-            startedAt: now,
-            endedAt: now,
-          },
-        });
-      } else {
-        await tx.tableSession.update({
-          where: { id: activeSession.id },
-          data: { endedAt: now },
-        });
-      }
+      const fullCapacity = table?.capacity || 4;
+
+      // Create new active session for this newly billed party
+      const activeSession = await tx.tableSession.create({
+        data: {
+          tableId: data.tableId,
+          partyName: data.partyName || (tableNumberFound ? `Table ${tableNumberFound}` : "Table Order"),
+          guestCount: fullCapacity,
+          startedAt: now,
+          endedAt: null, // Left active so table remains occupied while customer dines
+        },
+      });
 
       finalSessionId = activeSession.id;
 
-      // Free Table
+      // Table is considered FULLY OCCUPIED (RED) upon billing
       await tx.restaurantTable.update({
         where: { id: data.tableId },
-        data: { status: TableStatus.AVAILABLE, currentOccupancy: 0 },
+        data: {
+          status: TableStatus.OCCUPIED,
+          currentOccupancy: fullCapacity,
+        },
       });
     }
 
@@ -1070,7 +1057,7 @@ function centerLine(text: string, width = 32): string {
     if (data.tableId) {
       emitToFranchise(franchiseId, "table:status_changed", {
         tableId: data.tableId,
-        status: TableStatus.AVAILABLE,
+        status: TableStatus.OCCUPIED,
       });
     }
   });

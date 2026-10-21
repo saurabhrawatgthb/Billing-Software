@@ -855,6 +855,16 @@ export const POSPage: React.FC = () => {
     }
   };
 
+  // Release table manually (mark vacant)
+  const releaseTableMutation = useMutation({
+    mutationFn: async (tableId: string) => {
+      await api.post(`/tables/${tableId}/close-session`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+    },
+  });
+
   // Place Order & Send KOT Mutation
   const placeOrderAndKOTMutation = useMutation({
     mutationFn: async () => {
@@ -1551,24 +1561,23 @@ export const POSPage: React.FC = () => {
             {/* TILES 2...N: DINING TABLES */}
             {initialFilteredTables.map((t) => {
               const isAvail = t.status === "AVAILABLE";
-              const isOcc = t.status === "OCCUPIED";
+              const isOcc = t.status === "OCCUPIED" || (t.currentOccupancy || 0) > 0;
               const isSelected = selectedTable?.id === t.id;
 
               return (
-                <button
+                <div
                   key={t.id}
-                  type="button"
                   onClick={() => {
                     handleTableChange(t.id);
                     setOrderMode("DINE_IN");
                   }}
-                  className={`p-5 rounded-2xl border-2 text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative min-h-[170px] ${
+                  className={`p-5 rounded-2xl border-2 text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative min-h-[175px] ${
                     isSelected
                       ? "bg-indigo-50/90 border-indigo-600 ring-4 ring-indigo-500/40 shadow-xl"
+                      : isOcc
+                      ? "bg-rose-50/90 border-2 border-rose-500 shadow-md shadow-rose-200/50 hover:border-rose-600"
                       : isAvail
                       ? "bg-white hover:bg-emerald-50/50 border-emerald-300 hover:border-emerald-500 shadow-xs hover:shadow-xl"
-                      : isOcc
-                      ? "bg-rose-50/60 hover:bg-rose-50 border-rose-300 hover:border-rose-400 shadow-xs"
                       : "bg-indigo-50/60 hover:bg-indigo-50 border-indigo-300 hover:border-indigo-400 shadow-xs"
                   }`}
                 >
@@ -1578,14 +1587,14 @@ export const POSPage: React.FC = () => {
                         className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
                           isSelected
                             ? "bg-indigo-600 text-white border-indigo-700 shadow-xs"
+                            : isOcc
+                            ? "bg-rose-600 text-white border-rose-700 shadow-xs"
                             : isAvail
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : isOcc
-                            ? "bg-rose-100 text-rose-800 border-rose-200"
                             : "bg-indigo-100 text-indigo-800 border-indigo-200"
                         }`}
                       >
-                        {isSelected ? "👑 Current Table" : isAvail ? "🟢 Available" : isOcc ? "🔴 Occupied" : "🔵 Billing"}
+                        {isSelected ? "👑 Current Table" : isOcc ? "🔴 Occupied" : isAvail ? "🟢 Available" : "🔵 Billing"}
                       </span>
                       <span className="text-[10px] font-mono font-bold bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200">
                         Key [{t.tableNumber}]
@@ -1601,20 +1610,32 @@ export const POSPage: React.FC = () => {
                         🪑 {t.capacity} Seats
                       </span>
                       {isOcc && (
-                        <span className="text-[11px] text-rose-700 font-semibold">
-                          • Seated: {t.currentOccupancy || 0}
+                        <span className="text-[11px] text-rose-700 font-extrabold bg-rose-100 px-1.5 py-0.5 rounded">
+                          Occupied
                         </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="mt-4 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs font-bold text-gray-500 group-hover:text-gray-900">
-                    <span className={isSelected ? "text-indigo-700 font-black" : selectedTable ? "text-indigo-600 font-bold" : ""}>
-                      {isSelected ? "Current Table (Resume)" : selectedTable ? `Switch to Table ${t.tableNumber}` : "Select Table"}
+                  <div className="mt-4 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs font-bold text-gray-500">
+                    <span className={isSelected ? "text-indigo-700 font-black" : isOcc ? "text-rose-700 font-black" : selectedTable ? "text-indigo-600 font-bold" : ""}>
+                      {isSelected ? "Current Table (Resume)" : isOcc ? "Re-Bill / New Order →" : selectedTable ? `Switch to Table ${t.tableNumber}` : "Select Table →"}
                     </span>
-                    <span className="text-indigo-600 group-hover:translate-x-1 transition-transform font-black">→</span>
+                    {isOcc && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          releaseTableMutation.mutate(t.id);
+                        }}
+                        className="text-[11px] font-bold bg-white hover:bg-emerald-50 text-emerald-700 hover:text-emerald-800 border border-emerald-300 hover:border-emerald-500 px-2.5 py-1 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                        title="Click to release table if customer has left"
+                      >
+                        Mark Vacant
+                      </button>
+                    )}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
