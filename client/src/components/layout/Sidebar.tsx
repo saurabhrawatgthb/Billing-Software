@@ -74,7 +74,7 @@ const navItems: NavItem[] = [
     name: "Kitchen Display",
     to: "/kitchen",
     icon: <ChefHat className="w-5 h-5" />,
-    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "CHEF"],
+    roles: ["SUPER_ADMIN", "FRANCHISE_MANAGER", "CHEF", "CASHIER"],
   },
   {
     name: "Billing & Payments",

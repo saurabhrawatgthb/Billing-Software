@@ -1,4 +1,5 @@
 import http from "http";
+import https from "https";
 import express, { type Request, type Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -137,6 +138,19 @@ const PORT = Number(process.env.PORT) || 5000;
 if (process.env.NODE_ENV !== "test") {
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`Server listening on port ${PORT}`);
+
+    // Free Tier Keep-Alive: Ping health endpoint every 10 mins to prevent container cold starts
+    const targetUrl = process.env.RENDER_EXTERNAL_URL || "https://restaurent-pos-api.onrender.com";
+    if (process.env.NODE_ENV === "production" || process.env.RENDER) {
+      setInterval(() => {
+        try {
+          const client = targetUrl.startsWith("https") ? https : http;
+          client.get(`${targetUrl}/api/health`, (res) => {
+            res.resume();
+          }).on("error", () => {});
+        } catch {}
+      }, 10 * 60 * 1000);
+    }
   });
 }
 

@@ -1,0 +1,213 @@
+import React, { useState } from "react";
+import { Check, KeyRound, ShieldCheck, Power, Unlock, Lock } from "lucide-react";
+import { Modal } from "../common/Modal.js";
+import { Button } from "../common/Button.js";
+import { useAuthStore } from "../../store/authStore.js";
+import { usePinLockStore } from "../../store/pinLockStore.js";
+
+interface PinSetupModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export const PinSetupModal: React.FC<PinSetupModalProps> = ({ isOpen, onClose }) => {
+  const { user } = useAuthStore();
+  const { hasPin, setPin, removePin } = usePinLockStore();
+
+  const isConfigured = user?.id ? hasPin(user.id) : false;
+
+  const [pin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleSavePin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    if (!user?.id) {
+      setErrorMsg("User session not found.");
+      return;
+    }
+
+    if (!/^\d{4}$/.test(pin)) {
+      setErrorMsg("PIN must be exactly 4 digits (0-9).");
+      return;
+    }
+
+    if (pin !== confirmPin) {
+      setErrorMsg("Confirmation PIN does not match.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await setPin(user.id, pin);
+      setSuccessMsg(
+        isConfigured
+          ? "Quick PIN updated successfully!"
+          : "App Lock turned ON! You can now unlock your terminal with your 4-digit PIN."
+      );
+      setNewPin("");
+      setConfirmPin("");
+      setTimeout(() => {
+        onClose();
+        setSuccessMsg(null);
+      }, 1500);
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Failed to save PIN.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleTurnOffAppLock = () => {
+    if (!user?.id) return;
+    if (window.confirm("Are you sure you want to turn off App Lock? Anyone on this PC will be able to access the system without entering a PIN.")) {
+      removePin(user.id);
+      setSuccessMsg("App Lock has been turned OFF. Quick PIN disabled.");
+      setNewPin("");
+      setConfirmPin("");
+      setTimeout(() => {
+        setSuccessMsg(null);
+      }, 2500);
+    }
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="App Lock & Quick PIN Settings"
+      maxWidth="sm"
+    >
+      <div className="space-y-4">
+        {/* Status Card */}
+        {isConfigured ? (
+          <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 shadow-xs">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-200/80 text-emerald-900">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                  App Lock: ON
+                </span>
+                <p className="text-xs text-emerald-950 font-medium mt-1 leading-snug">
+                  Terminal is protected with a 4-digit PIN.
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              onClick={handleTurnOffAppLock}
+              className="shrink-0 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs"
+              icon={<Power className="w-3.5 h-3.5" />}
+            >
+              Turn Off
+            </Button>
+          </div>
+        ) : (
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-200/80 text-slate-600 flex items-center justify-center shrink-0 shadow-xs">
+              <Unlock className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-slate-200 text-slate-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                App Lock: OFF
+              </span>
+              <p className="text-xs text-slate-600 font-medium mt-1 leading-snug">
+                App lock is currently off. Set a 4-digit PIN below to turn it on.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Feature Explainer */}
+        <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-start gap-2.5">
+          <KeyRound className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-indigo-950 leading-relaxed">
+            <span className="font-bold block">1-Click Desktop Login:</span>
+            When turned on, you can unlock this computer's terminal instantly with your 4-digit PIN without typing full email/password daily.
+          </div>
+        </div>
+
+        {successMsg && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2 animate-in fade-in">
+            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{successMsg}</span>
+          </div>
+        )}
+
+        {errorMsg && (
+          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold rounded-xl animate-in fade-in">
+            {errorMsg}
+          </div>
+        )}
+
+        {/* Form to Set or Change PIN */}
+        <form onSubmit={handleSavePin} className="space-y-3.5 pt-1 border-t border-gray-100">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-gray-700">
+                {isConfigured ? "Change 4-Digit PIN" : "Set New 4-Digit PIN"}
+              </label>
+              {isConfigured && (
+                <span className="text-[10px] text-gray-400 font-medium">Enter new code below</span>
+              )}
+            </div>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={pin}
+              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+              placeholder="••••"
+              className="w-full text-center text-2xl font-mono tracking-[0.5em] px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold bg-white"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">
+              Confirm 4-Digit PIN
+            </label>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={confirmPin}
+              onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))}
+              placeholder="••••"
+              className="w-full text-center text-2xl font-mono tracking-[0.5em] px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold bg-white"
+            />
+          </div>
+
+          <div className="pt-2 flex items-center justify-between gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              isLoading={isSubmitting}
+              disabled={pin.length !== 4 || confirmPin.length !== 4}
+              icon={isConfigured ? <Lock className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+            >
+              {isConfigured ? "Update PIN" : "Turn On App Lock"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </Modal>
+  );
+};

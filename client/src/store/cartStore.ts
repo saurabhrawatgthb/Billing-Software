@@ -8,6 +8,7 @@ export interface CartItem {
   selectedSize?: string;
   price: number;
   notes?: string;
+  isTakeaway?: boolean;
 }
 
 interface CartState {
@@ -20,6 +21,7 @@ interface CartState {
   removeItem: (cartItemId: string) => void;
   updateQuantity: (cartItemId: string, quantity: number) => void;
   updateItemNotes: (cartItemId: string, notes: string) => void;
+  toggleItemTakeaway: (cartItemId: string) => void;
   setSelectedTable: (table: RestaurantTable | null) => void;
   setDiscount: (discount: number) => void;
   setTaxRate: (rate: number) => void;
@@ -90,6 +92,47 @@ export const useCartStore = create<CartState>((set, get) => ({
         i.cartItemId === cartItemId || i.menuItem.id === cartItemId ? { ...i, notes } : i
       ),
     }));
+  },
+
+  toggleItemTakeaway: (cartItemId) => {
+    set((state) => {
+      const item = state.items.find((i) => i.cartItemId === cartItemId || i.menuItem.id === cartItemId);
+      if (!item) return state;
+
+      // If already takeaway, toggle back to dine-in
+      if (item.isTakeaway) {
+        return {
+          items: state.items.map((i) =>
+            i.cartItemId === item.cartItemId ? { ...i, isTakeaway: false } : i
+          ),
+        };
+      }
+
+      // If dine-in and quantity > 1, split off 1 unit for takeaway so they can order 1 dine-in + 1 pack!
+      if (item.quantity > 1) {
+        const takeawayKey = `${item.cartItemId}_takeaway_${Date.now()}`;
+        return {
+          items: [
+            ...state.items.map((i) =>
+              i.cartItemId === item.cartItemId ? { ...i, quantity: i.quantity - 1 } : i
+            ),
+            {
+              ...item,
+              cartItemId: takeawayKey,
+              quantity: 1,
+              isTakeaway: true,
+            },
+          ],
+        };
+      }
+
+      // If quantity is 1, just flip to takeaway
+      return {
+        items: state.items.map((i) =>
+          i.cartItemId === item.cartItemId ? { ...i, isTakeaway: true } : i
+        ),
+      };
+    });
   },
 
   setSelectedTable: (table) => set({ selectedTable: table }),

@@ -24,6 +24,7 @@ import { Button } from "../../components/common/Button.js";
 export const DashboardPage: React.FC = () => {
   const { user, selectedFranchiseId } = useAuthStore();
   const isSuperAdmin = user?.role === "SUPER_ADMIN" && !selectedFranchiseId;
+  const isCashier = user?.role === "CASHIER";
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ["dashboard-stats", selectedFranchiseId],
@@ -70,11 +71,13 @@ export const DashboardPage: React.FC = () => {
               </Button>
             </Link>
           )}
-          <Link to="/reports">
-            <Button variant="secondary" size="md" icon={<TrendingUp className="w-4 h-4" />}>
-              View Analytics
-            </Button>
-          </Link>
+          {!isCashier && (
+            <Link to="/reports">
+              <Button variant="secondary" size="md" icon={<TrendingUp className="w-4 h-4" />}>
+                View Analytics
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -112,13 +115,23 @@ export const DashboardPage: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          <StatCard
-            title="Today's Revenue"
-            value={`₹${(stats?.todayRevenue || 0).toLocaleString("en-IN")}`}
-            subtitle={`${stats?.todayOrdersCount || 0} Orders Placed`}
-            icon={<DollarSign className="w-6 h-6" />}
-            color="emerald"
-          />
+          {isCashier ? (
+            <StatCard
+              title="Today's Orders"
+              value={stats?.todayOrdersCount || 0}
+              subtitle={`${stats?.todayOrdersCount || 0} Orders Placed Today`}
+              icon={<ShoppingCart className="w-6 h-6" />}
+              color="emerald"
+            />
+          ) : (
+            <StatCard
+              title="Today's Revenue"
+              value={`₹${(stats?.todayRevenue || 0).toLocaleString("en-IN")}`}
+              subtitle={`${stats?.todayOrdersCount || 0} Orders Placed`}
+              icon={<DollarSign className="w-6 h-6" />}
+              color="emerald"
+            />
+          )}
           <StatCard
             title="Active Tables"
             value={`${stats?.occupiedTables || 0} / ${stats?.totalTables || 0}`}

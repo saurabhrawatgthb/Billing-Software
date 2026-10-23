@@ -3,8 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" type="image/png" href="/icons/icon-192x192.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>client</title>
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Madrasi Dosa" />
+    <meta name="application-name" content="Madrasi Dosa" />
+    <meta name="description" content="Cloud POS, Rush-Hour Fast Billing & Restaurant Management Software" />
+    <title>Madrasi Dosa - POS & Restaurant Billing</title>
+    <!-- Preconnect to API for instant DNS and TLS handshake -->
+    <link rel="preconnect" href="https://restaurent-pos-api.onrender.com" crossorigin />
+    <link rel="dns-prefetch" href="https://restaurent-pos-api.onrender.com" />
+    <script>
+      // Non-blocking early background wake-up ping for Render backend
+      (function() {
+        try {
+          var apiUrl = window.location.hostname === "localhost" 
+            ? "http://localhost:5000/api/health" 
+            : "https://restaurent-pos-api.onrender.com/api/health";
+          fetch(apiUrl, { mode: "no-cors", keepalive: true }).catch(function(){});
+        } catch(e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

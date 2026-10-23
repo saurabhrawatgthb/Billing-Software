@@ -21,21 +21,30 @@ import {
   Percent,
   BadgePercent,
   Printer,
+  ShoppingBag,
+  Zap,
+  Lock,
+  Unlock,
+  ShieldCheck,
+  RotateCcw,
+  Package,
 } from "lucide-react";
 import { api, extractErrorMessage } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
 import { useCartStore } from "../../store/cartStore.js";
+import { usePinLockStore } from "../../store/pinLockStore.js";
+import { PinSetupModal } from "../../components/auth/PinSetupModal.js";
 import {
   printReceiptDirectly,
   printKOTDirectly,
-  printCombinedKOTAndBillDirectly,
+  printKOTThenBillSequentially,
   getSavedPaperSize,
   setSavedPaperSize,
-  buildThermalReceiptText,
   type ThermalPaperSize,
   type BuildKOTParams,
   type BuildReceiptParams,
 } from "../../utils/print.js";
+import { searchMenuItems } from "../../utils/menuSearch.js";
 import {
   detectSerialPrinter,
   detectUsbPrinter,
@@ -45,19 +54,43 @@ import {
 import type { Category, MenuItem, RestaurantTable, Customer, BrandSettings, Franchise } from "../../types/index.js";
 import { Button } from "../../components/common/Button.js";
 import { Input } from "../../components/common/Input.js";
-import { Select } from "../../components/common/Select.js";
 import { Modal } from "../../components/common/Modal.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { AggregatorOrderModal } from "../../components/pos/AggregatorOrderModal.js";
 import { AggregatorSettingsModal } from "../../components/pos/AggregatorSettingsModal.js";
 import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
-import { Globe, Bell, LayoutGrid, Store, Cpu, Check } from "lucide-react";
+import { KitchenPrepModal } from "../../components/kitchen/KitchenPrepModal.js";
+import { OfflineQueueModal } from "../../components/pos/OfflineQueueModal.js";
+import { useOfflineSync } from "../../hooks/useOfflineSync.js";
+import {
+  cacheMenuItems,
+  getCachedMenuItems,
+  cacheTables,
+  getCachedTables,
+  cacheCategories,
+  getCachedCategories,
+  cacheBrandSettings,
+  getCachedBrandSettings,
+  enqueueOfflineOrder,
+} from "../../utils/offlineQueue.js";
+import { Globe, Bell, LayoutGrid, Store, Cpu, Check, Wifi, WifiOff, RefreshCw } from "lucide-react";
 import { usePermissions } from "../../hooks/usePermissions.js";
 
 export const POSPage: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { selectedFranchiseId, user, setSelectedFranchise } = useAuthStore();
+  const { hasPin, lock } = usePinLockStore();
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
+  const {
+    isOnline,
+    queue: offlineQueue,
+    pendingCount: offlinePendingCount,
+    isSyncing: isOfflineSyncing,
+    syncStatusMsg: offlineSyncStatusMsg,
+    syncQueueNow,
+  } = useOfflineSync();
   const { isSuperAdmin: isPermAdmin, canApplyDiscounts, maxDiscountPercent } = usePermissions();
   const isSuperAdmin = user?.role === "SUPER_ADMIN" || isPermAdmin;
   const effectiveFranchiseId = selectedFranchiseId || user?.franchiseId;
@@ -70,6 +103,7 @@ export const POSPage: React.FC = () => {
     addItem,
     updateQuantity,
     updateItemNotes,
+    toggleItemTakeaway,
     setSelectedTable,
     setDiscount,
     setTaxRate,
@@ -86,7 +120,7 @@ export const POSPage: React.FC = () => {
   const [splitUpiAmount, setSplitUpiAmount] = useState<number>(0);
   const [printKOT, setPrintKOT] = useState<boolean>(true);
 
-  // Portion / Size Selection for Pizza (Small / Medium / Large OR Normal / Loaded)
+  // Portion / Size Selection for Pizza (Small / Medium / Large OR Normal / Loaded) & Ice Cream (1 & 2 Scoops)
   const [sizeSelectionItem, setSizeSelectionItem] = useState<MenuItem | null>(null);
 
   const isPizzaCategory = (item: MenuItem) => {
@@ -97,54 +131,103 @@ export const POSPage: React.FC = () => {
     return isPizzaCategory(item) && Boolean(item.hasSizes);
   };
 
-  // Instant keyboard shortcuts for Portion Selection (1=Small/Normal, 2=Medium/Loaded, 3=Large, Esc=Cancel)
+  const isIceCreamCategory = (item: MenuItem) => {
+    const cat = (item.category?.name || "").toLowerCase();
+    const name = item.name.toLowerCase();
+    return (
+      cat.includes("ice cream") ||
+      cat.includes("icecream") ||
+      name.includes("ice cream") ||
+      name.includes("icecream")
+    );
+  };
+
+  const isIceCreamWithScoops = (item: MenuItem) => {
+    return isIceCreamCategory(item) && Boolean(item.hasSizes);
+  };
+
+  // Instant keyboard shortcuts for Portion & Scoop Selection (1=1 Scoop/Small/Normal, 2=2 Scoops/Medium/Loaded, 3=Large, Esc=Cancel)
   useEffect(() => {
     if (!sizeSelectionItem) return;
 
+    // Immediately remove focus and clear any active dish code input
+    setQuickDishCode("");
+    if (quickCodeInputRef.current) {
+      quickCodeInputRef.current.blur();
+    }
+    if (document.activeElement && (document.activeElement as HTMLElement).blur) {
+      (document.activeElement as HTMLElement).blur();
+    }
+
+    const isIceCream = isIceCreamWithScoops(sizeSelectionItem);
     const hasThreeSizes = sizeSelectionItem.priceMedium != null && Number(sizeSelectionItem.priceMedium) > 0;
     const pSmall = sizeSelectionItem.priceSmall != null ? Number(sizeSelectionItem.priceSmall) : Number(sizeSelectionItem.price);
     const pMedium = sizeSelectionItem.priceMedium != null ? Number(sizeSelectionItem.priceMedium) : Number(sizeSelectionItem.price);
     const pLarge = sizeSelectionItem.priceLarge != null ? Number(sizeSelectionItem.priceLarge) : Number(sizeSelectionItem.price);
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) return;
+      // Intercept and stop propagation of ALL keys while portion modal is open
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setQuickDishCode("");
+        setSizeSelectionItem(null);
+        return;
+      }
+
+      if (isIceCream) {
+        // Ice cream scoop selection: 1 = 1 Scoop, 2 = 2 Scoops
+        if (e.key === "1" || e.code === "Numpad1") {
+          e.preventDefault();
+          addItem(sizeSelectionItem, "1 Scoop", pSmall);
+          setQuickDishCode("");
+          setSizeSelectionItem(null);
+        } else if (e.key === "2" || e.code === "Numpad2") {
+          e.preventDefault();
+          addItem(sizeSelectionItem, "2 Scoops", pLarge);
+          setQuickDishCode("");
+          setSizeSelectionItem(null);
+        }
+        return;
+      }
 
       if (hasThreeSizes) {
-        if (e.key === "1" || e.key.toLowerCase() === "s") {
+        if (e.key === "1" || e.code === "Numpad1" || e.key.toLowerCase() === "s") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Small", pSmall);
+          setQuickDishCode("");
           setSizeSelectionItem(null);
-        } else if (e.key === "2" || e.key.toLowerCase() === "m") {
+        } else if (e.key === "2" || e.code === "Numpad2" || e.key.toLowerCase() === "m") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Medium", pMedium);
+          setQuickDishCode("");
           setSizeSelectionItem(null);
-        } else if (e.key === "3" || e.key.toLowerCase() === "l") {
+        } else if (e.key === "3" || e.code === "Numpad3" || e.key.toLowerCase() === "l") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Large", pLarge);
-          setSizeSelectionItem(null);
-        } else if (e.key === "Escape") {
-          e.preventDefault();
+          setQuickDishCode("");
           setSizeSelectionItem(null);
         }
       } else {
         // Normal & Loaded variations
-        if (e.key === "1" || e.key.toLowerCase() === "n") {
+        if (e.key === "1" || e.code === "Numpad1" || e.key.toLowerCase() === "n") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Normal", pSmall);
+          setQuickDishCode("");
           setSizeSelectionItem(null);
-        } else if (e.key === "2" || e.key.toLowerCase() === "l") {
+        } else if (e.key === "2" || e.code === "Numpad2" || e.key.toLowerCase() === "l") {
           e.preventDefault();
           addItem(sizeSelectionItem, "Loaded", pLarge);
-          setSizeSelectionItem(null);
-        } else if (e.key === "Escape") {
-          e.preventDefault();
+          setQuickDishCode("");
           setSizeSelectionItem(null);
         }
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [sizeSelectionItem, addItem]);
 
   // Printer Paper Size (58mm vs 80mm) & Hardware Port Detection
@@ -166,6 +249,34 @@ export const POSPage: React.FC = () => {
   const [suggestedTables, setSuggestedTables] = useState<RestaurantTable[]>([]);
   const [pendingTableSelection, setPendingTableSelection] = useState<RestaurantTable | null>(null);
 
+  // POS Order Mode Gate: "DINE_IN" | "TAKEAWAY" | null
+  // When null, renders the initial Big Screen Table / Takeaway selection view first!
+  const [orderMode, setOrderMode] = useState<"DINE_IN" | "TAKEAWAY" | null>(() => {
+    if (selectedTable) return "DINE_IN";
+    if (cartItems.length > 0) return "TAKEAWAY";
+    return null;
+  });
+
+  // Attempt HTML5 browser fullscreen directly on mount
+  useEffect(() => {
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  }, []);
+
+  // Rush Hour Numpad Dish Code Quick-Add State
+  const [quickDishCode, setQuickDishCode] = useState("");
+  const [codeFeedbackMsg, setCodeFeedbackMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const quickCodeInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Initial Big Screen Numpad Table & Packing Selection State
+  const [initialNumpadCode, setInitialNumpadCode] = useState("");
+  const [initialTableMsg, setInitialTableMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const initialNumpadInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Table filter for initial big screen mode
+  const [initialTableFilter, setInitialTableFilter] = useState<"ALL" | "AVAILABLE" | "OCCUPIED">("ALL");
+  const [initialTableSearch, setInitialTableSearch] = useState("");
 
   // Customer CRM Recognition State
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -188,8 +299,17 @@ export const POSPage: React.FC = () => {
   const { data: brandSettings } = useQuery<BrandSettings>({
     queryKey: ["brand-settings"],
     queryFn: async () => {
-      const res = await api.get("/brand-settings");
-      return res.data.data;
+      try {
+        const res = await api.get("/brand-settings");
+        if (res.data?.data) {
+          cacheBrandSettings(res.data.data);
+          return res.data.data;
+        }
+      } catch (err) {
+        const cached = getCachedBrandSettings();
+        if (cached) return cached;
+      }
+      return getCachedBrandSettings() || ({} as BrandSettings);
     },
   });
 
@@ -232,6 +352,7 @@ export const POSPage: React.FC = () => {
   // Aggregator Online Orders (Swiggy / Zomato) State
   const [isAggregatorModalOpen, setIsAggregatorModalOpen] = useState(false);
   const [isAggregatorSettingsOpen, setIsAggregatorSettingsOpen] = useState(false);
+  const [isKitchenPrepOpen, setIsKitchenPrepOpen] = useState(false);
 
   // Fetch Pending Aggregator Orders
   const { data: pendingAggregatorOrders = [] } = useQuery<any[]>({
@@ -397,34 +518,383 @@ export const POSPage: React.FC = () => {
     },
   });
 
-  // Fetch Tables
+  // Fetch Tables with resilient offline cache fallback
   const { data: tables = [] } = useQuery<RestaurantTable[]>({
     queryKey: ["tables", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get(effectiveFranchiseId ? `/tables?franchiseId=${effectiveFranchiseId}` : "/tables");
-      return res.data.data;
+      try {
+        const res = await api.get(effectiveFranchiseId ? `/tables?franchiseId=${effectiveFranchiseId}` : "/tables");
+        if (res.data?.data) {
+          cacheTables(res.data.data);
+          return res.data.data;
+        }
+      } catch (err) {
+        const cached = getCachedTables();
+        if (cached && cached.length > 0) return cached;
+      }
+      return getCachedTables() || [];
     },
   });
 
-  // Fetch Categories
+  // Fetch Categories with resilient offline cache fallback
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ["categories", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get(effectiveFranchiseId ? `/menu/categories?franchiseId=${effectiveFranchiseId}` : "/menu/categories");
-      return res.data.data;
+      try {
+        const res = await api.get(effectiveFranchiseId ? `/menu/categories?franchiseId=${effectiveFranchiseId}` : "/menu/categories");
+        if (res.data?.data) {
+          cacheCategories(res.data.data);
+          return res.data.data;
+        }
+      } catch (err) {
+        const cached = getCachedCategories();
+        if (cached && cached.length > 0) return cached;
+      }
+      return getCachedCategories() || [];
     },
   });
 
-  // Fetch Menu Items
+  // Fetch Menu Items with resilient offline cache fallback
   const { data: menuItems = [], isLoading: isLoadingMenu } = useQuery<MenuItem[]>({
     queryKey: ["menu-items", effectiveFranchiseId],
     queryFn: async () => {
-      const res = await api.get(effectiveFranchiseId ? `/menu/items?franchiseId=${effectiveFranchiseId}` : "/menu/items");
-      return res.data.data;
+      try {
+        const res = await api.get(effectiveFranchiseId ? `/menu/items?franchiseId=${effectiveFranchiseId}` : "/menu/items");
+        if (res.data?.data) {
+          cacheMenuItems(res.data.data);
+          return res.data.data;
+        }
+      } catch (err) {
+        const cached = getCachedMenuItems();
+        if (cached && cached.length > 0) return cached;
+      }
+      return getCachedMenuItems() || [];
     },
   });
 
-  // Handle Smart Table Selection with capacity check
+  const handleInitialNumpadSubmit = (overrideVal?: string) => {
+    const raw = (overrideVal !== undefined ? overrideVal : initialNumpadCode).trim();
+    if (!raw) return;
+
+    // 0, P, or T = Takeaway / Packing
+    if (
+      raw === "0" ||
+      raw.toLowerCase() === "p" ||
+      raw.toLowerCase() === "t" ||
+      raw.toLowerCase() === "packing" ||
+      raw.toLowerCase() === "takeaway"
+    ) {
+      setSelectedTable(null);
+      setOrderMode("TAKEAWAY");
+      setInitialNumpadCode("");
+      return;
+    }
+
+    // Match table number (exact match only)
+    const rawNum = raw.replace(/\D/g, "");
+    const matched = tables.find((t) => {
+      const tClean = t.tableNumber.trim().toLowerCase();
+      if (tClean === raw.toLowerCase()) return true;
+      if (rawNum && tClean.replace(/\D/g, "") === rawNum) return true;
+      return false;
+    });
+
+    if (matched) {
+      handleTableChange(matched.id);
+      setOrderMode("DINE_IN");
+      setInitialNumpadCode("");
+    } else {
+      setInitialTableMsg({ text: `Table "${raw}" not found! (Press 0 for Packing)`, type: "error" });
+      setTimeout(() => setInitialTableMsg(null), 2500);
+      setInitialNumpadCode("");
+    }
+  };
+
+  const handleQuickCodeSubmit = (overrideCode?: string) => {
+    const query = (overrideCode !== undefined ? overrideCode : quickDishCode).trim();
+    if (!query) return;
+
+    const queryClean = query.toLowerCase();
+
+    // 1. Strict exact match on item.code (case-insensitive, trimmed)
+    let match = menuItems.find((item) => {
+      if (!item.code) return false;
+      return item.code.trim().toLowerCase() === queryClean;
+    });
+
+    // 2. Strict exact numeric match (e.g. cashier typed 2, item.code is "2" or "02")
+    if (!match && !isNaN(Number(queryClean))) {
+      const queryNum = Number(queryClean);
+      match = menuItems.find((item) => {
+        if (!item.code) return false;
+        const itemNum = Number(item.code.trim());
+        return !isNaN(itemNum) && itemNum === queryNum;
+      });
+    }
+
+    // 3. Strict exact digits match (e.g. item.code is "D-2" and cashier typed "2")
+    // Under no circumstances use startsWith or includes! "2" will NEVER match "26"!
+    if (!match) {
+      const queryDigits = queryClean.replace(/\D/g, "");
+      if (queryDigits) {
+        match = menuItems.find((item) => {
+          if (!item.code) return false;
+          const itemDigits = item.code.trim().toLowerCase().replace(/\D/g, "");
+          return itemDigits === queryDigits;
+        });
+      }
+    }
+
+    if (!match) {
+      setCodeFeedbackMsg({ text: `Dish code "${query}" not found!`, type: "error" });
+      setTimeout(() => setCodeFeedbackMsg(null), 2500);
+      setQuickDishCode("");
+      quickCodeInputRef.current?.focus();
+      return;
+    }
+
+    if (!match.isAvailable) {
+      setCodeFeedbackMsg({ text: `"${match.name}" is OUT OF STOCK!`, type: "error" });
+      setTimeout(() => setCodeFeedbackMsg(null), 2500);
+      setQuickDishCode("");
+      quickCodeInputRef.current?.focus();
+      return;
+    }
+
+    // Ice Cream with 1 & 2 Scoops
+    if (isIceCreamWithScoops(match)) {
+      setQuickDishCode("");
+      quickCodeInputRef.current?.blur();
+      setSizeSelectionItem(match);
+      setCodeFeedbackMsg({
+        text: `🍨 ${match.name}: Press 1 (1 Scoop), 2 (2 Scoops)`,
+        type: "success",
+      });
+      setTimeout(() => setCodeFeedbackMsg(null), 3000);
+      return;
+    }
+
+    // Pizza with portion sizes
+    if (isPizzaWithSizes(match)) {
+      setQuickDishCode("");
+      quickCodeInputRef.current?.blur();
+      setSizeSelectionItem(match);
+      const hasThreeSizes = match.priceMedium != null && Number(match.priceMedium) > 0;
+      setCodeFeedbackMsg({
+        text: hasThreeSizes
+          ? `🍕 ${match.name}: Press 1 (Small), 2 (Medium), 3 (Large)`
+          : `🍕 ${match.name}: Press 1 (Normal), 2 (Loaded)`,
+        type: "success",
+      });
+      setTimeout(() => setCodeFeedbackMsg(null), 3000);
+      return;
+    }
+
+    // Standard dish
+    addItem(match);
+    setQuickDishCode("");
+    setCodeFeedbackMsg({
+      text: `✓ Added: ${match.name} (₹${Number(match.price).toFixed(0)})`,
+      type: "success",
+    });
+    setTimeout(() => setCodeFeedbackMsg(null), 2000);
+    quickCodeInputRef.current?.focus();
+  };
+
+  // Immediate auto-focus as soon as POS opens or switches mode
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!orderMode) {
+        initialNumpadInputRef.current?.focus();
+      } else {
+        quickCodeInputRef.current?.focus();
+      }
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [orderMode]);
+
+  // Keep dish code input auto-focused after closing portion/scoop modal
+  useEffect(() => {
+    if (!sizeSelectionItem && orderMode) {
+      setQuickDishCode("");
+      const timer = setTimeout(() => {
+        setQuickDishCode("");
+        quickCodeInputRef.current?.focus();
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [sizeSelectionItem, orderMode]);
+
+  // Keyboard listeners for initial screen shortcuts & rush hour numpad quick-add
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Do not intercept if a modal is open
+      if (
+        sizeSelectionItem ||
+        isBillPayModalOpen ||
+        isAggregatorModalOpen ||
+        isAggregatorSettingsOpen ||
+        isPrinterConfigOpen ||
+        isFloorPlanOpen ||
+        showCapacityWarning ||
+        showQuickAddCustomer
+      ) {
+        return;
+      }
+
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isInputFocused =
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.tagName === "SELECT");
+
+      // CASE 1: On the Initial Screen (orderMode === null)
+      if (!orderMode) {
+        if (activeEl === initialNumpadInputRef.current) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            handleInitialNumpadSubmit();
+            return;
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            setInitialNumpadCode("");
+            if (selectedTable) {
+              setOrderMode("DINE_IN");
+            } else {
+              navigate("/");
+            }
+            return;
+          }
+          return;
+        }
+
+        if (!isInputFocused) {
+          // Press digit 0-9 routes to initial numpad selector
+          if (/^[0-9]$/.test(e.key)) {
+            e.preventDefault();
+            setInitialNumpadCode((prev) => prev + e.key);
+            initialNumpadInputRef.current?.focus();
+            return;
+          }
+
+          // Press 'T', 't', 'P', 'p' for Takeaway / Packing
+          if (e.key.toLowerCase() === "t" || e.key.toLowerCase() === "p") {
+            e.preventDefault();
+            setSelectedTable(null);
+            setOrderMode("TAKEAWAY");
+            return;
+          }
+
+          // Press Enter if initialNumpadCode has content
+          if (e.key === "Enter" && initialNumpadCode.trim()) {
+            e.preventDefault();
+            handleInitialNumpadSubmit();
+            return;
+          }
+
+          // Press Escape to resume order or exit POS to dashboard
+          if (e.key === "Escape") {
+            e.preventDefault();
+            if (selectedTable) {
+              setOrderMode("DINE_IN");
+            } else {
+              navigate("/");
+            }
+            return;
+          }
+        }
+        return;
+      }
+
+      // CASE 2: Inside Menu & Billing View (orderMode != null)
+      // If user is focused inside the quick code input:
+      if (activeEl === quickCodeInputRef.current) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (quickDishCode.trim()) {
+            handleQuickCodeSubmit();
+          } else if (cartItems.length > 0) {
+            // When input is empty and cart has items, Enter opens Bill & Pay!
+            const tot = getTotal();
+            setPayMode("CASH");
+            setSplitCashAmount(tot);
+            setSplitUpiAmount(0);
+            setIsBillPayModalOpen(true);
+          }
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          if (quickDishCode.trim()) {
+            setQuickDishCode("");
+          } else {
+            // Return to table selection
+            setOrderMode(null);
+          }
+          return;
+        }
+        return;
+      }
+
+      // If NOT focused on any input:
+      if (!isInputFocused) {
+        // Pressing Enter when cart has items opens Bill & Pay!
+        if (e.key === "Enter" && cartItems.length > 0 && !quickDishCode.trim()) {
+          e.preventDefault();
+          const tot = getTotal();
+          setPayMode("CASH");
+          setSplitCashAmount(tot);
+          setSplitUpiAmount(0);
+          setIsBillPayModalOpen(true);
+          return;
+        }
+
+        // Pressing digit 0-9 routes to quick dish code!
+        if (/^[0-9]$/.test(e.key)) {
+          e.preventDefault();
+          setQuickDishCode((prev) => prev + e.key);
+          quickCodeInputRef.current?.focus();
+          return;
+        }
+
+        // Pressing Enter if quickDishCode has content
+        if (e.key === "Enter" && quickDishCode.trim()) {
+          e.preventDefault();
+          handleQuickCodeSubmit();
+          return;
+        }
+
+        // Pressing Escape switches back to table selection
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setOrderMode(null);
+          return;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [
+    orderMode,
+    sizeSelectionItem,
+    isBillPayModalOpen,
+    isAggregatorModalOpen,
+    isAggregatorSettingsOpen,
+    isPrinterConfigOpen,
+    isFloorPlanOpen,
+    showCapacityWarning,
+    showQuickAddCustomer,
+    quickDishCode,
+    initialNumpadCode,
+    menuItems,
+    tables,
+    navigate,
+  ]);
+
+  // Handle Smart Table Selection
   const handleTableChange = (tableId: string) => {
     if (!tableId) {
       setSelectedTable(null);
@@ -434,10 +904,9 @@ export const POSPage: React.FC = () => {
     const table = tables.find((t) => t.id === tableId);
     if (!table) return;
 
-    const remainingSeats = table.capacity - (table.currentOccupancy || 0);
-    if (guestCount > remainingSeats) {
+    if (guestCount > table.capacity) {
       const alternatives = tables.filter(
-        (t) => t.id !== table.id && (t.capacity - (t.currentOccupancy || 0)) >= guestCount
+        (t) => t.id !== table.id && t.capacity >= guestCount
       );
       setSuggestedTables(alternatives);
       setPendingTableSelection(table);
@@ -446,6 +915,16 @@ export const POSPage: React.FC = () => {
       setSelectedTable(table);
     }
   };
+
+  // Release table manually (mark vacant)
+  const releaseTableMutation = useMutation({
+    mutationFn: async (tableId: string) => {
+      await api.post(`/tables/${tableId}/close-session`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+    },
+  });
 
   // Place Order & Send KOT Mutation
   const placeOrderAndKOTMutation = useMutation({
@@ -465,7 +944,9 @@ export const POSPage: React.FC = () => {
           quantity: i.quantity,
           selectedSize: i.selectedSize || undefined,
           unitPrice: Number(i.price ?? i.menuItem.price),
-          notes: i.notes || null,
+          notes: i.isTakeaway
+            ? (i.notes ? `[PACKING / PARCEL] ${i.notes}` : "[PACKING / PARCEL]")
+            : (i.notes || null),
         })),
       };
 
@@ -488,6 +969,10 @@ export const POSPage: React.FC = () => {
       setPosError(extractErrorMessage(err));
     },
   });
+
+  const subtotal = getSubtotal();
+  const tax = getTax();
+  const total = getTotal();
 
   const [isBilling, setIsBilling] = useState(false);
 
@@ -528,7 +1013,7 @@ export const POSPage: React.FC = () => {
       const itemsSnapshot = cartItems.map((i) => {
         const itemUnitPrice = Number(i.price ?? i.menuItem.price);
         return {
-          name: i.selectedSize ? `${i.menuItem.name} (${i.selectedSize})` : i.menuItem.name,
+          name: i.menuItem.name,
           rawName: i.menuItem.name,
           quantity: i.quantity,
           price: itemUnitPrice,
@@ -536,6 +1021,7 @@ export const POSPage: React.FC = () => {
           menuItemId: i.menuItem.id,
           selectedSize: i.selectedSize || null,
           notes: i.notes || null,
+          isTakeaway: !!i.isTakeaway,
         };
       });
       const subtotalSnapshot = subtotal;
@@ -559,6 +1045,7 @@ export const POSPage: React.FC = () => {
           quantity: i.quantity,
           selectedSize: i.selectedSize,
           notes: i.notes,
+          isTakeaway: i.isTakeaway,
         })),
         instructions: partyNameSnapshot ? `Party: ${partyNameSnapshot}` : undefined,
       };
@@ -582,21 +1069,21 @@ export const POSPage: React.FC = () => {
         tax: taxSnapshot,
         total: totalSnapshot,
         payments: paymentRecords,
-        footerMessage: "Thanks For Visiting Madrasi Dosa",
+        instagramId: "madrasidosaoffical",
+        footerMessage: "Thank You! Please Visit Again",
       };
 
-      // 7. INSTANT PRINT SPOOLER: Dispatches KOT FIRST, followed immediately by Customer Bill
+      // 7. INSTANT PRINT SPOOLER: Dispatches KOT FIRST (auto-cut), followed by Customer Bill (auto-cut)
       try {
         if (printKOT) {
-          printCombinedKOTAndBillDirectly({
+          printKOTThenBillSequentially({
             kotParams,
             billParams,
             paperSize,
             logoUrl: brandSettings?.logoUrl || undefined,
           });
         } else {
-          const receiptText = buildThermalReceiptText(billParams, paperSize);
-          printReceiptDirectly(receiptText, {
+          printReceiptDirectly(billParams, {
             title: `Invoice #${invoiceNumber}`,
             paperSize,
             logoUrl: brandSettings?.logoUrl || undefined,
@@ -614,6 +1101,7 @@ export const POSPage: React.FC = () => {
       setSelectedCustomer(null);
       setPartyName("");
       setGuestCount(2);
+      setOrderMode(null); // Return directly to Big Screen Table / Takeaway selection for next customer!
 
       // 9. BACKGROUND CLOUD ASYNC SYNC: Syncs order, invoice, payment with Render & MongoDB
       const franchiseToUse = effectiveFranchiseId || (activeFranchises && activeFranchises[0]?.id) || user?.franchiseId;
@@ -644,18 +1132,37 @@ export const POSPage: React.FC = () => {
           : { paymentMethod: payModeSnapshot }),
       };
 
-      // Fire in background without blocking UI
+      // Fire in background with resilient offline queue fallback
       const fastBillUrl = franchiseToUse ? `/billing/fast-bill?franchiseId=${franchiseToUse}` : "/billing/fast-bill";
-      api.post(fastBillUrl, payload)
-        .then(() => {
+
+      const executeBackgroundSync = async () => {
+        try {
+          if (!navigator.onLine) {
+            throw new Error("Device is currently offline");
+          }
+          await api.post(fastBillUrl, payload);
           queryClient.invalidateQueries({ queryKey: ["tables"] });
           queryClient.invalidateQueries({ queryKey: ["orders"] });
           queryClient.invalidateQueries({ queryKey: ["invoices"] });
-        })
-        .catch((err) => {
-          console.warn("Background billing sync notice:", err);
-          setPosError("Bill printed locally! Cloud sync delayed: " + extractErrorMessage(err));
-        });
+        } catch (syncErr: any) {
+          console.warn("Fast-bill background network notice, queueing offline:", syncErr);
+          enqueueOfflineOrder({
+            franchiseId: String(franchiseToUse || ""),
+            url: fastBillUrl,
+            payload,
+            displayInvoiceNumber: invoiceNumber,
+            displayTotal: total,
+            itemSummary: itemsSnapshot.map((i) => `${i.quantity}x ${i.rawName}`).join(", "),
+            tableName: tableSnapshot ? `Table ${tableSnapshot.tableNumber}` : "Takeaway",
+          });
+          setPosError(
+            `Receipt printed! Bill #${invoiceNumber} queued locally (Offline). Will auto-sync when online.`
+          );
+          setTimeout(() => setPosError(null), 5000);
+        }
+      };
+
+      executeBackgroundSync();
     } catch (err: any) {
       console.error("Billing error:", err);
       setPosError("Billing error: " + (err?.message || "Failed to complete payment and print bill"));
@@ -664,28 +1171,89 @@ export const POSPage: React.FC = () => {
     }
   };
 
+  // Dedicated keyboard shortcuts for Bill & Pay Settlement Modal (1=Cash, 2=UPI, 3=Card, 4=Split, Enter=Complete & Print, Esc=Cancel)
+  useEffect(() => {
+    if (!isBillPayModalOpen) return;
+
+    // Immediately blur any non-number inputs (e.g. search boxes) so digit keys select payment mode
+    if (document.activeElement && (document.activeElement as HTMLElement).blur) {
+      const activeEl = document.activeElement as HTMLElement;
+      if (activeEl.tagName === "INPUT" && activeEl.getAttribute("type") !== "number") {
+        activeEl.blur();
+      }
+    }
+
+    const handleBillPayKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isTypingSplit = activeEl && activeEl.tagName === "INPUT" && activeEl.getAttribute("type") === "number";
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setIsBillPayModalOpen(false);
+        return;
+      }
+
+      // Enter key (standard or numpad): Completes payment and prints KOT + bill!
+      if (e.key === "Enter" || e.code === "NumpadEnter") {
+        e.preventDefault();
+        if (
+          !isBilling &&
+          !(payMode === "SPLIT" && Math.abs((splitCashAmount + splitUpiAmount) - total) > 0.05)
+        ) {
+          handleCompletePaymentAndPrint();
+        }
+        return;
+      }
+
+      // If user is actively typing a split number in cash/upi input, let digits pass
+      if (isTypingSplit) return;
+
+      if (e.key === "1" || e.code === "Numpad1") {
+        e.preventDefault();
+        setPayMode("CASH");
+        setSplitCashAmount(total);
+        setSplitUpiAmount(0);
+      } else if (e.key === "2" || e.code === "Numpad2") {
+        e.preventDefault();
+        setPayMode("UPI");
+        setSplitCashAmount(0);
+        setSplitUpiAmount(total);
+      } else if (e.key === "3" || e.code === "Numpad3") {
+        e.preventDefault();
+        setPayMode("CARD");
+        setSplitCashAmount(0);
+        setSplitUpiAmount(0);
+      } else if (e.key === "4" || e.code === "Numpad4") {
+        e.preventDefault();
+        setPayMode("SPLIT");
+        const half = Math.round((total / 2) * 100) / 100;
+        setSplitCashAmount(half);
+        setSplitUpiAmount(Number((total - half).toFixed(2)));
+      }
+    };
+
+    window.addEventListener("keydown", handleBillPayKeyDown, true);
+    return () => window.removeEventListener("keydown", handleBillPayKeyDown, true);
+  }, [isBillPayModalOpen, payMode, splitCashAmount, splitUpiAmount, total, isBilling]);
+
 
   const filteredItems = useMemo(() => {
-    const term = searchTerm.toLowerCase();
-    return menuItems.filter((item) => {
-      const matchesCategory = activeCategory ? item.categoryId === activeCategory : true;
-      const matchesSearch =
-        item.name.toLowerCase().includes(term) ||
-        (item.code || "").toLowerCase().includes(term) ||
-        (item.category?.name || "").toLowerCase().includes(term);
-      return matchesCategory && matchesSearch;
-    });
+    return searchMenuItems(menuItems, searchTerm, activeCategory || null);
   }, [menuItems, activeCategory, searchTerm]);
-
-  const subtotal = getSubtotal();
-  const tax = getTax();
-  const total = getTotal();
 
   // If Super Admin has not selected a specific franchise outlet yet, prompt to pick one
   if (isSuperAdmin && !selectedFranchiseId) {
     return (
-      <div className="h-[calc(100vh-6.5rem)] flex items-center justify-center p-6 bg-slate-50/50">
-        <div className="max-w-lg w-full bg-white rounded-3xl p-8 border border-gray-200 shadow-xl text-center space-y-6">
+      <div className="fixed inset-0 z-50 w-screen h-screen flex items-center justify-center p-6 bg-slate-100 text-gray-900 select-none">
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          className="absolute top-6 right-6 p-2 rounded-xl bg-white hover:bg-gray-100 text-gray-600 hover:text-gray-900 border border-gray-200 shadow-sm transition-colors cursor-pointer"
+          title="Exit to Dashboard"
+        >
+          <X className="w-5 h-5" />
+        </button>
+        <div className="max-w-lg w-full bg-white text-gray-900 rounded-3xl p-8 border border-gray-200 shadow-2xl text-center space-y-6">
           <div className="w-16 h-16 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
             <Store className="w-8 h-8" />
           </div>
@@ -738,15 +1306,462 @@ export const POSPage: React.FC = () => {
     );
   }
 
-  return (
-    <div className="h-[calc(100vh-6.5rem)] flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto overflow-hidden">
-      {/* LEFT COLUMN: Catalog & Item Selection */}
-      <div className="flex-1 flex flex-col min-w-0 bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
-        {/* Aggregator Status & Incoming Order Alert Ribbon */}
-        <div className="bg-slate-900 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+  // Table counts and filtering for Initial Big Screen Mode
+  const availableTablesCount = tables.filter((t) => t.status === "AVAILABLE").length;
+  const occupiedTablesCount = tables.filter((t) => t.status === "OCCUPIED" || t.status === "BILLING").length;
+
+  const initialFilteredTables = useMemo(() => {
+    let list = [...tables];
+    // Natural numeric sorting (Table 1, Table 2, Table 3... Table 10)
+    list.sort((a, b) => {
+      const numA = parseInt(a.tableNumber.replace(/\D/g, "")) || 0;
+      const numB = parseInt(b.tableNumber.replace(/\D/g, "")) || 0;
+      if (numA !== numB) return numA - numB;
+      return a.tableNumber.localeCompare(b.tableNumber, undefined, { numeric: true });
+    });
+
+    if (initialTableFilter === "AVAILABLE") {
+      list = list.filter((t) => t.status === "AVAILABLE");
+    } else if (initialTableFilter === "OCCUPIED") {
+      list = list.filter((t) => t.status === "OCCUPIED" || t.status === "BILLING");
+    }
+    if (initialTableSearch.trim()) {
+      const q = initialTableSearch.toLowerCase().trim();
+      list = list.filter((t) => t.tableNumber.toLowerCase().includes(q));
+    }
+    return list;
+  }, [tables, initialTableFilter, initialTableSearch]);
+
+  // INITIAL BIG SCREEN MODE: First select Table or Takeaway before opening menu
+  if (!orderMode) {
+    return (
+      <div className="fixed inset-0 z-50 w-screen h-screen flex flex-col bg-slate-100 text-gray-900 overflow-hidden select-none">
+        {/* Top Header of Initial Screen */}
+        <div className="px-6 py-3.5 bg-white border-b border-gray-200 shadow-xs flex flex-wrap items-center justify-between gap-4 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black shadow-md shadow-indigo-600/20">
+              <UtensilsCrossed className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-black tracking-tight text-gray-950">MADRASI DOSA POS</h1>
+                <span className="text-[10px] uppercase font-black tracking-widest bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  Ready
+                </span>
+              </div>
+              <p className="text-xs text-gray-500">
+                {activeFranchises.find((f) => f.id === effectiveFranchiseId)?.name || user?.franchise?.name || "Terminal 01"} • Select Table or Takeaway to Begin Billing
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Numpad Table & Packing Selector */}
+          <div className="relative flex items-center">
+            <div className="flex items-center gap-2 bg-amber-50/90 border-2 border-amber-400 rounded-2xl px-3 py-1.5 shadow-xs">
+              <span className="text-xs font-black text-amber-800 flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-amber-600 fill-amber-500" />
+                <span className="hidden sm:inline">Numpad:</span>
+              </span>
+              <input
+                ref={initialNumpadInputRef}
+                type="text"
+                value={initialNumpadCode}
+                onChange={(e) => setInitialNumpadCode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleInitialNumpadSubmit();
+                  }
+                }}
+                placeholder="Type Table # (or 0 for Packing) + ↵"
+                className="w-44 sm:w-56 bg-white text-gray-900 font-mono font-bold text-xs px-2.5 py-1 rounded-xl border border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder:text-gray-400"
+                title="Type Table number (or 0 for Takeaway / Packing) and press Enter"
+              />
+              <button
+                type="button"
+                onClick={() => handleInitialNumpadSubmit()}
+                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-lg transition-colors cursor-pointer"
+                title="Press Enter"
+              >
+                ↵
+              </button>
+            </div>
+
+            {initialTableMsg && (
+              <div
+                className={`absolute top-full left-0 mt-2 z-30 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xl whitespace-nowrap animate-in fade-in slide-in-from-top-1 ${
+                  initialTableMsg.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
+                }`}
+              >
+                {initialTableMsg.text}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            {/* Swiggy / Zomato pills */}
+            <div className="hidden lg:flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-200 text-xs">
+              <span className="text-gray-500 font-bold">Online:</span>
+              <span className={`inline-flex items-center gap-1 font-bold ${isSwiggyEnabled ? "text-[#FC8019]" : "text-gray-400"}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isSwiggyEnabled ? "bg-[#FC8019] animate-pulse" : "bg-gray-400"}`} />
+                Swiggy
+              </span>
+              <span className="text-gray-300">•</span>
+              <span className={`inline-flex items-center gap-1 font-bold ${isZomatoEnabled ? "text-[#E23744]" : "text-gray-400"}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isZomatoEnabled ? "bg-[#E23744] animate-pulse" : "bg-gray-400"}`} />
+                Zomato
+              </span>
+            </div>
+
+            {/* Live Online / Offline Sync Indicator */}
+            <button
+              type="button"
+              onClick={() => setIsOfflineModalOpen(true)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                !isOnline
+                  ? "bg-rose-50 border-rose-400 text-rose-800 animate-pulse"
+                  : offlinePendingCount > 0
+                  ? "bg-amber-50 border-amber-300 text-amber-900"
+                  : "bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+              }`}
+              title={
+                !isOnline
+                  ? "Offline Mode Active (Bills saved locally, click to view queue)"
+                  : offlinePendingCount > 0
+                  ? `${offlinePendingCount} offline bills pending sync (Click to sync now)`
+                  : "Cloud Connected (Online & Synced)"
+              }
+            >
+              {!isOnline ? (
+                <>
+                  <WifiOff className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Offline {offlinePendingCount > 0 ? `(${offlinePendingCount})` : ""}</span>
+                </>
+              ) : offlinePendingCount > 0 ? (
+                <>
+                  <RefreshCw className={`w-3.5 h-3.5 text-amber-600 ${isOfflineSyncing ? "animate-spin" : ""}`} />
+                  <span>Sync ({offlinePendingCount})</span>
+                </>
+              ) : (
+                <>
+                  <Wifi className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">Online</span>
+                </>
+              )}
+            </button>
+
+            {/* Printer Button */}
+            <button
+              type="button"
+              onClick={() => setIsPrinterConfigOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 text-xs font-bold text-gray-700 shadow-2xs transition-colors cursor-pointer"
+            >
+              <Printer className="w-4 h-4 text-gray-500" />
+              <span>🖨️ {paperSize}</span>
+            </button>
+
+            {/* Quick PIN Lock & Settings Button */}
+            {user?.id && hasPin(user.id) ? (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => lock()}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition-colors cursor-pointer"
+                  title="Lock Terminal Screen (Require PIN to unlock)"
+                >
+                  <Lock className="w-4 h-4 text-amber-600" />
+                  <span className="hidden sm:inline">Lock</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPinModalOpen(true)}
+                  className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-xs font-bold text-emerald-800 shadow-2xs transition-colors cursor-pointer"
+                  title="App Lock Settings (Turn Off / Change PIN)"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span className="hidden sm:inline">PIN: ON</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsPinModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-50 hover:bg-indigo-50 border border-dashed border-gray-300 hover:border-indigo-300 text-xs font-bold text-gray-600 hover:text-indigo-700 shadow-2xs transition-colors cursor-pointer"
+                title="Setup Quick PIN / Turn On App Lock"
+              >
+                <Unlock className="w-4 h-4" />
+                <span className="hidden sm:inline">PIN: OFF</span>
+              </button>
+            )}
+
+            {/* Exit POS Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (document.fullscreenElement && document.exitFullscreen) {
+                  document.exitFullscreen().catch(() => {});
+                }
+                navigate("/");
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-rose-50 border border-gray-200 hover:border-rose-300 text-gray-700 hover:text-rose-700 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+              title="Exit POS Terminal to Dashboard"
+            >
+              <X className="w-4 h-4" />
+              <span className="hidden sm:inline">Exit POS</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Active Selected Table Bar (when switching table or customer not ordering now) */}
+        {selectedTable && (
+          <div className="px-6 py-2.5 bg-indigo-600 text-white flex flex-wrap items-center justify-between gap-3 text-xs font-bold shadow-md shrink-0 border-b border-indigo-700 animate-in fade-in slide-in-from-top-1">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-indigo-200 uppercase tracking-wider text-[10px]">Active Selection:</span>
+              <span className="bg-white text-indigo-900 px-3 py-1 rounded-lg font-black text-sm shadow-xs flex items-center gap-1.5">
+                🍽️ Table {selectedTable.tableNumber}
+              </span>
+              {cartItems.length > 0 ? (
+                <span className="bg-indigo-700/90 text-indigo-100 px-2.5 py-1 rounded-lg text-xs font-medium">
+                  🛒 {cartItems.length} item{cartItems.length > 1 ? "s" : ""} in cart (₹{getTotal().toFixed(0)}) — Click another table below to switch table
+                </span>
+              ) : (
+                <span className="text-indigo-200 text-xs font-medium">
+                  Click another table below to switch, or click Release if customer is not ordering now.
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTable(null);
+                  if (cartItems.length > 0) clearCart();
+                }}
+                className="bg-rose-500 hover:bg-rose-600 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                title="Customer not ordering now: Release table and clear selection"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Release Table (Not Ordering Now)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOrderMode("DINE_IN")}
+                className="bg-white hover:bg-indigo-50 text-indigo-900 px-3.5 py-1.5 rounded-lg text-xs font-black transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                title="Return to cart & menu for this table"
+              >
+                <span>Resume Order →</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Filter & Guest Controls Toolbar */}
+        <div className="px-6 py-3 bg-white/90 border-b border-gray-200/90 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="font-bold uppercase tracking-wider text-[11px] text-slate-400 flex items-center gap-1.5">
-              <Globe className="w-3.5 h-3.5 text-indigo-400" />
+            {/* Status Filter Pills */}
+            <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setInitialTableFilter("ALL")}
+                className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                  initialTableFilter === "ALL" ? "bg-indigo-600 text-white shadow-xs" : "text-gray-600 hover:text-gray-950"
+                }`}
+              >
+                All Tables ({tables.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setInitialTableFilter("AVAILABLE")}
+                className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                  initialTableFilter === "AVAILABLE" ? "bg-emerald-600 text-white shadow-xs" : "text-gray-600 hover:text-emerald-700"
+                }`}
+              >
+                🟢 Available ({availableTablesCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setInitialTableFilter("OCCUPIED")}
+                className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                  initialTableFilter === "OCCUPIED" ? "bg-rose-600 text-white shadow-xs" : "text-gray-600 hover:text-rose-700"
+                }`}
+              >
+                🔴 Occupied ({occupiedTablesCount})
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <input
+              type="text"
+              placeholder="Find Table #..."
+              value={initialTableSearch}
+              onChange={(e) => setInitialTableSearch(e.target.value)}
+              className="w-36 sm:w-44 bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+            />
+          </div>
+
+          {/* Guest Count for Dine-In selection */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 font-bold hidden sm:inline">Dine-In Guests:</span>
+            <div className="flex items-center gap-1.5 bg-gray-100 px-2 py-1 rounded-xl border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
+                className="w-6 h-6 rounded-lg bg-white hover:bg-gray-200 text-gray-800 font-bold flex items-center justify-center text-xs shadow-2xs border border-gray-200 cursor-pointer"
+              >
+                -
+              </button>
+              <span className="w-6 text-center font-black text-indigo-700 text-sm">{guestCount}</span>
+              <button
+                type="button"
+                onClick={() => setGuestCount(guestCount + 1)}
+                className="w-6 h-6 rounded-lg bg-white hover:bg-gray-200 text-gray-800 font-bold flex items-center justify-center text-xs shadow-2xs border border-gray-200 cursor-pointer"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Unified Table & Packing Grid */}
+        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin bg-slate-100/70">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {/* TILE 1: TAKEAWAY / PACKING (Integrated directly with tables!) */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedTable(null);
+                setOrderMode("TAKEAWAY");
+              }}
+              className="p-5 rounded-2xl border-2 text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative bg-white hover:bg-indigo-50/40 border-indigo-300 hover:border-indigo-500 shadow-xs hover:shadow-xl min-h-[170px]"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border bg-indigo-50 text-indigo-700 border-indigo-200">
+                    🛍️ Parcel / Counter
+                  </span>
+                  <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-300">
+                    Key [0 / P]
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3 my-2">
+                  <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-2xs">
+                    <ShoppingBag className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-gray-950 group-hover:text-indigo-900 transition-colors leading-tight">
+                      Takeaway / Packing
+                    </h3>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      No table assigned
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs font-bold text-indigo-600 group-hover:text-indigo-800">
+                <span>Open Menu</span>
+                <span className="text-indigo-600 group-hover:translate-x-1 transition-transform font-black">→</span>
+              </div>
+            </button>
+
+            {/* TILES 2...N: DINING TABLES */}
+            {initialFilteredTables.map((t) => {
+              const isAvail = t.status === "AVAILABLE";
+              const isOcc = t.status === "OCCUPIED" || (t.currentOccupancy || 0) > 0;
+              const isSelected = selectedTable?.id === t.id;
+
+              return (
+                <div
+                  key={t.id}
+                  onClick={() => {
+                    handleTableChange(t.id);
+                    setOrderMode("DINE_IN");
+                  }}
+                  className={`p-5 rounded-2xl border-2 text-left flex flex-col justify-between transition-all duration-150 cursor-pointer active:scale-95 group relative min-h-[175px] ${
+                    isSelected
+                      ? "bg-indigo-50/90 border-indigo-600 ring-4 ring-indigo-500/40 shadow-xl"
+                      : isOcc
+                      ? "bg-rose-50/90 border-2 border-rose-500 shadow-md shadow-rose-200/50 hover:border-rose-600"
+                      : isAvail
+                      ? "bg-white hover:bg-emerald-50/50 border-emerald-300 hover:border-emerald-500 shadow-xs hover:shadow-xl"
+                      : "bg-indigo-50/60 hover:bg-indigo-50 border-indigo-300 hover:border-indigo-400 shadow-xs"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2.5">
+                      <span
+                        className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
+                          isSelected
+                            ? "bg-indigo-600 text-white border-indigo-700 shadow-xs"
+                            : isOcc
+                            ? "bg-rose-600 text-white border-rose-700 shadow-xs"
+                            : isAvail
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-indigo-100 text-indigo-800 border-indigo-200"
+                        }`}
+                      >
+                        {isSelected ? "👑 Current Table" : isOcc ? "🔴 Occupied" : isAvail ? "🟢 Available" : "🔵 Billing"}
+                      </span>
+                      <span className="text-[10px] font-mono font-bold bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200">
+                        Key [{t.tableNumber}]
+                      </span>
+                    </div>
+
+                    <h3 className="text-2xl font-black text-gray-950 group-hover:text-indigo-900 transition-colors">
+                      Table {t.tableNumber}
+                    </h3>
+
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-gray-600 font-bold">
+                        🪑 {t.capacity} Seats
+                      </span>
+                      {isOcc && (
+                        <span className="text-[11px] text-rose-700 font-extrabold bg-rose-100 px-1.5 py-0.5 rounded">
+                          Occupied
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs font-bold text-gray-500">
+                    <span className={isSelected ? "text-indigo-700 font-black" : isOcc ? "text-rose-700 font-black" : selectedTable ? "text-indigo-600 font-bold" : ""}>
+                      {isSelected ? "Current Table (Resume)" : isOcc ? "Re-Bill / New Order →" : selectedTable ? `Switch to Table ${t.tableNumber}` : "Select Table →"}
+                    </span>
+                    {isOcc && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          releaseTableMutation.mutate(t.id);
+                        }}
+                        className="text-[11px] font-bold bg-white hover:bg-emerald-50 text-emerald-700 hover:text-emerald-800 border border-emerald-300 hover:border-emerald-500 px-2.5 py-1 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                        title="Click to release table if customer has left"
+                      >
+                        Mark Vacant
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 w-screen h-screen flex flex-col lg:flex-row gap-3 p-3 bg-slate-100 text-gray-900 overflow-hidden select-none">
+      {/* LEFT COLUMN: Catalog & Item Selection */}
+      <div className="flex-1 flex flex-col min-w-0 bg-white rounded-2xl border border-gray-200/90 shadow-xs overflow-hidden text-gray-900">
+        {/* Aggregator Status & Incoming Order Alert Ribbon */}
+        <div className="bg-white border-b border-gray-200 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0 text-gray-700">
+          <div className="flex items-center gap-2">
+            <span className="font-bold uppercase tracking-wider text-[11px] text-gray-500 flex items-center gap-1.5">
+              <Globe className="w-3.5 h-3.5 text-indigo-600" />
               Aggregators:
             </span>
 
@@ -754,13 +1769,13 @@ export const POSPage: React.FC = () => {
             <span
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[11px] ${
                 isSwiggyEnabled
-                  ? "bg-[#FC8019]/20 text-[#FC8019] border border-[#FC8019]/40"
-                  : "bg-slate-800 text-slate-500 border border-slate-700"
+                  ? "bg-[#FC8019]/15 text-[#FC8019] border border-[#FC8019]/30"
+                  : "bg-gray-100 text-gray-400 border border-gray-200"
               }`}
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  isSwiggyEnabled ? "bg-[#FC8019] animate-pulse" : "bg-slate-500"
+                  isSwiggyEnabled ? "bg-[#FC8019] animate-pulse" : "bg-gray-400"
                 }`}
               />
               Swiggy {isSwiggyEnabled ? "Live" : "Offline"}
@@ -770,13 +1785,13 @@ export const POSPage: React.FC = () => {
             <span
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[11px] ${
                 isZomatoEnabled
-                  ? "bg-[#E23744]/20 text-[#E23744] border border-[#E23744]/40"
-                  : "bg-slate-800 text-slate-500 border border-slate-700"
+                  ? "bg-[#E23744]/15 text-[#E23744] border border-[#E23744]/30"
+                  : "bg-gray-100 text-gray-400 border border-gray-200"
               }`}
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  isZomatoEnabled ? "bg-[#E23744] animate-pulse" : "bg-slate-500"
+                  isZomatoEnabled ? "bg-[#E23744] animate-pulse" : "bg-gray-400"
                 }`}
               />
               Zomato {isZomatoEnabled ? "Live" : "Offline"}
@@ -796,20 +1811,20 @@ export const POSPage: React.FC = () => {
             ) : (
               <button
                 onClick={() => setIsAggregatorModalOpen(true)}
-                className="text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer flex items-center gap-1"
+                className="text-[11px] text-gray-500 hover:text-gray-900 cursor-pointer flex items-center gap-1"
               >
-                <Bell className="w-3 h-3 text-slate-500" />
+                <Bell className="w-3 h-3 text-gray-400" />
                 <span>Online Orders</span>
               </button>
             )}
 
             {/* Test Simulation Buttons */}
-            <div className="flex items-center gap-1 pl-1 border-l border-slate-700">
+            <div className="flex items-center gap-1 pl-1 border-l border-gray-200">
               <button
                 type="button"
                 onClick={() => simulateOrderMutation.mutate("SWIGGY")}
                 disabled={simulateOrderMutation.isPending}
-                className="px-2 py-1 rounded-md bg-slate-800 hover:bg-[#FC8019] text-slate-200 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors cursor-pointer"
+                className="px-2 py-1 rounded-md bg-gray-100 hover:bg-[#FC8019] text-gray-600 hover:text-white font-semibold text-[11px] border border-gray-200 transition-colors cursor-pointer"
                 title="Simulate incoming test order from Swiggy"
               >
                 + Test Swiggy
@@ -818,7 +1833,7 @@ export const POSPage: React.FC = () => {
                 type="button"
                 onClick={() => simulateOrderMutation.mutate("ZOMATO")}
                 disabled={simulateOrderMutation.isPending}
-                className="px-2 py-1 rounded-md bg-slate-800 hover:bg-[#E23744] text-slate-200 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors cursor-pointer"
+                className="px-2 py-1 rounded-md bg-gray-100 hover:bg-[#E23744] text-gray-600 hover:text-white font-semibold text-[11px] border border-gray-200 transition-colors cursor-pointer"
                 title="Simulate incoming test order from Zomato"
               >
                 + Test Zomato
@@ -829,7 +1844,7 @@ export const POSPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsAggregatorSettingsOpen(true)}
-              className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors cursor-pointer"
+              className="px-2.5 py-1 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 font-semibold text-[11px] border border-gray-200 transition-colors cursor-pointer"
             >
               ⚙️ Integrations
             </button>
@@ -853,6 +1868,112 @@ export const POSPage: React.FC = () => {
             </div>
           )}
 
+          {/* Active Order Mode Indicator & Switch Table / Mode Button */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 text-xs font-bold shadow-2xs shrink-0">
+            {selectedTable ? (
+              <button
+                type="button"
+                onClick={() => setOrderMode(null)}
+                className="flex items-center gap-1.5 text-indigo-700 hover:text-indigo-950 font-black cursor-pointer group"
+                title="Click to Change Table Number or Switch to Takeaway"
+              >
+                <span className="flex items-center gap-1 group-hover:underline">
+                  🍽️ Table {selectedTable.tableNumber}
+                </span>
+                <span className="text-gray-500 text-[11px] font-normal">
+                  ({guestCount}p)
+                </span>
+                <span className="text-[10px] bg-white group-hover:bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-200 transition-colors font-bold ml-1 shadow-2xs">
+                  ⇄ Change Table
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setOrderMode(null)}
+                className="flex items-center gap-1.5 text-emerald-700 hover:text-emerald-950 font-black cursor-pointer group"
+                title="Click to Switch to Dine-In Table"
+              >
+                <ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="group-hover:underline">Takeaway / Packing</span>
+                <span className="text-[10px] bg-white group-hover:bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200 transition-colors font-bold ml-1 shadow-2xs">
+                  ⇄ Switch
+                </span>
+              </button>
+            )}
+
+            {/* Direct button to Release Table / Go Back to Select Table Menu if customer doesn't want to order */}
+            <button
+              type="button"
+              onClick={() => {
+                if (cartItems.length === 0) {
+                  setSelectedTable(null);
+                  setOrderMode(null);
+                } else {
+                  if (window.confirm("Release this table and return to table selection? (Cart items will be cleared)")) {
+                    clearCart();
+                    setSelectedTable(null);
+                    setOrderMode(null);
+                  }
+                }
+              }}
+              className="ml-1 text-[11px] bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-900 px-2.5 py-1 rounded-lg border border-rose-200 hover:border-rose-300 transition-colors cursor-pointer shadow-2xs font-bold flex items-center gap-1"
+              title="Customer not ordering now: Release table and return to table selection"
+            >
+              <RotateCcw className="w-3 h-3 text-rose-500" />
+              <span>← Back to Tables</span>
+            </button>
+          </div>
+
+          {/* Rush Hour Numpad Quick-Add Input */}
+          <div className="relative flex items-center shrink-0">
+            <div className="flex items-center gap-1.5 bg-amber-50 border-2 border-amber-400/80 rounded-xl px-2.5 py-1.5 shadow-2xs">
+              <span className="text-[11px] font-black text-amber-800 flex items-center gap-1">
+                <Zap className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
+                <span className="hidden xl:inline">Code:</span>
+              </span>
+              <input
+                ref={quickCodeInputRef}
+                type="text"
+                disabled={Boolean(sizeSelectionItem)}
+                value={quickDishCode}
+                onChange={(e) => {
+                  if (sizeSelectionItem) return;
+                  setQuickDishCode(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (sizeSelectionItem) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }
+                }}
+                placeholder="Numpad # + ↵"
+                className={`w-24 sm:w-28 text-xs font-mono font-black text-amber-950 bg-white border border-amber-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-500 uppercase placeholder:text-amber-400 placeholder:font-normal ${
+                  sizeSelectionItem ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                title="Type dish code from keyboard numpad and press Enter to instantly add to cart"
+              />
+              <button
+                type="button"
+                onClick={() => handleQuickCodeSubmit()}
+                className="text-[10px] font-black bg-amber-500 hover:bg-amber-600 text-white px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                title="Press Enter to add dish"
+              >
+                ↵
+              </button>
+            </div>
+
+            {codeFeedbackMsg && (
+              <div
+                className={`absolute top-full left-0 mt-1 z-30 px-2.5 py-1 rounded-lg text-xs font-bold shadow-md whitespace-nowrap animate-in fade-in slide-in-from-top-1 ${
+                  codeFeedbackMsg.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
+                }`}
+              >
+                {codeFeedbackMsg.text}
+              </div>
+            )}
+          </div>
+
           <Input
             placeholder="Search dish by name..."
             value={searchTerm}
@@ -861,7 +1982,7 @@ export const POSPage: React.FC = () => {
             className="w-full sm:max-w-xs"
           />
 
-          {/* Table Selector & Guests */}
+          {/* Quick Actions & Guests */}
           <div className="w-full sm:w-auto flex-1 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -872,30 +1993,110 @@ export const POSPage: React.FC = () => {
               <span>🪑 Floor Plan ({tables.length})</span>
             </button>
 
+            {/* Live Online / Offline Sync Indicator */}
+            <button
+              type="button"
+              onClick={() => setIsOfflineModalOpen(true)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                !isOnline
+                  ? "bg-rose-50 border-rose-400 text-rose-800 animate-pulse"
+                  : offlinePendingCount > 0
+                  ? "bg-amber-50 border-amber-300 text-amber-900"
+                  : "bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+              }`}
+              title={
+                !isOnline
+                  ? "Offline Mode Active (Bills saved locally, click to view queue)"
+                  : offlinePendingCount > 0
+                  ? `${offlinePendingCount} offline bills pending sync (Click to sync now)`
+                  : "Cloud Connected (Online & Synced)"
+              }
+            >
+              {!isOnline ? (
+                <>
+                  <WifiOff className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Offline {offlinePendingCount > 0 ? `(${offlinePendingCount})` : ""}</span>
+                </>
+              ) : offlinePendingCount > 0 ? (
+                <>
+                  <RefreshCw className={`w-3.5 h-3.5 text-amber-600 ${isOfflineSyncing ? "animate-spin" : ""}`} />
+                  <span>Sync ({offlinePendingCount})</span>
+                </>
+              ) : (
+                <>
+                  <Wifi className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="hidden xl:inline">Online</span>
+                </>
+              )}
+            </button>
+
             <button
               type="button"
               onClick={() => setIsPrinterConfigOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 shadow-2xs transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-xs font-bold text-gray-700 shadow-2xs transition-colors cursor-pointer"
               title="Configure thermal printer port, 58mm / 80mm paper size, and test print"
             >
-              <Printer className="w-4 h-4 text-slate-600" />
+              <Printer className="w-4 h-4 text-gray-500" />
               <span>🖨️ Printer ({paperSize})</span>
             </button>
 
-            <div className="flex-1 min-w-[180px]">
-              <Select
-                options={[
-                  { value: "", label: "🛍️ Takeaway / Direct Counter" },
-                  ...tables.map((t) => ({
-                    value: t.id,
-                    label: `🪑 Table ${t.tableNumber} (${t.currentOccupancy || 0}/${t.capacity} seated - ${t.status})`,
-                  })),
-                ]}
-                value={selectedTable?.id || ""}
-                onChange={(e) => handleTableChange(e.target.value)}
-                className="w-full font-semibold"
-              />
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsKitchenPrepOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition-colors cursor-pointer"
+              title="Daily Kitchen Prep Forecaster & Batter Sheet"
+            >
+              <ChefHat className="w-4 h-4 text-amber-600" />
+              <span className="hidden xl:inline">Prep Sheet</span>
+            </button>
+
+            {user?.id && hasPin(user.id) ? (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => lock()}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition-colors cursor-pointer"
+                  title="Lock Terminal Screen (Require PIN to unlock)"
+                >
+                  <Lock className="w-4 h-4 text-amber-600" />
+                  <span>Lock</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPinModalOpen(true)}
+                  className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-xs font-bold text-emerald-800 shadow-2xs transition-colors cursor-pointer"
+                  title="App Lock Settings (Turn Off / Change PIN)"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>PIN: ON</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsPinModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-50 hover:bg-indigo-50 border border-dashed border-gray-300 hover:border-indigo-300 text-xs font-bold text-gray-600 hover:text-indigo-700 shadow-2xs transition-colors cursor-pointer"
+                title="Setup Quick PIN / Turn On App Lock"
+              >
+                <Unlock className="w-4 h-4" />
+                <span>PIN: OFF</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                if (document.fullscreenElement && document.exitFullscreen) {
+                  document.exitFullscreen().catch(() => {});
+                }
+                navigate("/");
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-rose-50 border border-gray-200 hover:border-rose-300 text-gray-700 hover:text-rose-700 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+              title="Exit POS Terminal to Dashboard"
+            >
+              <X className="w-4 h-4" />
+              <span>Exit POS</span>
+            </button>
 
             {selectedTable && (
               <div className="flex items-center gap-2">
@@ -967,7 +2168,7 @@ export const POSPage: React.FC = () => {
                 <button
                   key={item.id}
                   disabled={!item.isAvailable}
-                  onClick={() => (isPizzaWithSizes(item) ? setSizeSelectionItem(item) : addItem(item))}
+                  onClick={() => (isPizzaWithSizes(item) || isIceCreamWithScoops(item) ? setSizeSelectionItem(item) : addItem(item))}
                   className={`p-3.5 rounded-xl border text-left flex flex-col justify-between transition-all duration-150 cursor-pointer ${
                     item.isAvailable
                       ? "bg-white border-gray-200/90 hover:border-indigo-400 hover:shadow-md active:scale-98"
@@ -996,7 +2197,11 @@ export const POSPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
-                    {isPizzaWithSizes(item) ? (
+                    {isIceCreamWithScoops(item) ? (
+                      <span className="text-xs font-bold text-pink-700 bg-pink-50 px-2 py-0.5 rounded-md border border-pink-200/60">
+                        🍨 1 & 2 Scoops • ₹{Number(item.priceSmall || item.price).toFixed(0)}+
+                      </span>
+                    ) : isPizzaWithSizes(item) ? (
                       <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/60">
                         {item.priceMedium != null && Number(item.priceMedium) > 0 ? "S/M/L" : "Normal/Loaded"} • ₹{Number(item.priceSmall || item.price).toFixed(0)}+
                       </span>
@@ -1019,24 +2224,66 @@ export const POSPage: React.FC = () => {
       {/* RIGHT COLUMN: Active Cart Terminal */}
       <div className="w-full lg:w-96 bg-white rounded-2xl border border-gray-200/80 shadow-xs flex flex-col overflow-hidden shrink-0">
         {/* Cart Header */}
-        <div className="p-4 border-b border-gray-100 bg-slate-900 text-white flex items-center justify-between">
+        <div className="p-4 border-b border-gray-200 bg-white text-gray-900 flex items-center justify-between shadow-2xs">
           <div className="flex items-center gap-2">
-            <ShoppingCart className="w-5 h-5 text-indigo-400" />
+            <ShoppingCart className="w-5 h-5 text-indigo-600" />
             <div>
-              <h3 className="font-bold text-sm leading-none">Current Order</h3>
-              <p className="text-[11px] text-slate-400 mt-1">
-                {selectedTable ? `Table ${selectedTable.tableNumber}` : "Takeaway / Walk-in"}
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm leading-none text-gray-950">Current Order</h3>
+                {selectedTable && (
+                  <button
+                    type="button"
+                    onClick={() => setOrderMode(null)}
+                    className="text-[10px] text-indigo-600 hover:text-indigo-800 font-extrabold underline cursor-pointer"
+                    title="Change Table Number"
+                  >
+                    ⇄ Change Table
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1">
+                {selectedTable ? (
+                  <span className="font-bold text-indigo-700">🍽️ Table {selectedTable.tableNumber} ({guestCount}p)</span>
+                ) : (
+                  <span>Takeaway / Walk-in</span>
+                )}
               </p>
             </div>
           </div>
-          {cartItems.length > 0 && (
-            <button
-              onClick={clearCart}
-              className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer font-medium"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Clear
-            </button>
-          )}
+
+          <div className="flex items-center gap-1.5">
+            {/* If cart is empty and a table was selected (customer not ordering now) */}
+            {selectedTable && cartItems.length === 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTable(null);
+                  setOrderMode(null);
+                }}
+                className="text-xs text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                title="Customer not ordering now: Release table and return to table selection"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Release Table</span>
+              </button>
+            )}
+
+            {cartItems.length > 0 && (
+              <button
+                onClick={() => {
+                  clearCart();
+                  if (selectedTable && window.confirm("Also release this table and go back to table selection?")) {
+                    setSelectedTable(null);
+                    setOrderMode(null);
+                  }
+                }}
+                className="text-xs text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer font-semibold px-2 py-1 rounded-lg hover:bg-rose-50 transition-colors"
+                title="Clear all items in cart"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Customer CRM Recognition & Lookup */}
@@ -1153,6 +2400,22 @@ export const POSPage: React.FC = () => {
           )}
         </div>
 
+        {/* Offline sync status notification */}
+        {offlineSyncStatusMsg && (
+          <div
+            className={`p-2.5 px-3 border-b text-xs font-bold flex items-center gap-2 ${
+              offlineSyncStatusMsg.type === "success"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : offlineSyncStatusMsg.type === "warning"
+                ? "bg-amber-50 border-amber-200 text-amber-800"
+                : "bg-indigo-50 border-indigo-200 text-indigo-800"
+            }`}
+          >
+            <Wifi className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{offlineSyncStatusMsg.text}</span>
+          </div>
+        )}
+
         {/* Error notification */}
         {posError && (
           <div className="p-3 bg-rose-50 border-b border-rose-200 text-rose-700 text-xs flex items-center gap-2">
@@ -1185,6 +2448,12 @@ export const POSPage: React.FC = () => {
                           {item.selectedSize}
                         </span>
                       )}
+                      {item.isTakeaway && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-amber-500 text-white shadow-2xs flex items-center gap-1 animate-in fade-in">
+                          <Package className="w-3 h-3" />
+                          <span>PACKING</span>
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] text-gray-500 font-mono mt-0.5">
                       ₹{Number(item.price ?? item.menuItem.price).toFixed(2)} each
@@ -1205,22 +2474,45 @@ export const POSPage: React.FC = () => {
                     className="flex-1 text-[11px] bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
 
+                  {/* Pack / Parcel toggle button */}
+                  <button
+                    type="button"
+                    onClick={() => toggleItemTakeaway(item.cartItemId)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors flex items-center gap-1 cursor-pointer shrink-0 shadow-2xs active:scale-95 ${
+                      item.isTakeaway
+                        ? "bg-amber-500 text-white border-amber-600 hover:bg-amber-600"
+                        : "bg-white text-gray-700 border-gray-300 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-400"
+                    }`}
+                    title={
+                      item.isTakeaway
+                        ? "Marked for Packing / Parcel (Click to switch to Dine-In)"
+                        : item.quantity > 1
+                        ? "Click to split 1 unit for Packing / Parcel"
+                        : "Click to mark for Packing / Parcel"
+                    }
+                  >
+                    <Package className="w-3.5 h-3.5" />
+                    <span>{item.isTakeaway ? "📦 Packed" : item.quantity > 1 ? "Pack 1" : "Pack"}</span>
+                  </button>
+
                   {/* Quantity controls */}
-                  <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden shrink-0">
+                  <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden shrink-0 bg-white">
                     <button
                       onClick={() => updateQuantity(item.cartItemId, item.quantity - 1)}
-                      className="p-1 hover:bg-gray-100 text-gray-600 cursor-pointer"
+                      className="p-2 sm:p-1.5 hover:bg-rose-50 hover:text-rose-600 text-gray-600 cursor-pointer active:scale-90 transition-transform"
+                      title="Decrease quantity"
                     >
-                      <Minus className="w-3.5 h-3.5" />
+                      <Minus className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                     </button>
-                    <span className="px-2 text-xs font-bold text-gray-900 min-w-[20px] text-center">
+                    <span className="px-2.5 text-xs font-black text-gray-900 min-w-[24px] text-center select-none">
                       {item.quantity}
                     </span>
                     <button
                       onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)}
-                      className="p-1 hover:bg-gray-100 text-gray-600 cursor-pointer"
+                      className="p-2 sm:p-1.5 hover:bg-emerald-50 hover:text-emerald-600 text-gray-600 cursor-pointer active:scale-90 transition-transform"
+                      title="Increase quantity"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -1321,6 +2613,7 @@ export const POSPage: React.FC = () => {
                     quantity: i.quantity,
                     selectedSize: i.selectedSize || null,
                     notes: i.notes || null,
+                    isTakeaway: !!i.isTakeaway,
                   })),
                   instructions: partyName ? `Party: ${partyName}` : undefined,
                 };
@@ -1520,6 +2813,7 @@ export const POSPage: React.FC = () => {
           setSelectedTable(table);
           if (table) {
             setGuestCount(table.capacity || 2);
+            setOrderMode("DINE_IN");
           }
         }}
         franchiseId={effectiveFranchiseId}
@@ -1551,15 +2845,20 @@ export const POSPage: React.FC = () => {
 
           {/* Payment Method Selector */}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">
-              Select Payment Method *
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">
+                Select Payment Method *
+              </label>
+              <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                Press [1, 2, 3, 4] then [Enter ↵]
+              </span>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
-                { id: "CASH", label: "Cash", icon: "💵" },
-                { id: "UPI", label: "UPI", icon: "📱" },
-                { id: "SPLIT", label: "UPI + Cash", icon: "💵+📱" },
-                { id: "CARD", label: "Card", icon: "💳" },
+                { id: "CASH", label: "Cash", icon: "💵", key: "1" },
+                { id: "UPI", label: "UPI", icon: "📱", key: "2" },
+                { id: "CARD", label: "Card", icon: "💳", key: "3" },
+                { id: "SPLIT", label: "UPI + Cash", icon: "💵+📱", key: "4" },
               ].map((m) => (
                 <button
                   key={m.id}
@@ -1571,6 +2870,12 @@ export const POSPage: React.FC = () => {
                       const half = Math.round((total / 2) * 100) / 100;
                       setSplitCashAmount(half);
                       setSplitUpiAmount(Number((total - half).toFixed(2)));
+                    } else if (mode === "CASH") {
+                      setSplitCashAmount(total);
+                      setSplitUpiAmount(0);
+                    } else if (mode === "UPI") {
+                      setSplitCashAmount(0);
+                      setSplitUpiAmount(total);
                     }
                   }}
                   className={`p-3 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 ${
@@ -1579,7 +2884,18 @@ export const POSPage: React.FC = () => {
                       : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50 font-bold"
                   }`}
                 >
-                  <span className="text-xl">{m.icon}</span>
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-xl">{m.icon}</span>
+                    <span
+                      className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded ${
+                        payMode === m.id
+                          ? "bg-indigo-600 text-white"
+                          : "bg-gray-100 text-gray-700 border border-gray-200"
+                      }`}
+                    >
+                      [{m.key}]
+                    </span>
+                  </div>
                   <span className="text-xs">{m.label}</span>
                 </button>
               ))}
@@ -1693,7 +3009,7 @@ export const POSPage: React.FC = () => {
               size="md"
               onClick={() => setIsBillPayModalOpen(false)}
             >
-              Cancel
+              Cancel (Esc)
             </Button>
             <Button
               variant="primary"
@@ -1708,7 +3024,12 @@ export const POSPage: React.FC = () => {
               icon={<Printer className="w-4 h-4" />}
               className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/25 px-5 font-bold cursor-pointer"
             >
-              Complete Payment & Print {printKOT ? "KOT + Bill" : "Bill"}
+              <span className="flex items-center gap-1.5">
+                <span>Complete Payment & Print {printKOT ? "KOT + Bill" : "Bill"}</span>
+                <span className="bg-emerald-800 text-emerald-100 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold">
+                  [Enter ↵]
+                </span>
+              </span>
             </Button>
           </div>
         </div>
@@ -1883,6 +3204,16 @@ Thanks For Visiting Madrasi Dosa`;
             )}
           </div>
 
+          {/* Zero-Click Silent Printing Tip */}
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
+            <p className="font-bold text-amber-950 flex items-center gap-1.5">
+              <span>⚡</span> 100% Zero-Click Silent Printing (Kiosk Mode)
+            </p>
+            <p className="text-[11px] text-amber-900 leading-relaxed">
+              To make your POS print directly to your default thermal printer <strong>without opening ANY browser dialogs</strong> (no prompt for printer, pages, or copies), launch Chrome or Edge with the <code>--kiosk-printing</code> flag on your desktop shortcut.
+            </p>
+          </div>
+
           <div className="flex items-center justify-end pt-2 border-t border-gray-100">
             <Button variant="primary" size="sm" onClick={() => setIsPrinterConfigOpen(false)}>
               Done
@@ -1891,46 +3222,112 @@ Thanks For Visiting Madrasi Dosa`;
         </div>
       </Modal>
 
-      {/* Portion / Size Selection Modal for Pizza (Small / Medium / Large OR Normal / Loaded) */}
+      {/* Portion / Size / Scoop Selection Modal for Pizza & Ice Cream */}
       {sizeSelectionItem && (() => {
+        const isIceCream = isIceCreamWithScoops(sizeSelectionItem);
         const hasThreeSizes = sizeSelectionItem.priceMedium != null && Number(sizeSelectionItem.priceMedium) > 0;
         const pSmall = sizeSelectionItem.priceSmall != null ? Number(sizeSelectionItem.priceSmall) : Number(sizeSelectionItem.price);
         const pMedium = sizeSelectionItem.priceMedium != null ? Number(sizeSelectionItem.priceMedium) : Number(sizeSelectionItem.price);
         const pLarge = sizeSelectionItem.priceLarge != null ? Number(sizeSelectionItem.priceLarge) : Number(sizeSelectionItem.price);
 
+        const modalTitle = isIceCream
+          ? `🍨 Select Scoops: ${sizeSelectionItem.name}`
+          : hasThreeSizes
+          ? `🍕 Select Size: ${sizeSelectionItem.name}`
+          : `✨ Select Portion: ${sizeSelectionItem.name}`;
+
         return (
           <Modal
             isOpen={Boolean(sizeSelectionItem)}
             onClose={() => setSizeSelectionItem(null)}
-            title={hasThreeSizes ? `🍕 Select Pizza Size: ${sizeSelectionItem.name}` : `🍕 Select Pizza Style: ${sizeSelectionItem.name}`}
+            title={modalTitle}
             maxWidth="sm"
           >
             <div className="space-y-4 pt-1">
-              <p className="text-xs text-gray-500 font-medium">
-                {hasThreeSizes
-                  ? "Choose size to immediately add to order (or press 1, 2, 3 / S, M, L):"
-                  : "Choose style to immediately add to order (or press 1, 2 / N, L):"}
-              </p>
+              <div className="flex items-center justify-between p-2.5 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs">
+                <span className="font-semibold text-indigo-950">
+                  {isIceCream
+                    ? "Press [1] for 1 Scoop or [2] for 2 Scoops:"
+                    : hasThreeSizes
+                    ? "Press [1] Small, [2] Medium, or [3] Large:"
+                    : "Press [1] Normal or [2] Loaded:"}
+                </span>
+                <span className="text-[11px] font-mono font-bold text-indigo-600 bg-white px-2 py-0.5 rounded border border-indigo-200">
+                  Esc to Cancel
+                </span>
+              </div>
 
-              {hasThreeSizes ? (
+              {isIceCream ? (
+                /* Ice Cream Scoop Selection (1 Scoop vs 2 Scoops) */
+                <div className="grid grid-cols-2 gap-3.5">
+                  {/* 1 Scoop */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addItem(sizeSelectionItem, "1 Scoop", pSmall);
+                      setQuickDishCode("");
+                      setSizeSelectionItem(null);
+                    }}
+                    className="p-4 rounded-2xl border-2 border-pink-200 hover:border-pink-600 bg-white hover:bg-pink-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
+                  >
+                    <span className="w-10 h-10 rounded-full bg-pink-100 text-pink-700 font-black text-base flex items-center justify-center group-hover:bg-pink-600 group-hover:text-white transition-colors">
+                      1
+                    </span>
+                    <div className="text-center">
+                      <span className="text-sm font-black text-gray-900 group-hover:text-pink-950 block">
+                        1 Scoop 🍨
+                      </span>
+                      <span className="text-xs text-pink-700 font-mono font-bold">[Key 1]</span>
+                    </div>
+                    <span className="text-sm font-extrabold text-pink-600">
+                      ₹{pSmall.toFixed(2)}
+                    </span>
+                  </button>
+
+                  {/* 2 Scoops */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addItem(sizeSelectionItem, "2 Scoops", pLarge);
+                      setQuickDishCode("");
+                      setSizeSelectionItem(null);
+                    }}
+                    className="p-4 rounded-2xl border-2 border-pink-400 hover:border-pink-600 bg-pink-50/60 hover:bg-pink-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-pink-300/40"
+                  >
+                    <span className="w-10 h-10 rounded-full bg-pink-600 text-white font-black text-base flex items-center justify-center shadow-xs">
+                      2
+                    </span>
+                    <div className="text-center">
+                      <span className="text-sm font-black text-gray-900 group-hover:text-pink-950 block">
+                        2 Scoops 🍨🍨
+                      </span>
+                      <span className="text-xs text-pink-700 font-mono font-bold">[Key 2]</span>
+                    </div>
+                    <span className="text-sm font-extrabold text-pink-600">
+                      ₹{pLarge.toFixed(2)}
+                    </span>
+                  </button>
+                </div>
+              ) : hasThreeSizes ? (
                 <div className="grid grid-cols-3 gap-3">
                   {/* Small */}
                   <button
                     type="button"
                     onClick={() => {
                       addItem(sizeSelectionItem, "Small", pSmall);
+                      setQuickDishCode("");
                       setSizeSelectionItem(null);
                     }}
                     className="p-3.5 rounded-2xl border-2 border-indigo-100 hover:border-indigo-600 bg-white hover:bg-indigo-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
                   >
-                    <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 font-black text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                      S
+                    <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-800 font-black text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                      1
                     </span>
                     <div className="text-center">
                       <span className="text-xs font-black text-gray-900 group-hover:text-indigo-900 block">
                         Small (7")
                       </span>
-                      <span className="text-[10px] text-gray-400 font-mono">[Key 1 / S]</span>
+                      <span className="text-[11px] text-indigo-700 font-mono font-bold">[Key 1]</span>
                     </div>
                     <span className="text-sm font-extrabold text-emerald-600">
                       ₹{pSmall.toFixed(2)}
@@ -1942,18 +3339,19 @@ Thanks For Visiting Madrasi Dosa`;
                     type="button"
                     onClick={() => {
                       addItem(sizeSelectionItem, "Medium", pMedium);
+                      setQuickDishCode("");
                       setSizeSelectionItem(null);
                     }}
                     className="p-3.5 rounded-2xl border-2 border-indigo-300 hover:border-indigo-600 bg-indigo-50/50 hover:bg-indigo-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-indigo-400/30"
                   >
                     <span className="w-9 h-9 rounded-full bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-xs">
-                      M
+                      2
                     </span>
                     <div className="text-center">
                       <span className="text-xs font-black text-gray-900 group-hover:text-indigo-900 block">
                         Medium (10")
                       </span>
-                      <span className="text-[10px] text-indigo-600 font-mono font-bold">[Key 2 / M]</span>
+                      <span className="text-[11px] text-indigo-700 font-mono font-bold">[Key 2]</span>
                     </div>
                     <span className="text-sm font-extrabold text-emerald-600">
                       ₹{pMedium.toFixed(2)}
@@ -1965,18 +3363,19 @@ Thanks For Visiting Madrasi Dosa`;
                     type="button"
                     onClick={() => {
                       addItem(sizeSelectionItem, "Large", pLarge);
+                      setQuickDishCode("");
                       setSizeSelectionItem(null);
                     }}
                     className="p-3.5 rounded-2xl border-2 border-indigo-100 hover:border-indigo-600 bg-white hover:bg-indigo-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
                   >
-                    <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 font-black text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                      L
+                    <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-800 font-black text-sm flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                      3
                     </span>
                     <div className="text-center">
                       <span className="text-xs font-black text-gray-900 group-hover:text-indigo-900 block">
                         Large (12")
                       </span>
-                      <span className="text-[10px] text-gray-400 font-mono">[Key 3 / L]</span>
+                      <span className="text-[11px] text-indigo-700 font-mono font-bold">[Key 3]</span>
                     </div>
                     <span className="text-sm font-extrabold text-emerald-600">
                       ₹{pLarge.toFixed(2)}
@@ -1991,18 +3390,19 @@ Thanks For Visiting Madrasi Dosa`;
                     type="button"
                     onClick={() => {
                       addItem(sizeSelectionItem, "Normal", pSmall);
+                      setQuickDishCode("");
                       setSizeSelectionItem(null);
                     }}
                     className="p-4 rounded-2xl border-2 border-emerald-100 hover:border-emerald-600 bg-white hover:bg-emerald-50/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95"
                   >
-                    <span className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                      N
+                    <span className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 font-black text-base flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                      1
                     </span>
                     <div className="text-center">
                       <span className="text-sm font-black text-gray-900 group-hover:text-emerald-950 block">
-                        Normal Pizza
+                        Normal
                       </span>
-                      <span className="text-[10px] text-gray-400 font-mono">[Key 1 / N]</span>
+                      <span className="text-xs text-emerald-700 font-mono font-bold">[Key 1]</span>
                     </div>
                     <span className="text-sm font-extrabold text-emerald-600">
                       ₹{pSmall.toFixed(2)}
@@ -2014,18 +3414,19 @@ Thanks For Visiting Madrasi Dosa`;
                     type="button"
                     onClick={() => {
                       addItem(sizeSelectionItem, "Loaded", pLarge);
+                      setQuickDishCode("");
                       setSizeSelectionItem(null);
                     }}
                     className="p-4 rounded-2xl border-2 border-emerald-300 hover:border-emerald-600 bg-emerald-50/60 hover:bg-emerald-100/70 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-xs hover:shadow-md active:scale-95 ring-2 ring-emerald-400/30"
                   >
-                    <span className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black text-sm flex items-center justify-center shadow-xs">
-                      L
+                    <span className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black text-base flex items-center justify-center shadow-xs">
+                      2
                     </span>
                     <div className="text-center">
                       <span className="text-sm font-black text-gray-900 group-hover:text-emerald-950 block">
-                        Loaded Pizza 🧀
+                        Loaded / Special 🧀
                       </span>
-                      <span className="text-[10px] text-emerald-700 font-mono font-bold">[Key 2 / L]</span>
+                      <span className="text-xs text-emerald-700 font-mono font-bold">[Key 2]</span>
                     </div>
                     <span className="text-sm font-extrabold text-emerald-600">
                       ₹{pLarge.toFixed(2)}
@@ -2043,6 +3444,33 @@ Thanks For Visiting Madrasi Dosa`;
           </Modal>
         );
       })()}
+
+      {/* Quick PIN Setup / Change Modal */}
+      <PinSetupModal
+        isOpen={isPinModalOpen}
+        onClose={() => setIsPinModalOpen(false)}
+      />
+
+      {/* Daily Kitchen Prep & Batter Forecaster Modal */}
+      <KitchenPrepModal
+        isOpen={isKitchenPrepOpen}
+        onClose={() => setIsKitchenPrepOpen(false)}
+        franchiseName={
+          activeFranchises.find((f) => f.id === effectiveFranchiseId)?.name ||
+          brandSettings?.businessName ||
+          "Madrasi Dosa"
+        }
+      />
+
+      {/* Offline Sync Queue Modal */}
+      <OfflineQueueModal
+        isOpen={isOfflineModalOpen}
+        onClose={() => setIsOfflineModalOpen(false)}
+        isOnline={isOnline}
+        isSyncing={isOfflineSyncing}
+        queue={offlineQueue}
+        onSyncNow={syncQueueNow}
+      />
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChefHat, Clock, CheckCircle2, Flame, RefreshCw } from "lucide-react";
+import { ChefHat, Clock, CheckCircle2, Flame, RefreshCw, Volume2, VolumeX, Bell, AlertTriangle } from "lucide-react";
 import { api } from "../../services/api.js";
 import { getSocket } from "../../services/socket.js";
 import { useAuthStore } from "../../store/authStore.js";
@@ -8,21 +8,58 @@ import type { KOT, KOTStatus, PreparationStation } from "../../types/index.js";
 import { Button } from "../../components/common/Button.js";
 import { LoadingState } from "../../components/common/LoadingState.js";
 import { EmptyState } from "../../components/common/EmptyState.js";
+import { KitchenPrepModal } from "../../components/kitchen/KitchenPrepModal.js";
 
-function playNotificationSound() {
+let sharedAudioCtx: AudioContext | null = null;
+
+function getAudioContext() {
   try {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
-    osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15); // A5
-    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.4);
+    if (!sharedAudioCtx) {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        sharedAudioCtx = new AudioContextClass();
+      }
+    }
+    if (sharedAudioCtx && sharedAudioCtx.state === "suspended") {
+      sharedAudioCtx.resume().catch(() => {});
+    }
+    return sharedAudioCtx;
+  } catch {
+    return null;
+  }
+}
+
+function playNotificationSound(type: "normal" | "urgent" = "normal") {
+  try {
+    const audioCtx = getAudioContext();
+    if (!audioCtx) return;
+
+    if (type === "urgent") {
+      [0, 0.16, 0.32].forEach((delay) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + delay);
+        gain.gain.setValueAtTime(0.4, audioCtx.currentTime + delay);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + delay + 0.13);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(audioCtx.currentTime + delay);
+        osc.stop(audioCtx.currentTime + delay + 0.13);
+      });
+    } else {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15); // A5
+      gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.4);
+    }
   } catch {
     // Ignore audio permission restrictions
   }
@@ -34,6 +71,11 @@ export const KitchenPage: React.FC = () => {
 
   const [selectedStation, setSelectedStation] = useState<string>("");
   const [viewMode, setViewMode] = useState<"ACTIVE" | "READY" | "ALL">("ACTIVE");
+  const [audioUnlocked, setAudioUnlocked] = useState<boolean>(() => {
+    return typeof window !== "undefined" && localStorage.getItem("kds_audio_enabled") === "true";
+  });
+  const [lastChimeStatus, setLastChimeStatus] = useState<string | null>(null);
+  const [isPrepModalOpen, setIsPrepModalOpen] = useState(false);
 
   // Fetch Preparation Stations
   const { data: stations = [] } = useQuery<PreparationStation[]>({
@@ -112,7 +154,59 @@ export const KitchenPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Audio Chime Controls */}
+          {audioUnlocked ? (
+            <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/80 px-3 py-1.5 rounded-xl shadow-2xs">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
+                <Volume2 className="w-4 h-4 text-emerald-600" />
+                Audio Alerts Active
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  playNotificationSound("normal");
+                  setLastChimeStatus("Chimed!");
+                  setTimeout(() => setLastChimeStatus(null), 2500);
+                }}
+                className="text-[11px] font-bold px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors cursor-pointer flex items-center gap-1 ml-1"
+                title="Test audio chime"
+              >
+                <Bell className="w-3 h-3" /> Test
+              </button>
+              {lastChimeStatus && (
+                <span className="text-[10px] font-bold text-emerald-700 animate-pulse ml-0.5">
+                  ({lastChimeStatus})
+                </span>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                getAudioContext();
+                playNotificationSound("normal");
+                setAudioUnlocked(true);
+                localStorage.setItem("kds_audio_enabled", "true");
+                setLastChimeStatus("Audio alerts enabled!");
+                setTimeout(() => setLastChimeStatus(null), 2500);
+              }}
+              className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl shadow-xs transition-all cursor-pointer animate-pulse"
+            >
+              <VolumeX className="w-4 h-4" />
+              Enable Kitchen Sound Alerts
+            </button>
+          )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsPrepModalOpen(true)}
+            icon={<ChefHat className="w-3.5 h-3.5 text-amber-600" />}
+          >
+            Prep Estimator
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -205,10 +299,11 @@ export const KitchenPage: React.FC = () => {
             const isCreated = kot.status === "CREATED" || kot.status === "PRINTED";
             const isPreparing = kot.status === "PREPARING" || kot.status === "ACCEPTED";
             const isReady = kot.status === "READY";
-
             const elapsedMinutes = Math.floor(
               (new Date().getTime() - new Date(kot.createdAt).getTime()) / 60000
             );
+            const isOverdue = !isReady && elapsedMinutes >= 15;
+            const isDelayed = !isReady && elapsedMinutes >= 8 && elapsedMinutes < 15;
 
             return (
               <div
@@ -216,25 +311,40 @@ export const KitchenPage: React.FC = () => {
                 className={`rounded-2xl border-2 overflow-hidden shadow-sm flex flex-col justify-between transition-all ${
                   isReady
                     ? "bg-emerald-50/50 border-emerald-400"
+                    : isOverdue
+                    ? "bg-rose-50/80 border-rose-600 ring-2 ring-rose-500/50 shadow-md animate-pulse"
                     : isPreparing
                     ? "bg-amber-50/30 border-amber-400"
+                    : isDelayed
+                    ? "bg-amber-50/60 border-amber-500"
                     : "bg-white border-indigo-400 animate-pulse"
                 }`}
               >
                 <div>
                   {/* Ticket Header */}
-                  <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between">
+                  <div className={`p-3.5 text-white flex items-center justify-between ${
+                    isOverdue ? "bg-rose-950" : "bg-slate-900"
+                  }`}>
                     <div>
-                      <span className="font-mono text-xs font-bold text-amber-400 block">
-                        {kot.kotNumber}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-amber-400 block">
+                          {kot.kotNumber}
+                        </span>
+                        {isOverdue && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-600 text-white uppercase tracking-wider flex items-center gap-0.5">
+                            <AlertTriangle className="w-2.5 h-2.5" /> OVERDUE
+                          </span>
+                        )}
+                      </div>
                       <h3 className="font-black text-base text-white tracking-tight">{tableStr}</h3>
                     </div>
                     <div className="text-right">
                       <span className="text-[10px] font-bold text-indigo-300 block uppercase">
                         {stationName}
                       </span>
-                      <span className="text-xs text-slate-300 flex items-center gap-1 font-mono justify-end">
+                      <span className={`text-xs flex items-center gap-1 font-mono justify-end font-bold ${
+                        isOverdue ? "text-rose-400" : isDelayed ? "text-amber-400" : "text-slate-300"
+                      }`}>
                         <Clock className="w-3 h-3 text-amber-400" />
                         {elapsedMinutes}m ago
                       </span>
@@ -320,6 +430,12 @@ export const KitchenPage: React.FC = () => {
           })}
         </div>
       )}
+
+      {/* Daily Kitchen Prep & Batter Forecaster Modal */}
+      <KitchenPrepModal
+        isOpen={isPrepModalOpen}
+        onClose={() => setIsPrepModalOpen(false)}
+      />
     </div>
   );
 };

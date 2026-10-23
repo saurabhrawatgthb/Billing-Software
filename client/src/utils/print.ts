@@ -96,11 +96,37 @@ export function centerLine(text: string, width = 32): string {
     .join("\n");
 }
 
+/**
+ * Safely format item display name with size/portion/scoop, avoiding any double suffix
+ * such as "Tandoori Paneer (Large) (Large)" or "Vanilla (1 Scoop) (1 Scoop)".
+ */
+export function formatItemDisplayName(name: string, selectedSize?: string | null): string {
+  if (!name) return "";
+  const cleanName = name.trim();
+  if (!selectedSize || !selectedSize.trim()) return cleanName;
+
+  const cleanSize = selectedSize.trim();
+  const lowerName = cleanName.toLowerCase();
+  const lowerSize = cleanSize.toLowerCase();
+
+  // If name already contains (size) or [size] or ends with size, don't duplicate
+  if (
+    lowerName.includes(`(${lowerSize})`) ||
+    lowerName.includes(`[${lowerSize}]`) ||
+    lowerName.endsWith(` ${lowerSize}`) ||
+    lowerName.endsWith(`-${lowerSize}`)
+  ) {
+    return cleanName;
+  }
+
+  return `${cleanName} (${cleanSize})`;
+}
+
 export const MADRASI_DOSA_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 140" width="100%">
   <defs>
     <style>
       .brand-title { font-family: 'Arial Black', Impact, 'Segoe UI', system-ui, sans-serif; font-size: 26px; font-weight: 900; letter-spacing: 2.5px; fill: #000; text-anchor: middle; }
-      .brand-sub { font-family: 'Courier New', Courier, monospace, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 2px; fill: #000; text-anchor: middle; }
+      .brand-sub { font-family: 'Nirmala UI', 'Segoe UI', 'Courier New', Courier, monospace, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; fill: #000; text-anchor: middle; }
       .brand-badge { font-family: Arial, sans-serif; font-size: 8.5px; font-weight: 800; letter-spacing: 1.5px; fill: #000; text-anchor: middle; }
     </style>
   </defs>
@@ -152,6 +178,8 @@ export interface BuildReceiptItem {
   quantity: number;
   price: number;
   totalPrice?: number;
+  selectedSize?: string | null;
+  isTakeaway?: boolean;
 }
 
 export interface BuildReceiptParams {
@@ -176,6 +204,7 @@ export interface BuildReceiptParams {
     amount: number;
     status?: string;
   }>;
+  instagramId?: string;
   footerMessage?: string;
 }
 
@@ -184,6 +213,7 @@ export interface BuildKOTItem {
   quantity: number;
   selectedSize?: string | null;
   notes?: string | null;
+  isTakeaway?: boolean;
 }
 
 export interface BuildKOTParams {
@@ -222,7 +252,10 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
   lines.push(thinDivider);
 
   for (const item of data.items) {
-    const displayName = item.selectedSize ? `${item.name} (${item.selectedSize})` : item.name;
+    let displayName = formatItemDisplayName(item.name, item.selectedSize);
+    if (item.isTakeaway) {
+      displayName += " [PACKING]";
+    }
     const qtyStr = String(item.quantity).padStart(3, " ");
 
     if (displayName.length > 28) {
@@ -232,6 +265,10 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
       lines.push(`${displayName.padEnd(28, " ")} ${qtyStr}`);
     }
 
+    if (item.isTakeaway) {
+      lines.push("  ** PACKING / PARCEL **");
+    }
+
     if (item.notes && item.notes.trim()) {
       lines.push(`  * Note: ${item.notes.trim()}`);
     }
@@ -239,14 +276,12 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
 
   if (data.instructions && data.instructions.trim()) {
     lines.push(thinDivider);
-    lines.push(`Instructions: ${data.instructions.trim()}`);
+    lines.push(`Special: ${data.instructions.trim()}`);
   }
 
   lines.push(divider);
   lines.push(centerLine("*** KITCHEN COPY ***", 32));
-  lines.push("--------------------------------");
-  lines.push(centerLine("✂   TEAR HERE FOR KITCHEN   ✂", 32));
-  lines.push("--------------------------------");
+  lines.push(divider);
 
   return lines.join("\n");
 }
@@ -254,6 +289,7 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
 /**
  * Builds formatted thermal receipt raw text locally on the client with zero network latency.
  * All header items (Brand name, Franchise name, Address, Phone, GSTIN) and Footer are strictly center-aligned.
+ * Everything is in English, with Hindi greeting kept strictly below payments.
  */
 export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: ThermalPaperSize = "80mm"): string {
   const currSym = data.currencySymbol || "₹";
@@ -265,6 +301,7 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
   const lines: string[] = [];
   lines.push(divider);
   lines.push(centerLine(brandName, 32));
+
   if (franchiseName) {
     const branchLabel = franchiseName.startsWith("---") ? franchiseName : `--- ${franchiseName} ---`;
     lines.push(centerLine(branchLabel, 32));
@@ -282,12 +319,13 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
     lines.push(centerLine(`FSSAI: ${data.fssaiNumber.trim()}`, 32));
   }
   lines.push(divider);
-  lines.push(`Invoice: ${data.invoiceNumber}`);
+  lines.push(`Tax Invoice: ${data.invoiceNumber}`);
   if (data.orderNumber) {
-    lines.push(`Order  : ${data.orderNumber}`);
+    lines.push(`Order      : ${data.orderNumber}`);
   }
-  lines.push(`${data.orderType || "Takeaway"}`);
-  lines.push(`Date   : ${data.date || new Date().toLocaleString()}`);
+  const typeStr = data.orderType || "Takeaway";
+  lines.push(typeStr);
+  lines.push(`Date       : ${data.date || new Date().toLocaleString()}`);
   lines.push(thinDivider);
   lines.push("Item             Qty      Price");
   lines.push(thinDivider);
@@ -310,16 +348,24 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
   if (data.discount && data.discount > 0) {
     lines.push(`Discount:            -${currSym}${data.discount.toFixed(2)}`);
   }
-  lines.push(`Tax:                  ${currSym}${(data.tax || 0).toFixed(2)}`);
   lines.push(divider);
   lines.push(`TOTAL:                ${currSym}${data.total.toFixed(2)}`);
   lines.push(divider);
   lines.push("PAYMENTS:");
   for (const p of data.payments) {
-    lines.push(`  ${p.method.padEnd(8, " ")}: ${currSym}${p.amount.toFixed(2)} [${p.status || "COMPLETED"}]`);
+    lines.push(`  ${p.method.padEnd(10, " ")}: ${currSym}${p.amount.toFixed(2)} [${p.status || "COMPLETED"}]`);
   }
   lines.push(thinDivider);
-  lines.push(centerLine(data.footerMessage || "Thanks For Visiting Madrasi Dosa", 32));
+
+  // HINDI CONTENT STRICTLY BELOW PAYMENTS:
+  lines.push(centerLine("धन्यवाद! पुनः पधारें", 32));
+  lines.push(centerLine(data.footerMessage || "Thank You! Please Visit Again", 32));
+
+  // Instagram Handle
+  const rawInsta = (data.instagramId || "madrasidosaoffical").replace(/^@/, "");
+  lines.push(centerLine("Follow Us On Instagram:", 32));
+  lines.push(centerLine(`📸 @${rawInsta}`, 32));
+  lines.push(divider);
 
   return lines.join("\n");
 }
@@ -369,47 +415,155 @@ function parseReceiptSections(text: string) {
  * - Items header and item rows (Item Name, Qty, Price) are rendered BOLD (font-weight: 800)
  * - Grand TOTAL line is rendered EXTRA BOLD (font-weight: 900) and slightly larger
  * - Metadata and summary rows have clean proportional sizing
+ * - Supports authentic Hindi/English bilingual receipt formatting
  */
 function formatReceiptBodyHtml(bodyLines: string[]): string {
+  const output: string[] = [];
   let inItemsTable = false;
+  let itemRows: Array<{ name: string; qty: string; price: string }> = [];
 
-  return bodyLines
-    .map((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) return "";
+  const flushItemsTable = () => {
+    if (itemRows.length > 0) {
+      output.push(`
+        <table class="receipt-items-table">
+          <thead>
+            <tr>
+              <th class="col-item">ITEM</th>
+              <th class="col-qty">QTY</th>
+              <th class="col-price">PRICE</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemRows
+              .map(
+                (r) => `
+              <tr>
+                <td class="col-item">${escapeHtml(r.name)}</td>
+                <td class="col-qty">${escapeHtml(r.qty)}</td>
+                <td class="col-price">${escapeHtml(r.price)}</td>
+              </tr>
+            `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      `);
+      itemRows = [];
+    }
+  };
 
-      if (/^Item\s+Qty\s+Price/i.test(trimmed)) {
-        inItemsTable = true;
-        return `<div class="receipt-items-header">${escapeHtml(line)}</div>`;
-      }
+  for (const line of bodyLines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
 
-      if (inItemsTable) {
-        if (/^[=\-]{16,}$/.test(trimmed)) {
-          inItemsTable = false;
-          return `<div class="receipt-divider-line">${escapeHtml(line)}</div>`;
-        }
-        return `<div class="receipt-item-row">${escapeHtml(line)}</div>`;
-      }
+    // Suppress ANY Tax line as explicitly requested
+    if (/^(Tax|कर)\s*(\(GST\))?:/i.test(trimmed)) {
+      continue;
+    }
 
-      if (/^TOTAL:/i.test(trimmed)) {
-        return `<div class="receipt-total-row">${escapeHtml(line)}</div>`;
-      }
+    if (/^(Item\s+Qty\s+Price|व्यंजन\s*\/)/i.test(trimmed)) {
+      inItemsTable = true;
+      continue;
+    }
 
-      if (/^(Subtotal|Tax|Discount):/i.test(trimmed)) {
-        return `<div class="receipt-summary-row">${escapeHtml(line)}</div>`;
-      }
-
+    if (inItemsTable) {
       if (/^[=\-]{16,}$/.test(trimmed)) {
-        return `<div class="receipt-divider-line">${escapeHtml(line)}</div>`;
+        inItemsTable = false;
+        flushItemsTable();
+        output.push(`<div class="receipt-dashed-divider"></div>`);
+        continue;
       }
 
-      if (/^(Invoice|Order|Date|Dine-In|Takeaway|Table)/i.test(trimmed)) {
-        return `<div class="receipt-meta-row">${escapeHtml(line)}</div>`;
+      // Match item name, qty, price
+      const itemMatch = trimmed.match(/^(.*?)\s{2,}(\d+)\s{2,}(₹?[\d\.]+.*)$/);
+      if (itemMatch) {
+        itemRows.push({ name: itemMatch[1].trim(), qty: itemMatch[2].trim(), price: itemMatch[3].trim() });
+      } else {
+        itemRows.push({ name: trimmed, qty: "", price: "" });
       }
+      continue;
+    }
 
-      return `<div class="receipt-default-row">${escapeHtml(line)}</div>`;
-    })
-    .join("");
+    if (/^[=\-]{16,}$/.test(trimmed)) {
+      flushItemsTable();
+      output.push(`<div class="receipt-solid-divider"></div>`);
+      continue;
+    }
+
+    if (/^(TOTAL:|कुल\s*देय:)/i.test(trimmed)) {
+      flushItemsTable();
+      const parts = trimmed.split(/:\s*/);
+      const label = parts[0] + ":";
+      const val = parts.slice(1).join(": ");
+      output.push(`
+        <div class="receipt-solid-divider"></div>
+        <div class="receipt-grand-total">
+          <span>${escapeHtml(label)}</span>
+          <span>${escapeHtml(val)}</span>
+        </div>
+        <div class="receipt-solid-divider"></div>
+      `);
+      continue;
+    }
+
+    if (/^(Subtotal|Discount|उपयोग|उप-योग|छूट):/i.test(trimmed)) {
+      flushItemsTable();
+      const parts = trimmed.split(/:\s*/);
+      const label = parts[0] + ":";
+      const val = parts.slice(1).join(": ");
+      output.push(`
+        <div class="receipt-summary-row">
+          <span>${escapeHtml(label)}</span>
+          <span>${escapeHtml(val)}</span>
+        </div>
+      `);
+      continue;
+    }
+
+    if (/^(Invoice|Tax Invoice|Order|Date|Dine-In|Takeaway|Table|बिल|आर्डर|दिनांक|डाइन-इन|पार्सल|मेज)/i.test(trimmed)) {
+      flushItemsTable();
+      if (trimmed.includes(":")) {
+        const parts = trimmed.split(/:\s*/);
+        output.push(`
+          <div class="receipt-meta-row">
+            <span>${escapeHtml(parts[0])}:</span>
+            <strong>${escapeHtml(parts.slice(1).join(": "))}</strong>
+          </div>
+        `);
+      } else {
+        output.push(`<div class="receipt-meta-row"><strong>${escapeHtml(trimmed)}</strong></div>`);
+      }
+      continue;
+    }
+
+    if (/^(भुगतान|PAYMENTS)/i.test(trimmed)) {
+      flushItemsTable();
+      output.push(`<div class="receipt-payments-title">${escapeHtml(trimmed)}</div>`);
+      continue;
+    }
+
+    if (/^\s*(नकद|यूपीआई|कार्ड|CASH|UPI|CARD)/i.test(trimmed)) {
+      flushItemsTable();
+      if (trimmed.includes(":")) {
+        const parts = trimmed.split(/:\s*/);
+        output.push(`
+          <div class="receipt-payment-row">
+            <span>${escapeHtml(parts[0])}:</span>
+            <span>${escapeHtml(parts.slice(1).join(": "))}</span>
+          </div>
+        `);
+      } else {
+        output.push(`<div class="receipt-payment-row"><span>${escapeHtml(trimmed)}</span></div>`);
+      }
+      continue;
+    }
+
+    flushItemsTable();
+    output.push(`<div class="receipt-sub-text">${escapeHtml(trimmed)}</div>`);
+  }
+
+  flushItemsTable();
+  return output.join("");
 }
 
 /**
@@ -424,12 +578,16 @@ function formatKOTBodyHtml(kotData: BuildKOTParams, _is58mm?: boolean): string {
 
   const itemsHtml = kotData.items
     .map((item) => {
-      const displayName = item.selectedSize ? `${item.name} (${item.selectedSize})` : item.name;
+      let displayName = formatItemDisplayName(item.name, item.selectedSize);
+      if (item.isTakeaway) {
+        displayName += " [📦 PACKING]";
+      }
       return `
         <div class="kot-item-row">
           <span class="kot-item-name">${escapeHtml(displayName)}</span>
           <span class="kot-item-qty">x${escapeHtml(String(item.quantity))}</span>
         </div>
+        ${item.isTakeaway ? `<div class="kot-item-notes" style="font-weight:900; font-size:11.5px; color:#000;">↳ *** 📦 PACKING / PARCEL ***</div>` : ""}
         ${item.notes && item.notes.trim() ? `<div class="kot-item-notes">↳ * ${escapeHtml(item.notes.trim())}</div>` : ""}
       `;
     })
@@ -443,22 +601,19 @@ function formatKOTBodyHtml(kotData: BuildKOTParams, _is58mm?: boolean): string {
         ${kotData.orderNumber ? `<span>Token: ${escapeHtml(kotData.orderNumber)}</span>` : ""}
         <span>Time: ${escapeHtml(kotData.date || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>
       </div>
-      <div class="kot-divider">================================</div>
       <div class="kot-table-head">
         <span>ITEM</span>
         <span>QTY</span>
       </div>
-      <div class="kot-divider">--------------------------------</div>
       <div class="kot-items-list">
         ${itemsHtml}
       </div>
       ${
         kotData.instructions && kotData.instructions.trim()
-          ? `<div class="kot-divider">--------------------------------</div>
-             <div class="kot-special-note">Special: ${escapeHtml(kotData.instructions.trim())}</div>`
+          ? `<div class="kot-special-note">Special: ${escapeHtml(kotData.instructions.trim())}</div>`
           : ""
       }
-      <div class="kot-divider">================================</div>
+      <div class="kot-divider"></div>
       <div class="kot-footer">*** KITCHEN COPY ***</div>
     </div>
   `;
@@ -466,8 +621,10 @@ function formatKOTBodyHtml(kotData: BuildKOTParams, _is58mm?: boolean): string {
 
 /**
  * Shared printer styles generator for consistent 58mm / 80mm roll layout
+ * Features bigger fonts, zero excess margins, pixel-perfect table alignment,
+ * and compact roll length to minimize thermal paper consumption.
  */
-function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm: boolean, lineHeight: string): string {
+function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm: boolean, _lineHeight: string): string {
   return `
     @page {
       size: ${rollWidth} auto;
@@ -488,32 +645,21 @@ function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm
         width: ${contentWidth} !important;
         max-width: ${contentWidth} !important;
         box-sizing: border-box;
-        margin: 0 auto;
-        padding: 0.5mm 0 1.5mm 0;
+        margin: 0 auto !important;
+        padding: 0.5mm 0 1mm 0 !important;
         text-align: center !important;
       }
       .kot-page-section {
         width: 100% !important;
         page-break-after: always;
         break-after: page;
-        padding-bottom: 2mm;
+        padding-bottom: 1.5mm;
       }
       .bill-page-section {
         width: 100% !important;
         page-break-before: always;
         break-before: page;
-        padding-top: 1mm;
-      }
-      .tear-separator-block {
-        text-align: center !important;
-        margin: 4mm 0 !important;
-        padding: 1.5mm 0 !important;
-        font-family: 'Courier New', Courier, monospace !important;
-        font-size: ${is58mm ? "9px" : "11px"} !important;
-        font-weight: 800 !important;
-        letter-spacing: 0.5px !important;
-        border-top: 1.5px dashed #000 !important;
-        border-bottom: 1.5px dashed #000 !important;
+        padding-top: 0.5mm;
       }
     }
     html, body {
@@ -523,50 +669,55 @@ function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm
       padding: 0;
       background: #ffffff;
       color: #000000;
+      font-family: 'Segoe UI', 'Nirmala UI', Arial, sans-serif;
     }
     .thermal-printable-wrapper {
       width: ${contentWidth};
       max-width: ${contentWidth};
       box-sizing: border-box;
       margin: 0 auto;
-      padding: 0.5mm 0 1.5mm 0;
+      padding: 0.5mm 0 1mm 0;
       text-align: center;
     }
+
     /* KOT Styling */
     .kot-container {
       width: 100%;
       text-align: center;
       margin: 0 auto;
-      font-family: 'Courier New', Courier, monospace;
+      font-family: 'Segoe UI', 'Nirmala UI', Arial, sans-serif;
     }
     .kot-header-badge {
-      font-size: ${is58mm ? "10px" : "12px"};
-      font-weight: 800;
-      letter-spacing: 0.8px;
+      font-size: ${is58mm ? "11px" : "13px"};
+      font-weight: 900;
+      letter-spacing: 0.5px;
       padding: 0.5mm 0;
     }
     .kot-table-banner {
-      font-size: ${is58mm ? "15px" : "18px"};
+      font-size: ${is58mm ? "16px" : "19px"};
       font-weight: 900;
       letter-spacing: 1px;
-      padding: 1.5mm 0;
+      padding: 1mm 0;
       margin: 0.5mm 0;
-      border-top: 1.5px solid #000;
-      border-bottom: 1.5px solid #000;
+      border-top: 2px solid #000;
+      border-bottom: 2px solid #000;
     }
     .kot-meta-row {
       display: flex;
       justify-content: space-between;
-      font-size: ${is58mm ? "8.5px" : "10px"};
+      font-size: ${is58mm ? "9.5px" : "11px"};
       font-weight: 700;
-      padding: 1mm 0;
+      padding: 0.5mm 0;
     }
     .kot-table-head {
       display: flex;
       justify-content: space-between;
-      font-size: ${is58mm ? "10px" : "12px"};
+      font-size: ${is58mm ? "11.5px" : "13.5px"};
       font-weight: 900;
       padding: 0.5mm 0;
+      border-top: 1px dashed #000;
+      border-bottom: 1px dashed #000;
+      margin: 0.5mm 0;
     }
     .kot-items-list {
       text-align: left;
@@ -575,10 +726,10 @@ function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm
       display: flex;
       justify-content: space-between;
       align-items: baseline;
-      padding: 1mm 0;
-      font-size: ${is58mm ? "11px" : "13.5px"};
+      padding: 0.5mm 0;
+      font-size: ${is58mm ? "12px" : "14.5px"};
       font-weight: 900;
-      line-height: 1.25;
+      line-height: 1.2;
     }
     .kot-item-name {
       text-align: left;
@@ -588,161 +739,187 @@ function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm
     }
     .kot-item-qty {
       text-align: right;
-      font-size: ${is58mm ? "13px" : "16px"};
+      font-size: ${is58mm ? "14px" : "17px"};
       font-weight: 900;
     }
     .kot-item-notes {
-      font-size: ${is58mm ? "9px" : "10.5px"};
+      font-size: ${is58mm ? "9.5px" : "11px"};
       font-weight: 700;
       font-style: italic;
       padding-left: 2mm;
-      padding-bottom: 0.5mm;
     }
     .kot-special-note {
-      font-size: ${is58mm ? "9.5px" : "11px"};
+      font-size: ${is58mm ? "10px" : "11.5px"};
       font-weight: 800;
       text-align: left;
-      padding: 1mm 0;
+      padding: 0.5mm 0;
     }
     .kot-divider {
-      font-size: ${is58mm ? "8px" : "9.5px"};
-      font-weight: 700;
-      line-height: 1.1;
-      white-space: pre;
+      border-bottom: 1.5px solid #000;
+      margin: 1mm 0;
     }
     .kot-footer {
-      font-size: ${is58mm ? "9.5px" : "11px"};
+      font-size: ${is58mm ? "10px" : "11.5px"};
       font-weight: 800;
-      padding: 1mm 0;
+      padding: 0.5mm 0;
     }
-    .tear-separator-block {
-      text-align: center;
-      margin: 4mm 0;
-      padding: 1.5mm 0;
-      font-family: 'Courier New', Courier, monospace;
-      font-size: ${is58mm ? "9px" : "11px"};
-      font-weight: 800;
-      letter-spacing: 0.5px;
-      border-top: 1.5px dashed #000;
-      border-bottom: 1.5px dashed #000;
+
+    /* Bill Structured Styling */
+    .thermal-receipt-container {
+      width: 100%;
+      margin: 0 auto;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', 'Nirmala UI', Arial, sans-serif;
+      color: #000;
+      text-align: left;
     }
-    /* Bill Styling */
     .receipt-logo-wrap {
       text-align: center;
       margin: 0 auto 0.5mm auto;
-      padding: 0;
       display: block;
       width: 100%;
     }
     .receipt-logo-wrap svg,
     .receipt-logo-wrap img {
-      width: ${is58mm ? "13mm" : "16mm"};
-      max-width: ${is58mm ? "13mm" : "16mm"};
+      width: ${is58mm ? "11mm" : "14mm"};
+      max-width: ${is58mm ? "11mm" : "14mm"};
       height: auto;
       margin: 0 auto;
       display: block;
-      filter: grayscale(100%) contrast(250%);
-      -webkit-filter: grayscale(100%) contrast(250%);
+      filter: grayscale(100%) contrast(300%);
+      -webkit-filter: grayscale(100%) contrast(300%);
     }
     .receipt-header-block {
       text-align: center;
       width: 100%;
       margin: 0 auto;
-    }
-    .receipt-header-line {
-      text-align: center;
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${is58mm ? "8px" : "9.5px"};
       line-height: 1.2;
-      font-weight: 700;
-      letter-spacing: -0.2px;
+    }
+    .receipt-brand-title {
+      font-size: ${is58mm ? "14px" : "16.5px"};
+      font-weight: 900;
+      letter-spacing: 0.5px;
+    }
+    .receipt-branch-name {
+      font-size: ${is58mm ? "10.5px" : "12.5px"};
+      font-weight: 800;
+    }
+    .receipt-sub-text {
+      font-size: ${is58mm ? "9.5px" : "11px"};
+      font-weight: 600;
       word-break: break-word;
     }
-    .receipt-divider {
-      text-align: center;
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${is58mm ? "8px" : "9.5px"};
-      line-height: 1.15;
+    .receipt-solid-divider {
+      border-bottom: 1.5px solid #000;
+      margin: 1mm 0;
+    }
+    .receipt-dashed-divider {
+      border-bottom: 1px dashed #000;
+      margin: 1mm 0;
+    }
+    .receipt-meta-grid {
+      font-size: ${is58mm ? "10.5px" : "12px"};
       font-weight: 700;
-      letter-spacing: -0.2px;
-    }
-    .thermal-receipt-body-wrap {
-      text-align: center;
-      width: 100%;
-      margin: 0 auto;
-    }
-    .thermal-receipt-body {
-      text-align: left;
-      display: inline-block;
-      margin: 0 auto;
-    }
-    .receipt-items-header {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${is58mm ? "9.5px" : "11.5px"};
-      font-weight: 800;
-      line-height: ${lineHeight};
-      white-space: pre;
-      letter-spacing: -0.2px;
-    }
-    .receipt-item-row {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${is58mm ? "9.5px" : "11.5px"};
-      font-weight: 800;
-      line-height: ${lineHeight};
-      white-space: pre;
-      letter-spacing: -0.2px;
-    }
-    .receipt-total-row {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${is58mm ? "11px" : "13.5px"};
-      font-weight: 900;
-      line-height: 1.35;
-      white-space: pre;
-      letter-spacing: 0.1px;
-    }
-    .receipt-summary-row {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${is58mm ? "9px" : "10.5px"};
-      font-weight: 600;
-      line-height: ${lineHeight};
-      white-space: pre;
-      letter-spacing: -0.2px;
+      line-height: 1.25;
     }
     .receipt-meta-row {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${is58mm ? "8.5px" : "10px"};
-      font-weight: 600;
-      line-height: 1.25;
-      white-space: pre;
-      letter-spacing: -0.2px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 0.3mm 0;
     }
-    .receipt-divider-line {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${is58mm ? "8.5px" : "10px"};
+    .receipt-items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.5mm 0;
+    }
+    .receipt-items-table th {
+      font-size: ${is58mm ? "10.5px" : "12px"};
+      font-weight: 900;
+      padding: 1.5px 0;
+      border-bottom: 1px dashed #000;
+      line-height: 1.2;
+    }
+    .receipt-items-table td {
+      font-size: ${is58mm ? "11.5px" : "13.5px"};
+      font-weight: 800;
+      padding: 1.5px 0;
+      line-height: 1.2;
+      vertical-align: top;
+    }
+    .col-item {
+      text-align: left;
+      word-break: break-word;
+    }
+    .col-qty {
+      text-align: center;
+      width: 32px;
+      white-space: nowrap;
+    }
+    .col-price {
+      text-align: right;
+      width: 65px;
+      white-space: nowrap;
+    }
+    .receipt-summary-block {
+      font-size: ${is58mm ? "11px" : "13px"};
       font-weight: 700;
-      line-height: 1.1;
-      white-space: pre;
+      line-height: 1.25;
     }
-    .receipt-default-row {
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${is58mm ? "9px" : "10.5px"};
-      font-weight: 600;
-      line-height: ${lineHeight};
-      white-space: pre;
-      letter-spacing: -0.2px;
+    .receipt-summary-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 0.3mm 0;
+    }
+    .receipt-grand-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: ${is58mm ? "14.5px" : "17.5px"};
+      font-weight: 900;
+      line-height: 1.2;
+      padding: 0.5mm 0;
+    }
+    .receipt-payments-block {
+      font-size: ${is58mm ? "10px" : "12px"};
+      font-weight: 700;
+      line-height: 1.25;
+      margin: 0.5mm 0;
+    }
+    .receipt-payments-title {
+      font-size: ${is58mm ? "9.5px" : "11px"};
+      font-weight: 900;
+      margin-bottom: 0.5mm;
+      text-align: left;
+    }
+    .receipt-payment-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 0.2mm 0;
     }
     .receipt-footer-block {
       text-align: center;
-      width: 100%;
-      margin: 0.5mm auto 0 auto;
-    }
-    .receipt-footer-line {
-      text-align: center;
-      font-family: 'Courier New', Courier, monospace, 'Lucida Console';
-      font-size: ${is58mm ? "8.5px" : "10px"};
+      margin-top: 1mm;
       line-height: 1.25;
+    }
+    .receipt-hindi-blessing {
+      font-size: ${is58mm ? "11.5px" : "13.5px"};
+      font-weight: 800;
+    }
+    .receipt-footer-msg {
+      font-size: ${is58mm ? "9.5px" : "11px"};
       font-weight: 700;
-      letter-spacing: -0.2px;
+    }
+    .receipt-insta-label {
+      font-size: ${is58mm ? "9px" : "10px"};
+      font-weight: 600;
+      margin-top: 0.5mm;
+    }
+    .receipt-insta-handle {
+      font-size: ${is58mm ? "10.5px" : "12px"};
+      font-weight: 800;
     }
   `;
 }
@@ -750,9 +927,24 @@ function getThermalPrinterStyles(rollWidth: string, contentWidth: string, is58mm
 /**
  * Dispatches an HTML document directly to the printer using an off-screen iframe.
  * Never sets visibility: hidden (which causes Chromium to suppress window.print()).
+ * Accepts an optional onDone callback when printing completes (or times out).
  */
-function dispatchDirectPrint(fullHtml: string, rollWidth: string): void {
+function dispatchDirectPrint(
+  fullHtml: string,
+  rollWidth: string,
+  onDone?: () => void
+): void {
   if (typeof window === "undefined") return;
+
+  let hasNotified = false;
+  const triggerDone = () => {
+    if (!hasNotified) {
+      hasNotified = true;
+      if (onDone) {
+        setTimeout(onDone, 300);
+      }
+    }
+  };
 
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
@@ -777,7 +969,10 @@ function dispatchDirectPrint(fullHtml: string, rollWidth: string): void {
         try {
           winFallback.print();
         } catch {}
+        triggerDone();
       }, 80);
+    } else {
+      triggerDone();
     }
     return;
   }
@@ -789,14 +984,17 @@ function dispatchDirectPrint(fullHtml: string, rollWidth: string): void {
   const win = iframe.contentWindow;
   if (win) {
     win.addEventListener("afterprint", () => {
+      triggerDone();
       setTimeout(() => {
         if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
       }, 1500);
     });
 
+    // Fallback if afterprint doesn't trigger within 60 seconds (prevents premature job overlapping)
     setTimeout(() => {
+      triggerDone();
       if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    }, 120000);
+    }, 60000);
 
     setTimeout(() => {
       try {
@@ -815,13 +1013,154 @@ function dispatchDirectPrint(fullHtml: string, rollWidth: string): void {
         } catch (fbErr) {
           console.error("Popup fallback print error:", fbErr);
         }
+        triggerDone();
       }
     }, 70);
+  } else {
+    triggerDone();
   }
 }
 
 /**
- * Builds HTML for the Bill portion
+ * Builds pixel-perfect, mathematically aligned HTML directly from structured receipt parameters.
+ * - Guarantee exact column alignment (Item, Qty, Price) via semantic CSS table
+ * - Larger, bolder fonts for enhanced readability
+ * - Compact height, tight dividers to minimize thermal roll paper waste
+ * - NO Tax (GST) line
+ */
+export function buildReceiptHtmlFromParams(
+  data: BuildReceiptParams,
+  _paperSize: ThermalPaperSize = "80mm",
+  showLogo = true,
+  logoUrl?: string | null
+): string {
+  const currSym = data.currencySymbol || "₹";
+  const brandName = (data.brandName || "MADRASI DOSA").trim().toUpperCase();
+  const franchiseName = (data.franchiseName || "").trim().toUpperCase();
+  const rawInsta = (data.instagramId || "madrasidosaoffical").replace(/^@/, "");
+
+  const logoMarkup = showLogo
+    ? logoUrl && logoUrl.trim()
+      ? `<div class="receipt-logo-wrap"><img src="${escapeHtml(logoUrl.trim())}" alt="Madrasi Dosa Logo" /></div>`
+      : `<div class="receipt-logo-wrap">${MADRASI_DOSA_LOGO_SVG}</div>`
+    : "";
+
+  const itemsHtml = data.items
+    .map((item) => {
+      const itemTotal = item.totalPrice !== undefined ? item.totalPrice : item.price * item.quantity;
+      let displayName = formatItemDisplayName(item.name, item.selectedSize);
+      if (item.isTakeaway) {
+        displayName += " [Parcel]";
+      }
+      return `
+        <tr>
+          <td class="col-item">${escapeHtml(displayName)}</td>
+          <td class="col-qty">${item.quantity}</td>
+          <td class="col-price">${currSym}${itemTotal.toFixed(2)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const paymentsHtml =
+    data.payments && data.payments.length > 0
+      ? `
+      <div class="receipt-solid-divider"></div>
+      <div class="receipt-payments-block">
+        <div class="receipt-payments-title">PAYMENTS:</div>
+        ${data.payments
+          .map(
+            (p) => `
+          <div class="receipt-payment-row">
+            <span>${escapeHtml(p.method)}:</span>
+            <span>${currSym}${p.amount.toFixed(2)} [${escapeHtml(p.status || "COMPLETED")}]</span>
+          </div>`
+          )
+          .join("")}
+      </div>
+    `
+      : "";
+
+  return `
+    <div class="thermal-receipt-container">
+      ${logoMarkup}
+
+      <div class="receipt-header-block">
+        <div class="receipt-brand-title">${escapeHtml(brandName)}</div>
+        ${franchiseName ? `<div class="receipt-branch-name">--- ${escapeHtml(franchiseName)} ---</div>` : ""}
+        ${data.franchiseAddress ? `<div class="receipt-sub-text">${escapeHtml(data.franchiseAddress)}</div>` : ""}
+        ${data.franchisePhone ? `<div class="receipt-sub-text">Phone: ${escapeHtml(data.franchisePhone)}</div>` : ""}
+        ${data.gstin ? `<div class="receipt-sub-text">GSTIN: ${escapeHtml(data.gstin)}</div>` : ""}
+        ${data.fssaiNumber ? `<div class="receipt-sub-text">FSSAI: ${escapeHtml(data.fssaiNumber)}</div>` : ""}
+      </div>
+
+      <div class="receipt-solid-divider"></div>
+
+      <div class="receipt-meta-grid">
+        <div class="receipt-meta-row"><span>Tax Invoice:</span><strong>${escapeHtml(data.invoiceNumber)}</strong></div>
+        ${data.orderNumber ? `<div class="receipt-meta-row"><span>Order:</span><strong>${escapeHtml(data.orderNumber)}</strong></div>` : ""}
+        <div class="receipt-meta-row"><span>Type:</span><strong>${escapeHtml(data.orderType || "Takeaway")}</strong></div>
+        <div class="receipt-meta-row"><span>Date:</span><span>${escapeHtml(data.date || new Date().toLocaleString())}</span></div>
+      </div>
+
+      <div class="receipt-dashed-divider"></div>
+
+      <table class="receipt-items-table">
+        <thead>
+          <tr>
+            <th class="col-item">ITEM</th>
+            <th class="col-qty">QTY</th>
+            <th class="col-price">PRICE</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsHtml}
+        </tbody>
+      </table>
+
+      <div class="receipt-dashed-divider"></div>
+
+      <div class="receipt-summary-block">
+        <div class="receipt-summary-row">
+          <span>Subtotal:</span>
+          <span>${currSym}${data.subtotal.toFixed(2)}</span>
+        </div>
+        ${
+          data.discount && data.discount > 0
+            ? `
+          <div class="receipt-summary-row discount-row">
+            <span>Discount:</span>
+            <span>-${currSym}${data.discount.toFixed(2)}</span>
+          </div>`
+            : ""
+        }
+      </div>
+
+      <div class="receipt-solid-divider"></div>
+
+      <div class="receipt-grand-total">
+        <span>TOTAL:</span>
+        <span>${currSym}${data.total.toFixed(2)}</span>
+      </div>
+
+      ${paymentsHtml}
+
+      <div class="receipt-dashed-divider"></div>
+
+      <div class="receipt-footer-block">
+        <div class="receipt-hindi-blessing">धन्यवाद! पुनः पधारें</div>
+        <div class="receipt-footer-msg">${escapeHtml(data.footerMessage || "Thank You! Please Visit Again")}</div>
+        <div class="receipt-insta-label">Follow Us On Instagram:</div>
+        <div class="receipt-insta-handle">📸 @${escapeHtml(rawInsta)}</div>
+      </div>
+
+      <div class="receipt-solid-divider"></div>
+    </div>
+  `;
+}
+
+/**
+ * Builds HTML for the Bill portion (Raw Text Fallback)
  */
 function buildBillHtml(
   rawText: string,
@@ -840,27 +1179,38 @@ function buildBillHtml(
 
   let innerContentHtml = "";
   if (parsed.hasStructure && parsed.headerLines) {
+    const brandLine = parsed.headerLines[0] || "MADRASI DOSA";
+    const branchLine = parsed.headerLines.find((l) => l.startsWith("---") && l.endsWith("---"));
+    const otherHeaderLines = parsed.headerLines.filter((l) => l !== brandLine && l !== branchLine);
+
     innerContentHtml = `
       <div class="receipt-header-block">
-        <div class="receipt-divider">${escapeHtml(parsed.topDivider || "================================")}</div>
-        ${parsed.headerLines.map((l) => `<div class="receipt-header-line">${escapeHtml(l)}</div>`).join("")}
-        <div class="receipt-divider">${escapeHtml(parsed.midDivider || "================================")}</div>
+        <div class="receipt-brand-title">${escapeHtml(brandLine)}</div>
+        ${branchLine ? `<div class="receipt-branch-name">${escapeHtml(branchLine)}</div>` : ""}
+        ${otherHeaderLines.map((l) => `<div class="receipt-sub-text">${escapeHtml(l)}</div>`).join("")}
       </div>
-      <div class="thermal-receipt-body-wrap">
-        <div class="thermal-receipt-body">${formatReceiptBodyHtml(parsed.bodyLines || [])}</div>
-      </div>
+      <div class="receipt-solid-divider"></div>
+      <div class="thermal-receipt-body">${formatReceiptBodyHtml(parsed.bodyLines || [])}</div>
       ${
         parsed.footerLines && parsed.footerLines.length > 0
           ? `
         <div class="receipt-footer-block">
-          <div class="receipt-divider">${escapeHtml(parsed.bottomDivider || "--------------------------------")}</div>
-          ${parsed.footerLines.map((l) => `<div class="receipt-footer-line">${escapeHtml(l)}</div>`).join("")}
+          <div class="receipt-dashed-divider"></div>
+          ${parsed.footerLines
+            .map((l) => {
+              if (/धन्यवाद/i.test(l)) return `<div class="receipt-hindi-blessing">${escapeHtml(l)}</div>`;
+              if (/Instagram/i.test(l)) return `<div class="receipt-insta-label">${escapeHtml(l)}</div>`;
+              if (/@/.test(l)) return `<div class="receipt-insta-handle">${escapeHtml(l)}</div>`;
+              return `<div class="receipt-footer-msg">${escapeHtml(l)}</div>`;
+            })
+            .join("")}
+          <div class="receipt-solid-divider"></div>
         </div>`
           : ""
       }
     `;
   } else {
-    innerContentHtml = `<div class="thermal-receipt-body-wrap"><div class="thermal-receipt-body">${formatReceiptBodyHtml(lines)}</div></div>`;
+    innerContentHtml = `<div class="thermal-receipt-body">${formatReceiptBodyHtml(lines)}</div>`;
   }
 
   return `
@@ -875,12 +1225,12 @@ function buildBillHtml(
  * Direct thermal printer spooler for single receipt/bill
  */
 export function printReceiptDirectly(
-  rawText: string,
+  rawTextOrParams: string | BuildReceiptParams,
   titleOrOptions: string | PrintReceiptOptions = "Madrasi Dosa Bill Receipt",
   paperSizeOverride?: ThermalPaperSize,
   customLogoUrl?: string | null
 ): void {
-  if (typeof window === "undefined" || !rawText) return;
+  if (typeof window === "undefined" || !rawTextOrParams) return;
 
   let title = "Madrasi Dosa Bill Receipt";
   let paperSize: ThermalPaperSize = getSavedPaperSize();
@@ -904,7 +1254,11 @@ export function printReceiptDirectly(
   const lineHeight = is58mm ? "1.2" : "1.25";
 
   const printStyles = getThermalPrinterStyles(rollWidth, contentWidth, is58mm, lineHeight);
-  const billHtml = buildBillHtml(rawText, showLogo, logoUrl);
+
+  const billHtml =
+    typeof rawTextOrParams === "string"
+      ? buildBillHtml(rawTextOrParams, showLogo, logoUrl)
+      : buildReceiptHtmlFromParams(rawTextOrParams, paperSize, showLogo, logoUrl);
 
   const receiptHtml = `
     <!DOCTYPE html>
@@ -970,11 +1324,15 @@ export interface PrintCombinedOptions {
 }
 
 /**
- * Dispatches KOT FIRST, followed immediately by Customer Bill in a single thermal print spool!
- * The KOT slip strictly contains Table Number and Items with quantities/notes (NO prices).
- * Features a clean tear/cut line between the KOT and the Bill.
+ * Spools KOT (Kitchen Order Ticket) and Customer Bill in a SINGLE print job
+ * separated by a CSS page-break (`page-break-after: always; break-after: page;`).
+ *
+ * This ensures:
+ * 1. The browser NEVER asks for printer, copies, or destination a second time (only 1 single print job is spooled).
+ * 2. Thermal printers execute hardware auto-cut between Page 1 (KOT) and Page 2 (Bill).
+ * 3. With Chrome/Edge `--kiosk-printing`, printing is 100% silent and instantaneous with zero dialogs.
  */
-export function printCombinedKOTAndBillDirectly(options: PrintCombinedOptions): void {
+export function printKOTThenBillSequentially(options: PrintCombinedOptions): void {
   if (typeof window === "undefined") return;
 
   const paperSize: ThermalPaperSize = options.paperSize || getSavedPaperSize();
@@ -984,11 +1342,14 @@ export function printCombinedKOTAndBillDirectly(options: PrintCombinedOptions): 
   const lineHeight = is58mm ? "1.2" : "1.25";
 
   const printStyles = getThermalPrinterStyles(rollWidth, contentWidth, is58mm, lineHeight);
-  const kotHtml = formatKOTBodyHtml(options.kotParams, is58mm);
-  const billRawText = buildThermalReceiptText(options.billParams, paperSize);
-  const billHtml = buildBillHtml(billRawText, true, options.logoUrl);
 
-  const fullHtml = `
+  // 1. Kitchen Order Ticket (KOT)
+  const kotHtml = formatKOTBodyHtml(options.kotParams, is58mm);
+
+  // 2. Customer Bill (Pixel-Perfect Table Layout, No Tax line, Big Font, Compact Height)
+  const billHtml = buildReceiptHtmlFromParams(options.billParams, paperSize, true, options.logoUrl);
+
+  const combinedDocHtml = `
     <!DOCTYPE html>
     <html>
       <head>
@@ -998,17 +1359,9 @@ export function printCombinedKOTAndBillDirectly(options: PrintCombinedOptions): 
       </head>
       <body>
         <div class="thermal-printable-wrapper">
-          <!-- 1. KOT SLIP (KITCHEN COPY: Strictly Table & Items) -->
           <div class="kot-page-section">
             ${kotHtml}
           </div>
-
-          <!-- TEAR / CUT SEPARATOR -->
-          <div class="tear-separator-block">
-            ✂ - - - - TEAR HERE FOR KITCHEN - - - - ✂
-          </div>
-
-          <!-- 2. CUSTOMER BILL (Madrasi Dosa Logo + Full Totals) -->
           <div class="bill-page-section">
             ${billHtml}
           </div>
@@ -1017,5 +1370,14 @@ export function printCombinedKOTAndBillDirectly(options: PrintCombinedOptions): 
     </html>
   `;
 
-  dispatchDirectPrint(fullHtml, rollWidth);
+  // Dispatch single combined print job - NO SECOND DIALOG POPUP
+  dispatchDirectPrint(combinedDocHtml, rollWidth);
+}
+
+/**
+ * Backward compatibility alias for printKOTThenBillSequentially.
+ * Routes directly to sequential printing to trigger hardware auto-cutting.
+ */
+export function printCombinedKOTAndBillDirectly(options: PrintCombinedOptions): void {
+  printKOTThenBillSequentially(options);
 }

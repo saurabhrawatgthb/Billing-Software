@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Malyana - Counter Menu Item Codes</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 10mm;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 16px;
+      line-height: 1.3;
+    }
+
+    /* Top control bar (hidden when printed) */
+    .no-print-bar {
+      max-width: 900px;
+      margin: 0 auto 16px auto;
+      padding: 12px 18px;
+      background: #0f172a;
+      color: #ffffff;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    }
+    .no-print-title {
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-success { background: #16a34a; color: #fff; }
+    .btn-success:hover { background: #15803d; }
+    .btn-dark { background: #334155; color: #fff; }
+    .btn-dark:hover { background: #475569; }
+
+    /* Main Cheat Sheet Container */
+    .sheet {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 24px 28px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+      border-bottom: 2px solid #0f172a;
+    }
+    .store-name {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      color: #0f172a;
+      text-transform: uppercase;
+    }
+    .subtitle {
+      font-size: 13px;
+      font-weight: 700;
+      color: #475569;
+      margin-top: 3px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .instructions {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    /* 3-Column Clean Sequential Layout */
+    .columns-container {
+      column-count: 3;
+      column-gap: 20px;
+      column-rule: 1px solid #e2e8f0;
+    }
+
+    /* Category Block */
+    .category-block {
+      break-inside: avoid;
+      page-break-inside: avoid;
+      margin-bottom: 14px;
+    }
+
+    .category-title {
+      font-size: 12px;
+      font-weight: 900;
+      color: #ffffff;
+      background: #1e293b;
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .category-count {
+      font-size: 10px;
+      font-weight: 700;
+      opacity: 0.85;
+    }
+
+    /* Clean Uniform Item Rows */
+    .item-list {
+      list-style: none;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .item-row {
+      display: flex;
+      align-items: center;
+      padding: 4px 8px;
+      font-size: 12px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .item-row:last-child {
+      border-bottom: none;
+    }
+    .item-row:nth-child(even) {
+      background: #f8fafc;
+    }
+
+    .item-code {
+      width: 44px;
+      min-width: 44px;
+      font-weight: 900;
+      font-size: 13px;
+      color: #0f172a;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .item-name {
+      flex: 1;
+      font-weight: 600;
+      color: #334155;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 16px;
+      padding-top: 10px;
+      border-top: 1px dashed #cbd5e1;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+    }
+
+    /* Print Styles */
+    @media print {
+      body {
+        background: #ffffff !important;
+        padding: 0 !important;
+      }
+      .no-print-bar {
+        display: none !important;
+      }
+      .sheet {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        max-width: 100% !important;
+      }
+      .category-title {
+        background: #0f172a !important;
+        color: #ffffff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .item-code {
+        color: #000000 !important;
+      }
+      .item-row:nth-child(even) {
+        background: #f1f5f9 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="no-print-bar">
+    <div class="no-print-title">📋 Counter Menu Quick Codes (Paste Next to POS)</div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="window.print()">🖨️ Print Cheat Sheet</button>
+      <button class="btn btn-success" onclick="downloadHTML()">📥 Download HTML</button>
+      <button class="btn btn-dark" onclick="downloadCSV()">📊 Download CSV</button>
+    </div>
+  </div>
+
+  <div class="sheet">
+    <div class="header">
+      <div class="store-name">🍽️ Malyana</div>
+      <div class="subtitle">BILLING COUNTER ITEM CODES CHEAT SHEET</div>
+      <div class="instructions">Type the Item Code on the POS keypad to quickly add dishes without searching</div>
+    </div>
+
+    <div class="columns-container">
+      
+      <div class="category-block">
+        <div class="category-title">
+          <span>South Indian</span>
+          <span class="category-count">9</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">1</span>
+            <span class="item-name">Masala Dosa</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">2</span>
+            <span class="item-name">Paneer Masala Dosa</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">3</span>
+            <span class="item-name">Butter Paneer Masala Dosa</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">4</span>
+            <span class="item-name">Tandoori Paneer Masala Dosa</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">5</span>
+            <span class="item-name">Cheese Corn Masala Dosa</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">6</span>
+            <span class="item-name">Onion Cheese Masala Dosa</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">7</span>
+            <span class="item-name">Idli Sambar(2PCs)</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">8</span>
+            <span class="item-name">Sambar Vada(2PCs)</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">9</span>
+            <span class="item-name">Papad Dosa</span>
+          </li>
+        </ul>
+      </div>
+      <div class="category-block">
+        <div class="category-title">
+          <span>Chinese</span>
+          <span class="category-count">10</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">10</span>
+            <span class="item-name">Veg Chowmein</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">11</span>
+            <span class="item-name">Butter Chowmein</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">12</span>
+            <span class="item-name">Butter Paneer Special Chowmein</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">13</span>
+            <span class="item-name">Singapore Noodles</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">14</span>
+            <span class="item-name">Hakka Noodles</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">15</span>
+            <span class="item-name">Steam Momos</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">16</span>
+            <span class="item-name">Fried Momos</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">17</span>
+            <span class="item-name">Spring Roll</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">18</span>
+            <span class="item-name">Chilli Potato</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">19</span>
+            <span class="item-name">Honey Chilli Potato</span>
+          </li>
+        </ul>
+      </div>
+      <div class="category-block">
+        <div class="category-title">
+          <span>Pav Bhaji</span>
+          <span class="category-count">1</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">20</span>
+            <span class="item-name">Pav Bhaji</span>
+          </li>
+        </ul>
+      </div>
+      <div class="category-block">
+        <div class="category-title">
+          <span>Cold Drink</span>
+          <span class="category-count">5</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">21</span>
+            <span class="item-name">Thumps Up</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">22</span>
+            <span class="item-name">Sprite</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">23</span>
+            <span class="item-name">Fanta</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">24</span>
+            <span class="item-name">Mazza</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">25</span>
+            <span class="item-name">Mountain Dew</span>
+          </li>
+        </ul>
+      </div>
+      <div class="category-block">
+        <div class="category-title">
+          <span>Kulhad</span>
+          <span class="category-count">2</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">27</span>
+            <span class="item-name">Kulhad Pizza</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">67</span>
+            <span class="item-name">Kulhad Momos</span>
+          </li>
+        </ul>
+      </div>
+      <div class="category-block">
+        <div class="category-title">
+          <span>Ice Cream</span>
+          <span class="category-count">8</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">28</span>
+            <span class="item-name">Vanilla</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">29</span>
+            <span class="item-name">Strawberry</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">30</span>
+            <span class="item-name">Chocolate</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">31</span>
+            <span class="item-name">Butterscotch</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">32</span>
+            <span class="item-name">Tuti-Fruiti</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">33</span>
+            <span class="item-name">Mango</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">34</span>
+            <span class="item-name">Chocolate Cone</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">35</span>
+            <span class="item-name">Butterscotch Cone</span>
+          </li>
+        </ul>
+      </div>
+      <div class="category-block">
+        <div class="category-title">
+          <span>Pizza</span>
+          <span class="category-count">15</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">36</span>
+            <span class="item-name">Margherita</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">37</span>
+            <span class="item-name">Double Cheese Margherita</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">38</span>
+            <span class="item-name">Country Feast</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">39</span>
+            <span class="item-name">Farmhouse Pizza</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">40</span>
+            <span class="item-name">Spicy Tango Pizza</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">41</span>
+            <span class="item-name">Veggie Delight</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">42</span>
+            <span class="item-name">Peppy Paneer</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">43</span>
+            <span class="item-name">Spicy Italian Heart</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">44</span>
+            <span class="item-name">Tandoori Paneer</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">45</span>
+            <span class="item-name">Paneer Delight</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">46</span>
+            <span class="item-name">Mapango Pizza</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">47</span>
+            <span class="item-name">Chef's Special</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">48</span>
+            <span class="item-name">Paneer Makhani</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">49</span>
+            <span class="item-name">Make My Pizza</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">50</span>
+            <span class="item-name">African Peri-Peri Pizza</span>
+          </li>
+        </ul>
+      </div>
+      <div class="category-block">
+        <div class="category-title">
+          <span>Single Topping Pizza</span>
+          <span class="category-count">4</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">51</span>
+            <span class="item-name">Tomato Pizza</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">52</span>
+            <span class="item-name">Onion Pizza</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">53</span>
+            <span class="item-name">Capsicum Pizza</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">54</span>
+            <span class="item-name">Corn Pizza</span>
+          </li>
+        </ul>
+      </div>
+      <div class="category-block">
+        <div class="category-title">
+          <span>Double Topping Pizza</span>
+          <span class="category-count">3</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">55</span>
+            <span class="item-name">Onion and Capsicum</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">56</span>
+            <span class="item-name">Tomato and Corn Pizza</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">57</span>
+            <span class="item-name">Onion and Paneer Pizza</span>
+          </li>
+        </ul>
+      </div>
+      <div class="category-block">
+        <div class="category-title">
+          <span>Burger</span>
+          <span class="category-count">5</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">58</span>
+            <span class="item-name">Potato Crispy Burger</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">59</span>
+            <span class="item-name">Cheese Burger</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">60</span>
+            <span class="item-name">Veg Delight Burger</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">61</span>
+            <span class="item-name">Tandoori Paneer Burger</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">62</span>
+            <span class="item-name">Pizza Burger</span>
+          </li>
+        </ul>
+      </div>
+      <div class="category-block">
+        <div class="category-title">
+          <span>Sandwich</span>
+          <span class="category-count">4</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">63</span>
+            <span class="item-name">Veg Club Sandwich</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">64</span>
+            <span class="item-name">Cheese & Corn Sandwich</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">65</span>
+            <span class="item-name">Tandoori Paneer Sandwich</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">66</span>
+            <span class="item-name">Pizza Sandwich</span>
+          </li>
+        </ul>
+      </div>
+      <div class="category-block">
+        <div class="category-title">
+          <span>Beverages</span>
+          <span class="category-count">10</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">26</span>
+            <span class="item-name">Hot Coffee</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">68</span>
+            <span class="item-name">Virgin Mojito</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">69</span>
+            <span class="item-name">Strawberry Shake</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">70</span>
+            <span class="item-name">Vanilla Shake</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">71</span>
+            <span class="item-name">Cold Coffee</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">72</span>
+            <span class="item-name">Chocolate Shake</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">73</span>
+            <span class="item-name">Kitkat Shake</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">74</span>
+            <span class="item-name">Oreo Shake</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">WTR10</span>
+            <span class="item-name">Water Bottle 10</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">WTR20</span>
+            <span class="item-name">Water Bottle 20</span>
+          </li>
+        </ul>
+      </div>
+      <div class="category-block">
+        <div class="category-title">
+          <span>Side Order</span>
+          <span class="category-count">11</span>
+        </div>
+        <ul class="item-list">
+          
+          <li class="item-row">
+            <span class="item-code">75</span>
+            <span class="item-name">Zingy Parcel</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">76</span>
+            <span class="item-name">ChocoLava Cake</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">77</span>
+            <span class="item-name">French Fries</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">78</span>
+            <span class="item-name">Peri-Peri French Fries</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">79</span>
+            <span class="item-name">Loaded French Fries</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">80</span>
+            <span class="item-name">Cheese Garlic Bread</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">81</span>
+            <span class="item-name">Stuffed Garlic Bread</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">82</span>
+            <span class="item-name">Paneer Garlic Bread</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">83</span>
+            <span class="item-name">White Sauce Pasta</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">84</span>
+            <span class="item-name">Mix Sauce Pasta</span>
+          </li>
+          <li class="item-row">
+            <span class="item-code">85</span>
+            <span class="item-name">Red Sauce Pasta</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer">
+      Total Items: 87 &nbsp;|&nbsp; Fast POS Entry: Just enter code and press enter
+    </div>
+  </div>
+
+  <script>
+    function downloadHTML() {
+      const htmlContent = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+      const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Counter_Menu_Codes.html";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function downloadCSV() {
+      const rows = [["Category", "Code", "Item Name"]];
+      [["South Indian","1","Masala Dosa"],["South Indian","2","Paneer Masala Dosa"],["South Indian","3","Butter Paneer Masala Dosa"],["South Indian","4","Tandoori Paneer Masala Dosa"],["South Indian","5","Cheese Corn Masala Dosa"],["South Indian","6","Onion Cheese Masala Dosa"],["South Indian","7","Idli Sambar(2PCs)"],["South Indian","8","Sambar Vada(2PCs)"],["South Indian","9","Papad Dosa"],["Chinese","10","Veg Chowmein"],["Chinese","11","Butter Chowmein"],["Chinese","12","Butter Paneer Special Chowmein"],["Chinese","13","Singapore Noodles"],["Chinese","14","Hakka Noodles"],["Chinese","15","Steam Momos"],["Chinese","16","Fried Momos"],["Chinese","17","Spring Roll"],["Chinese","18","Chilli Potato"],["Chinese","19","Honey Chilli Potato"],["Pav Bhaji","20","Pav Bhaji"],["Cold Drink","21","Thumps Up"],["Cold Drink","22","Sprite"],["Cold Drink","23","Fanta"],["Cold Drink","24","Mazza"],["Cold Drink","25","Mountain Dew"],["Kulhad","27","Kulhad Pizza"],["Kulhad","67","Kulhad Momos"],["Ice Cream","28","Vanilla"],["Ice Cream","29","Strawberry"],["Ice Cream","30","Chocolate"],["Ice Cream","31","Butterscotch"],["Ice Cream","32","Tuti-Fruiti"],["Ice Cream","33","Mango"],["Ice Cream","34","Chocolate Cone"],["Ice Cream","35","Butterscotch Cone"],["Pizza","36","Margherita"],["Pizza","37","Double Cheese Margherita"],["Pizza","38","Country Feast"],["Pizza","39","Farmhouse Pizza"],["Pizza","40","Spicy Tango Pizza"],["Pizza","41","Veggie Delight"],["Pizza","42","Peppy Paneer"],["Pizza","43","Spicy Italian Heart"],["Pizza","44","Tandoori Paneer"],["Pizza","45","Paneer Delight"],["Pizza","46","Mapango Pizza"],["Pizza","47","Chef's Special"],["Pizza","48","Paneer Makhani"],["Pizza","49","Make My Pizza"],["Pizza","50","African Peri-Peri Pizza"],["Single Topping Pizza","51","Tomato Pizza"],["Single Topping Pizza","52","Onion Pizza"],["Single Topping Pizza","53","Capsicum Pizza"],["Single Topping Pizza","54","Corn Pizza"],["Double Topping Pizza","55","Onion and Capsicum"],["Double Topping Pizza","56","Tomato and Corn Pizza"],["Double Topping Pizza","57","Onion and Paneer Pizza"],["Burger","58","Potato Crispy Burger"],["Burger","59","Cheese Burger"],["Burger","60","Veg Delight Burger"],["Burger","61","Tandoori Paneer Burger"],["Burger","62","Pizza Burger"],["Sandwich","63","Veg Club Sandwich"],["Sandwich","64","Cheese & Corn Sandwich"],["Sandwich","65","Tandoori Paneer Sandwich"],["Sandwich","66","Pizza Sandwich"],["Beverages","26","Hot Coffee"],["Beverages","68","Virgin Mojito"],["Beverages","69","Strawberry Shake"],["Beverages","70","Vanilla Shake"],["Beverages","71","Cold Coffee"],["Beverages","72","Chocolate Shake"],["Beverages","73","Kitkat Shake"],["Beverages","74","Oreo Shake"],["Beverages","WTR10","Water Bottle 10"],["Beverages","WTR20","Water Bottle 20"],["Side Order","75","Zingy Parcel"],["Side Order","76","ChocoLava Cake"],["Side Order","77","French Fries"],["Side Order","78","Peri-Peri French Fries"],["Side Order","79","Loaded French Fries"],["Side Order","80","Cheese Garlic Bread"],["Side Order","81","Stuffed Garlic Bread"],["Side Order","82","Paneer Garlic Bread"],["Side Order","83","White Sauce Pasta"],["Side Order","84","Mix Sauce Pasta"],["Side Order","85","Red Sauce Pasta"]].forEach(r => rows.push(r));
+
+      const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.map(val => '"' + String(val).replace(/"/g, '""') + '"').join(",")).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "Counter_Menu_Codes.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+</body>
+</html>

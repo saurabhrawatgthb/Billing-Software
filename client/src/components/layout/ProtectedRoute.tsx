@@ -1,6 +1,8 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "../../store/authStore.js";
+import { usePinLockStore } from "../../store/pinLockStore.js";
+import { PinLockScreen } from "../auth/PinLockScreen.js";
 import type { UserRole } from "../../types/index.js";
 
 interface ProtectedRouteProps {
@@ -12,9 +14,8 @@ export function getDefaultRoleHome(role?: string): string {
   switch (role) {
     case "SUPER_ADMIN":
     case "FRANCHISE_MANAGER":
-      return "/dashboard";
     case "CASHIER":
-      return "/pos";
+      return "/dashboard";
     case "CHEF":
       return "/kitchen";
     case "WAITER":
@@ -33,10 +34,16 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   allowedRoles,
 }) => {
   const { isAuthenticated, user } = useAuthStore();
+  const { isLocked, hasPin } = usePinLockStore();
   const location = useLocation();
 
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // If terminal / device is locked with a PIN, require PIN entry to proceed
+  if (isLocked && hasPin(user.id)) {
+    return <PinLockScreen />;
   }
 
   // Super Admin has master authority to view and operate all terminals and modules

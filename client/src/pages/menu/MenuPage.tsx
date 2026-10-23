@@ -41,7 +41,7 @@ export const MenuPage: React.FC = () => {
     description: "",
     price: 150,
     hasSizes: false,
-    pricingType: "SINGLE" as "SINGLE" | "SIZES_SML" | "NORMAL_LOADED",
+    pricingType: "SINGLE" as "SINGLE" | "SIZES_SML" | "NORMAL_LOADED" | "SCOOP_1_2",
     priceSmall: "" as number | string,
     priceMedium: "" as number | string,
     priceLarge: "" as number | string,
@@ -118,8 +118,12 @@ export const MenuPage: React.FC = () => {
       const franchiseToUse = targetFranchiseId || effectiveFranchiseId || user?.franchiseId || selectedFranchiseId || franchises[0]?.id;
       const catName = categories.find((c) => c.id === data.categoryId)?.name || "";
       const isPizzaCat = catName.toLowerCase().includes("pizza");
+      const isIceCreamCat =
+        catName.toLowerCase().replace(/\s+/g, "").includes("icecream") ||
+        catName.toLowerCase().includes("ice-cream") ||
+        catName.toLowerCase().includes("scoop");
 
-      const effectiveHasSizes = isPizzaCat && data.pricingType !== "SINGLE";
+      const effectiveHasSizes = (isPizzaCat || isIceCreamCat) && data.pricingType !== "SINGLE";
       let basePrice = Number(data.price);
       let pSmall: number | null = null;
       let pMed: number | null = null;
@@ -136,6 +140,11 @@ export const MenuPage: React.FC = () => {
           pMed = null; // No medium for normal & loaded
           pLarge = data.priceLarge !== "" ? Number(data.priceLarge) : null; // Loaded price
           basePrice = Number(pSmall || pLarge || data.price || 0);
+        } else if (data.pricingType === "SCOOP_1_2") {
+          pSmall = data.priceSmall !== "" ? Number(data.priceSmall) : null; // 1 Scoop price
+          pMed = null; // No medium for 2 scoop options
+          pLarge = data.priceLarge !== "" ? Number(data.priceLarge) : null; // 2 Scoops price
+          basePrice = Number(pSmall || data.price || 0);
         }
       }
 
@@ -215,19 +224,31 @@ export const MenuPage: React.FC = () => {
       : (selectedCategoryFilter || categories[0]?.id || "");
     const catName = categories.find((c) => c.id === defaultCat)?.name || "";
     const isPizzaCategory = catName.toLowerCase().includes("pizza");
+    const isIceCreamCategory =
+      catName.toLowerCase().replace(/\s+/g, "").includes("icecream") ||
+      catName.toLowerCase().includes("ice-cream") ||
+      catName.toLowerCase().includes("scoop");
 
     setItemFormData({
       categoryId: defaultCat,
       stationId: stations[0]?.id || "",
       name: "",
-      code: isPizzaCategory ? `PIZ-${Math.floor(100 + Math.random() * 900)}` : "",
+      code: isPizzaCategory
+        ? `PIZ-${Math.floor(100 + Math.random() * 900)}`
+        : isIceCreamCategory
+        ? `ICE-${Math.floor(100 + Math.random() * 900)}`
+        : "",
       description: "",
-      price: 200,
-      hasSizes: isPizzaCategory,
-      pricingType: isPizzaCategory ? "SIZES_SML" : "SINGLE",
-      priceSmall: 150,
-      priceMedium: 250,
-      priceLarge: 350,
+      price: isIceCreamCategory ? 60 : 200,
+      hasSizes: isPizzaCategory || isIceCreamCategory,
+      pricingType: isPizzaCategory
+        ? "SIZES_SML"
+        : isIceCreamCategory
+        ? "SCOOP_1_2"
+        : "SINGLE",
+      priceSmall: isIceCreamCategory ? 60 : 150,
+      priceMedium: isIceCreamCategory ? "" : 250,
+      priceLarge: isIceCreamCategory ? 100 : 350,
       isAvailable: true,
     });
     setFormError(null);
@@ -239,14 +260,20 @@ export const MenuPage: React.FC = () => {
     setTargetFranchiseId(item.franchiseId || selectedFranchiseId || user?.franchiseId || franchises[0]?.id || "");
     const catName = item.category?.name || categories.find((c) => c.id === item.categoryId)?.name || "";
     const isPizzaCategory = catName.toLowerCase().includes("pizza");
+    const isIceCreamCategory =
+      catName.toLowerCase().replace(/\s+/g, "").includes("icecream") ||
+      catName.toLowerCase().includes("ice-cream") ||
+      catName.toLowerCase().includes("scoop");
 
-    let pricingType: "SINGLE" | "SIZES_SML" | "NORMAL_LOADED" = "SINGLE";
+    let pricingType: "SINGLE" | "SIZES_SML" | "NORMAL_LOADED" | "SCOOP_1_2" = "SINGLE";
     if (isPizzaCategory && item.hasSizes) {
       if (item.priceMedium != null && Number(item.priceMedium) > 0) {
         pricingType = "SIZES_SML";
       } else {
         pricingType = "NORMAL_LOADED";
       }
+    } else if (isIceCreamCategory && item.hasSizes) {
+      pricingType = "SCOOP_1_2";
     }
 
     setItemFormData({
@@ -256,11 +283,11 @@ export const MenuPage: React.FC = () => {
       code: item.code || "",
       description: item.description || "",
       price: Number(item.price),
-      hasSizes: isPizzaCategory && Boolean(item.hasSizes),
+      hasSizes: (isPizzaCategory || isIceCreamCategory) && Boolean(item.hasSizes),
       pricingType,
-      priceSmall: item.priceSmall != null ? item.priceSmall : 150,
-      priceMedium: item.priceMedium != null ? item.priceMedium : 250,
-      priceLarge: item.priceLarge != null ? item.priceLarge : 350,
+      priceSmall: item.priceSmall != null ? item.priceSmall : isIceCreamCategory ? 60 : 150,
+      priceMedium: item.priceMedium != null ? item.priceMedium : isIceCreamCategory ? "" : 250,
+      priceLarge: item.priceLarge != null ? item.priceLarge : isIceCreamCategory ? 100 : 350,
       isAvailable: item.isAvailable,
     });
     setFormError(null);
@@ -516,7 +543,18 @@ export const MenuPage: React.FC = () => {
                   action={
                     item.hasSizes ? (
                       <div className="text-right">
-                        {item.priceMedium != null && Number(item.priceMedium) > 0 ? (
+                        {(item.category?.name || "").toLowerCase().replace(/\s+/g, "").includes("icecream") ||
+                        (item.category?.name || "").toLowerCase().includes("ice-cream") ||
+                        (item.category?.name || "").toLowerCase().includes("scoop") ? (
+                          <>
+                            <span className="text-[10px] font-bold text-pink-600 block uppercase tracking-wider">
+                              🍨 1 & 2 Scoops
+                            </span>
+                            <span className="font-bold text-emerald-600 text-xs font-mono">
+                              ₹{Number(item.priceSmall || 0)} / ₹{Number(item.priceLarge || 0)}
+                            </span>
+                          </>
+                        ) : item.priceMedium != null && Number(item.priceMedium) > 0 ? (
                           <>
                             <span className="text-[10px] font-bold text-indigo-600 block uppercase tracking-wider">
                               S / M / L
@@ -662,6 +700,10 @@ export const MenuPage: React.FC = () => {
             setFormError(null);
             const currentCatName = categories.find((c) => c.id === itemFormData.categoryId)?.name || "";
             const isCategoryPizza = currentCatName.toLowerCase().includes("pizza");
+            const isCategoryIceCream =
+              currentCatName.toLowerCase().replace(/\s+/g, "").includes("icecream") ||
+              currentCatName.toLowerCase().includes("ice-cream") ||
+              currentCatName.toLowerCase().includes("scoop");
 
             if (isCategoryPizza && itemFormData.pricingType === "SIZES_SML") {
               const pSmall = Number(itemFormData.priceSmall);
@@ -676,6 +718,13 @@ export const MenuPage: React.FC = () => {
               const pLoaded = Number(itemFormData.priceLarge);
               if (!pNormal || pNormal <= 0 || !pLoaded || pLoaded <= 0) {
                 setFormError("Please enter valid positive rates for both Normal and Loaded options.");
+                return;
+              }
+            } else if (isCategoryIceCream && itemFormData.pricingType === "SCOOP_1_2") {
+              const p1 = Number(itemFormData.priceSmall);
+              const p2 = Number(itemFormData.priceLarge);
+              if (!p1 || p1 <= 0 || !p2 || p2 <= 0) {
+                setFormError("Please enter valid positive rates for both 1 Scoop and 2 Scoops.");
                 return;
               }
             } else {
@@ -738,12 +787,26 @@ export const MenuPage: React.FC = () => {
                 const catId = e.target.value;
                 const catName = categories.find((c) => c.id === catId)?.name || "";
                 const isPizza = catName.toLowerCase().includes("pizza");
+                const isIceCream =
+                  catName.toLowerCase().replace(/\s+/g, "").includes("icecream") ||
+                  catName.toLowerCase().includes("ice-cream") ||
+                  catName.toLowerCase().includes("scoop");
                 setItemFormData((prev) => ({
                   ...prev,
                   categoryId: catId,
-                  hasSizes: isPizza ? prev.hasSizes : false,
-                  pricingType: isPizza ? (prev.pricingType === "SINGLE" ? "SIZES_SML" : prev.pricingType) : "SINGLE",
-                  code: isPizza && !prev.code ? `PIZ-${Math.floor(100 + Math.random() * 900)}` : prev.code,
+                  hasSizes: isPizza || isIceCream ? prev.hasSizes : false,
+                  pricingType: isPizza
+                    ? (prev.pricingType === "SINGLE" ? "SIZES_SML" : prev.pricingType)
+                    : isIceCream
+                    ? (prev.pricingType === "SINGLE" ? "SCOOP_1_2" : prev.pricingType)
+                    : "SINGLE",
+                  priceSmall: isIceCream ? (prev.priceSmall || 60) : prev.priceSmall,
+                  priceLarge: isIceCream ? (prev.priceLarge || 100) : prev.priceLarge,
+                  code: isPizza && !prev.code
+                    ? `PIZ-${Math.floor(100 + Math.random() * 900)}`
+                    : isIceCream && !prev.code
+                    ? `ICE-${Math.floor(100 + Math.random() * 900)}`
+                    : prev.code,
                 }));
               }}
             />
@@ -763,6 +826,10 @@ export const MenuPage: React.FC = () => {
           {(() => {
             const currentCatName = categories.find((c) => c.id === itemFormData.categoryId)?.name || "";
             const isCategoryPizza = currentCatName.toLowerCase().includes("pizza");
+            const isCategoryIceCream =
+              currentCatName.toLowerCase().replace(/\s+/g, "").includes("icecream") ||
+              currentCatName.toLowerCase().includes("ice-cream") ||
+              currentCatName.toLowerCase().includes("scoop");
 
             return (
               <div className="p-4 bg-slate-50/90 border-2 border-indigo-200/90 rounded-2xl space-y-4">
@@ -780,7 +847,12 @@ export const MenuPage: React.FC = () => {
                           🍕 Normal & Loaded Active
                         </span>
                       )}
-                      {(!isCategoryPizza || itemFormData.pricingType === "SINGLE") && (
+                      {isCategoryIceCream && itemFormData.pricingType === "SCOOP_1_2" && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-pink-500 text-white uppercase shadow-xs">
+                          🍨 1 & 2 Scoops Active
+                        </span>
+                      )}
+                      {itemFormData.pricingType === "SINGLE" && (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-900 uppercase shadow-xs">
                           Single Rate
                         </span>
@@ -789,7 +861,9 @@ export const MenuPage: React.FC = () => {
                     <p className="text-[11px] text-gray-500 mt-0.5">
                       {isCategoryPizza
                         ? "Configure rates for Pizza: Single Rate, 3 Sizes (Small/Medium/Large), or 2 Variations (Normal & Loaded)"
-                        : "Enter standard dish rate (size options apply strictly to Pizza category)"}
+                        : isCategoryIceCream
+                        ? "Configure rates for Ice Cream: Single Rate, or 1 Scoop & 2 Scoop Options"
+                        : "Enter standard dish rate"}
                     </p>
                   </div>
                 </div>
@@ -1066,8 +1140,158 @@ export const MenuPage: React.FC = () => {
                       </div>
                     )}
                   </>
+                ) : isCategoryIceCream ? (
+                  <>
+                    {/* 2 PRICING TYPE BUTTONS FOR ICE CREAM */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {/* Option A: Single Rate */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setItemFormData((prev) => ({
+                            ...prev,
+                            hasSizes: false,
+                            pricingType: "SINGLE",
+                          }))
+                        }
+                        className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                          itemFormData.pricingType === "SINGLE"
+                            ? "border-pink-600 bg-white ring-2 ring-pink-200 shadow-sm"
+                            : "border-gray-200 bg-white/70 hover:bg-white hover:border-gray-300"
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold text-xs ${
+                            itemFormData.pricingType === "SINGLE" ? "bg-pink-600 text-white shadow-xs" : "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          ₹
+                        </div>
+                        <div>
+                          <span className="text-xs font-black text-gray-900 block">Single Fixed Rate</span>
+                          <span className="text-[10px] text-gray-500 block leading-tight mt-0.5">
+                            One standard rate per cup/portion
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* Option B: 1 Scoop & 2 Scoop Options */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setItemFormData((prev) => ({
+                            ...prev,
+                            hasSizes: true,
+                            pricingType: "SCOOP_1_2",
+                            priceSmall: prev.priceSmall || 60,
+                            priceMedium: "",
+                            priceLarge: prev.priceLarge || 100,
+                          }))
+                        }
+                        className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                          itemFormData.pricingType === "SCOOP_1_2"
+                            ? "border-pink-600 bg-pink-50/70 ring-2 ring-pink-200 shadow-sm"
+                            : "border-gray-200 bg-white/70 hover:bg-white hover:border-gray-300"
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-sm ${
+                            itemFormData.pricingType === "SCOOP_1_2" ? "bg-pink-600 text-white shadow-xs" : "bg-gray-100"
+                          }`}
+                        >
+                          🍨
+                        </div>
+                        <div>
+                          <span className="text-xs font-black text-gray-900 block">1 Scoop & 2 Scoops</span>
+                          <span className="text-[10px] text-pink-900 font-semibold block leading-tight mt-0.5">
+                            Configure 1 scoop and 2 scoops rates
+                          </span>
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* FIELDS FOR 1 & 2 SCOOPS */}
+                    {itemFormData.pricingType === "SCOOP_1_2" && (
+                      <div className="pt-2 border-t border-pink-100 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-pink-950 flex items-center gap-1.5">
+                            <span>🍨 Enter Rates for 1 Scoop & 2 Scoops Ice Cream:</span>
+                          </span>
+                          <span className="text-[10px] text-pink-800 font-bold bg-pink-50 px-2 py-0.5 rounded-full border border-pink-200">
+                            Both rates required
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* 1 Scoop */}
+                          <div className="p-3.5 bg-white rounded-xl border-2 border-pink-300 shadow-xs space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded-full bg-pink-100 text-pink-800 font-black text-[10px] flex items-center justify-center">
+                                  1
+                                </span>
+                                <span className="text-xs font-black text-gray-900">1 Scoop Rate (₹)</span>
+                              </div>
+                              <span className="text-[10px] font-bold text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                                Single Scoop
+                              </span>
+                            </div>
+                            <Input
+                              type="number"
+                              min="1"
+                              step="0.01"
+                              required
+                              placeholder="e.g. 60"
+                              value={itemFormData.priceSmall}
+                              onChange={(e) => setItemFormData({ ...itemFormData, priceSmall: e.target.value })}
+                            />
+                          </div>
+
+                          {/* 2 Scoops */}
+                          <div className="p-3.5 bg-white rounded-xl border-2 border-pink-500 shadow-xs space-y-2 ring-1 ring-pink-300">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded-full bg-pink-600 text-white font-black text-[10px] flex items-center justify-center">
+                                  2
+                                </span>
+                                <span className="text-xs font-black text-pink-950">2 Scoops Rate (₹)</span>
+                              </div>
+                              <span className="text-[10px] font-bold text-pink-700 font-mono bg-pink-50 px-1.5 py-0.5 rounded border border-pink-200">
+                                Double Scoop
+                              </span>
+                            </div>
+                            <Input
+                              type="number"
+                              min="1"
+                              step="0.01"
+                              required
+                              placeholder="e.g. 100"
+                              value={itemFormData.priceLarge}
+                              onChange={(e) => setItemFormData({ ...itemFormData, priceLarge: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* FIELD FOR SINGLE RATE ICE CREAM */}
+                    {itemFormData.pricingType === "SINGLE" && (
+                      <div className="pt-2 border-t border-pink-100">
+                        <Input
+                          label="Single Rate / Price (₹) *"
+                          type="number"
+                          min="1"
+                          step="0.01"
+                          required
+                          placeholder="e.g. 80.00"
+                          value={itemFormData.price}
+                          onChange={(e) => setItemFormData({ ...itemFormData, price: Number(e.target.value) })}
+                        />
+                      </div>
+                    )}
+                  </>
                 ) : (
-                  /* NON-PIZZA CATEGORY: ONLY SINGLE STANDARD RATE */
+                  /* NON-PIZZA & NON-ICE-CREAM: ONLY SINGLE STANDARD RATE */
                   <div className="pt-2 border-t border-indigo-100">
                     <Input
                       label="Standard Dish Rate / Price (₹) *"

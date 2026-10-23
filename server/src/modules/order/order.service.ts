@@ -35,7 +35,14 @@ export const updateOrderSchema = z.object({
 
 export async function listOrders(
   franchiseId: string | null,
-  filters: { status?: OrderStatus; tableId?: string; startDate?: string; endDate?: string }
+  filters: {
+    status?: OrderStatus;
+    tableId?: string;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+    page?: number;
+  }
 ) {
   if (!franchiseId) return [];
 
@@ -50,6 +57,10 @@ export async function listOrders(
     }
   }
 
+  const limit = filters.limit ? Math.min(Math.max(Number(filters.limit), 1), 200) : 100;
+  const page = filters.page ? Math.max(Number(filters.page), 1) : 1;
+  const skip = (page - 1) * limit;
+
   return prisma.order.findMany({
     where: {
       franchiseId,
@@ -57,11 +68,23 @@ export async function listOrders(
       createdAt: dateFilter,
       tableSession: filters.tableId ? { tableId: filters.tableId } : undefined,
     },
+    take: limit,
+    skip: skip,
     include: {
       items: {
         include: {
           menuItem: {
-            include: { category: true, station: true, recipe: true },
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              price: true,
+              hasSizes: true,
+              priceSmall: true,
+              priceMedium: true,
+              priceLarge: true,
+              categoryId: true,
+            },
           },
         },
       },
@@ -70,9 +93,11 @@ export async function listOrders(
       },
       kots: {
         include: {
-          station: true,
+          station: { select: { id: true, name: true } },
           items: {
-            include: { menuItem: true },
+            include: {
+              menuItem: { select: { id: true, name: true, code: true } },
+            },
           },
         },
       },
@@ -128,6 +153,7 @@ export async function createOrder(
 ) {
   const data = createOrderSchema.parse(input);
   let finalSessionId = data.tableSessionId;
+  let tableNumberFound: string | null = null;
 
   if (!finalSessionId && data.tableId) {
     const table = await prisma.restaurantTable.findUnique({
@@ -140,6 +166,8 @@ export async function createOrder(
     if (!table || table.franchiseId !== franchiseId) {
       throw new AppError("Table not found", 404);
     }
+
+    tableNumberFound = table.tableNumber;
 
     const guests = data.guestCount || 1;
     const currentOcc = table.currentOccupancy || 0;
@@ -269,7 +297,7 @@ export async function createOrder(
       tableSessionId: finalSessionId || null,
       customerId: data.customerId || null,
       orderNumber,
-      partyName: data.partyName,
+      partyName: data.partyName || (tableNumberFound ? `Table ${tableNumberFound}` : undefined),
       guestCount: data.guestCount || 1,
       status: OrderStatus.OPEN,
       kotDecision: "PENDING",

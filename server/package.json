@@ -6,7 +6,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc",
     "start": "node dist/server.js",
-    "clear-demo": "tsx prisma/clear-demo-data.ts"
+    "clear-demo": "tsx prisma/clear-demo-data.ts",
+    "purge-orders": "tsx src/scripts/purge-orders-and-bills.ts"
   },
   "keywords": [],
   "author": "",

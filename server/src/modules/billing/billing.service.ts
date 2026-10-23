@@ -296,17 +296,9 @@ export async function createInvoiceForOrder(
       await tx.restaurantTable.update({
         where: { id: order.tableSession.tableId },
         data: {
-          status: shouldCompletePayment ? TableStatus.AVAILABLE : TableStatus.BILLING,
-          currentOccupancy: shouldCompletePayment ? 0 : undefined,
+          status: TableStatus.OCCUPIED,
         },
       });
-
-      if (shouldCompletePayment) {
-        await tx.tableSession.update({
-          where: { id: order.tableSession.id },
-          data: { endedAt: now },
-        });
-      }
     }
 
     return { newInvoice, paymentRecords };
@@ -315,14 +307,8 @@ export async function createInvoiceForOrder(
   if (order.tableSession?.tableId) {
     emitToFranchise(franchiseId, "table:status_changed", {
       tableId: order.tableSession.tableId,
-      status: shouldCompletePayment ? TableStatus.AVAILABLE : TableStatus.BILLING,
+      status: TableStatus.OCCUPIED,
     });
-    if (shouldCompletePayment) {
-      emitToFranchise(franchiseId, "table:session_closed", {
-        tableId: order.tableSession.tableId,
-        sessionId: order.tableSession.id,
-      });
-    }
   }
 
   for (const pr of invoiceResult.paymentRecords) {
@@ -795,15 +781,83 @@ export async function fastBill(
   const invoiceNumber = data.invoiceNumber || `INV-${datePrefix}-${randomSuffix}`;
   const kotNumber = `KOT-${datePrefix}-${randomSuffix}`;
 
+  // Idempotency: If this offline-queued invoice was already created, return it without error
+  if (data.invoiceNumber) {
+    const existingInvoice = await prisma.invoice.findFirst({
+      where: { franchiseId, invoiceNumber: data.invoiceNumber },
+      include: {
+        order: { include: { items: true, tableSession: { include: { table: true } } } },
+        payments: true,
+        franchise: { select: { name: true, address: true, phone: true } },
+      },
+    });
+
+    if (existingInvoice) {
+      return {
+        order: existingInvoice.order,
+        invoice: existingInvoice,
+        payments: existingInvoice.payments,
+        kot: null,
+        tableNumber: existingInvoice.order?.tableSession?.table?.tableNumber || null,
+      };
+    }
+  }
+
   // 4. Atomic single transaction
   const result = await prisma.$transaction(async (tx) => {
-    // A. Create Order
+    // A. Handle Table & Session if tableId was provided
+    let finalSessionId: string | null = null;
+    let tableNumberFound: string | null = null;
+
+    if (data.tableId) {
+      const table = await tx.restaurantTable.findUnique({
+        where: { id: data.tableId },
+        select: { id: true, tableNumber: true, capacity: true },
+      });
+
+      if (table) {
+        tableNumberFound = table.tableNumber;
+      }
+
+      // If the table was previously occupied from an earlier bill, close the prior session (old party left)
+      await tx.tableSession.updateMany({
+        where: { tableId: data.tableId, endedAt: null },
+        data: { endedAt: now },
+      });
+
+      const fullCapacity = table?.capacity || 4;
+
+      // Create new active session for this newly billed party
+      const activeSession = await tx.tableSession.create({
+        data: {
+          tableId: data.tableId,
+          partyName: data.partyName || (tableNumberFound ? `Table ${tableNumberFound}` : "Table Order"),
+          guestCount: fullCapacity,
+          startedAt: now,
+          endedAt: null, // Left active so table remains occupied while customer dines
+        },
+      });
+
+      finalSessionId = activeSession.id;
+
+      // Table is considered FULLY OCCUPIED (RED) upon billing
+      await tx.restaurantTable.update({
+        where: { id: data.tableId },
+        data: {
+          status: TableStatus.OCCUPIED,
+          currentOccupancy: fullCapacity,
+        },
+      });
+    }
+
+    // B. Create Order with linked table session and table label
     const order = await tx.order.create({
       data: {
         franchiseId,
+        tableSessionId: finalSessionId || null,
         customerId: data.customerId || null,
         orderNumber,
-        partyName: data.partyName,
+        partyName: data.partyName || (tableNumberFound ? `Table ${tableNumberFound}` : undefined),
         guestCount: data.guestCount || 1,
         status: OrderStatus.BILLED,
         kotDecision: "COMPLETED",
@@ -827,7 +881,7 @@ export async function fastBill(
       },
     });
 
-    // B. Create KOT record for kitchen order synchronization
+    // C. Create KOT record for kitchen order synchronization
     try {
       await tx.kOT.create({
         data: {
@@ -848,18 +902,6 @@ export async function fastBill(
       });
     } catch (kotErr) {
       console.warn("KOT generation note in fastBill:", kotErr);
-    }
-
-    // C. Free Table if selected
-    if (data.tableId) {
-      await tx.restaurantTable.update({
-        where: { id: data.tableId },
-        data: { status: TableStatus.AVAILABLE, currentOccupancy: 0 },
-      });
-      await tx.tableSession.updateMany({
-        where: { tableId: data.tableId, endedAt: null },
-        data: { endedAt: now },
-      });
     }
 
     // C. Create Invoice
@@ -1036,7 +1078,7 @@ function centerLine(text: string, width = 32): string {
     if (data.tableId) {
       emitToFranchise(franchiseId, "table:status_changed", {
         tableId: data.tableId,
-        status: TableStatus.AVAILABLE,
+        status: TableStatus.OCCUPIED,
       });
     }
   });
