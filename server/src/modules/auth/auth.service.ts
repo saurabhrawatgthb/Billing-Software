@@ -169,7 +169,7 @@ export async function switchUserAccount(currentUserId: string, targetAccountId: 
 
   const target = await prisma.user.findUnique({
     where: { id: targetAccountId },
-    include: { franchise: true },
+    include: { franchise: true, organization: true },
   });
 
   if (!target) throw new AppError("Target profile not found", 404);
@@ -192,6 +192,7 @@ export async function switchUserAccount(currentUserId: string, targetAccountId: 
       userId: target.id,
       role: target.role,
       franchiseId: target.franchiseId,
+      organizationId: target.organizationId,
       name: target.name,
       email: target.email,
     },
@@ -209,6 +210,20 @@ export async function switchUserAccount(currentUserId: string, targetAccountId: 
       email: target.email,
       role: target.role,
       franchiseId: target.franchiseId,
+      organizationId: target.organizationId,
+      organization: target.organization
+        ? {
+            id: target.organization.id,
+            name: target.organization.name,
+            slug: target.organization.slug,
+            plan: target.organization.plan,
+            subscriptionStatus: target.organization.subscriptionStatus,
+            trialEndsAt: target.organization.trialEndsAt,
+            subscriptionEndsAt: target.organization.subscriptionEndsAt,
+            maxOfflineHours: target.organization.maxOfflineHours,
+            featureFlags: target.organization.featureFlags,
+          }
+        : null,
       franchise: target.franchise
         ? {
             id: target.franchise.id,
@@ -226,6 +241,7 @@ export async function getCurrentUser(userId: string) {
     where: { id: userId },
     include: {
       franchise: true,
+      organization: true,
     },
   });
 
@@ -239,6 +255,20 @@ export async function getCurrentUser(userId: string) {
     email: user.email,
     role: user.role,
     franchiseId: user.franchiseId,
+    organizationId: user.organizationId,
+    organization: user.organization
+      ? {
+          id: user.organization.id,
+          name: user.organization.name,
+          slug: user.organization.slug,
+          plan: user.organization.plan,
+          subscriptionStatus: user.organization.subscriptionStatus,
+          trialEndsAt: user.organization.trialEndsAt,
+          subscriptionEndsAt: user.organization.subscriptionEndsAt,
+          maxOfflineHours: user.organization.maxOfflineHours,
+          featureFlags: user.organization.featureFlags,
+        }
+      : null,
     franchise: user.franchise
       ? {
           id: user.franchise.id,

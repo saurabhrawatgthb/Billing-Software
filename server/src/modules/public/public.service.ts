@@ -376,8 +376,20 @@ export async function registerBrandAndCheckout(input: RegisterBrandInput) {
     },
   });
 
-  // 7. Create Primary Outlet (Franchise)
-  const outletCode = `${slug.substring(0, 4).toUpperCase()}-01`;
+  // 7. Create Primary Outlet (Franchise) with collision-safe code
+  let baseCode = slug.replace(/[^a-zA-Z0-9]/g, "").substring(0, 4).toUpperCase();
+  if (!baseCode || baseCode.length < 2) baseCode = "OUTL";
+  let outletCode = `${baseCode}-01`;
+  let attempt = 1;
+  while (await prisma.franchise.findUnique({ where: { code: outletCode } })) {
+    attempt++;
+    outletCode = `${baseCode}-${String(attempt).padStart(2, "0")}`;
+    if (attempt > 99) {
+      outletCode = `${baseCode}-${Date.now().toString().slice(-4)}`;
+      break;
+    }
+  }
+
   const franchise = await prisma.franchise.create({
     data: {
       organizationId: organization.id,

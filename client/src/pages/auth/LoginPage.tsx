@@ -29,7 +29,7 @@ export const LoginPage: React.FC = () => {
       });
       const { user, token } = response.data.data;
       login(user, token);
-      const targetHome = getDefaultRoleHome(user.role);
+      const targetHome = getDefaultRoleHome(user.role, user.organizationId);
       navigate(targetHome);
     } catch (err) {
       setErrorMessage(extractErrorMessage(err));
@@ -54,7 +54,7 @@ export const LoginPage: React.FC = () => {
 
       const { user, token } = data;
       login(user, token);
-      const targetHome = getDefaultRoleHome(user.role);
+      const targetHome = getDefaultRoleHome(user.role, user.organizationId);
       navigate(targetHome);
     } catch (err) {
       setErrorMessage(extractErrorMessage(err));

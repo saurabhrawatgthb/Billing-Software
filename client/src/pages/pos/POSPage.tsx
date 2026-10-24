@@ -59,7 +59,6 @@ import { LoadingState } from "../../components/common/LoadingState.js";
 import { AggregatorOrderModal } from "../../components/pos/AggregatorOrderModal.js";
 import { AggregatorSettingsModal } from "../../components/pos/AggregatorSettingsModal.js";
 import { TableLayoutModal } from "../../components/pos/TableLayoutModal.js";
-import { KitchenPrepModal } from "../../components/kitchen/KitchenPrepModal.js";
 import { OfflineQueueModal } from "../../components/pos/OfflineQueueModal.js";
 import { useOfflineSync } from "../../hooks/useOfflineSync.js";
 import {
@@ -352,7 +351,6 @@ export const POSPage: React.FC = () => {
   // Aggregator Online Orders (Swiggy / Zomato) State
   const [isAggregatorModalOpen, setIsAggregatorModalOpen] = useState(false);
   const [isAggregatorSettingsOpen, setIsAggregatorSettingsOpen] = useState(false);
-  const [isKitchenPrepOpen, setIsKitchenPrepOpen] = useState(false);
 
   // Fetch Pending Aggregator Orders
   const { data: pendingAggregatorOrders = [] } = useQuery<any[]>({
@@ -2042,16 +2040,6 @@ export const POSPage: React.FC = () => {
               <span>🖨️ Printer ({paperSize})</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setIsKitchenPrepOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition-colors cursor-pointer"
-              title="Daily Kitchen Prep Forecaster & Batter Sheet"
-            >
-              <ChefHat className="w-4 h-4 text-amber-600" />
-              <span className="hidden xl:inline">Prep Sheet</span>
-            </button>
-
             {user?.id && hasPin(user.id) ? (
               <div className="flex items-center gap-1.5">
                 <button
@@ -3451,17 +3439,6 @@ Thanks For Visiting ${(brandSettings?.businessName || "Our Restaurant")}`;
       <PinSetupModal
         isOpen={isPinModalOpen}
         onClose={() => setIsPinModalOpen(false)}
-      />
-
-      {/* Daily Kitchen Prep & Batter Forecaster Modal */}
-      <KitchenPrepModal
-        isOpen={isKitchenPrepOpen}
-        onClose={() => setIsKitchenPrepOpen(false)}
-        franchiseName={
-          activeFranchises.find((f) => f.id === effectiveFranchiseId)?.name ||
-          brandSettings?.businessName ||
-          "Restaurant Outlet"
-        }
       />
 
       {/* Offline Sync Queue Modal */}

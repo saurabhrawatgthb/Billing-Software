@@ -92,7 +92,7 @@ export const Navbar: React.FC = () => {
       login(data.user, data.token);
       setIsProfileDropdownOpen(false);
       queryClient.clear();
-      const targetHome = getDefaultRoleHome(data.user.role);
+      const targetHome = getDefaultRoleHome(data.user.role, data.user.organizationId);
       navigate(targetHome);
     },
     onError: (err) => {
