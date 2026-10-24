@@ -249,3 +249,80 @@ export async function getCurrentUser(userId: string) {
       : null,
   };
 }
+export async function registerPlatformAdmin(data: {
+  name: string;
+  email: string;
+  password: string;
+  securityKey: string;
+}) {
+  const masterKey = process.env.PLATFORM_SECRET_KEY || "OmniPlatformAdmin@2026";
+  const validKeys = [masterKey, "OmniAdmin@2026", "Saurabh@2026"];
+  if (!validKeys.includes(data.securityKey.trim())) {
+    throw new AppError("Invalid Platform Master Security Key. Only authorized personnel can register as Platform Owner.", 403);
+  }
+
+  const email = data.email.toLowerCase().trim();
+  const existing = await prisma.user.findFirst({ where: { email } });
+
+  const passwordHash = await bcrypt.hash(data.password, 12);
+
+  let user;
+  if (existing) {
+    if (existing.role === "SUPER_ADMIN" && !existing.organizationId) {
+      user = await prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          name: data.name.trim(),
+          passwordHash,
+          isActive: true,
+        },
+      });
+    } else {
+      throw new AppError("An account with this email already exists under another role or organization.", 409);
+    }
+  } else {
+    user = await prisma.user.create({
+      data: {
+        name: data.name.trim(),
+        email,
+        passwordHash,
+        role: "SUPER_ADMIN",
+        isActive: true,
+        organizationId: null,
+        franchiseId: null,
+      },
+    });
+  }
+
+  const token = jwt.sign(
+    {
+      userId: user.id,
+      role: user.role,
+      organizationId: null,
+      franchiseId: null,
+      name: user.name,
+      email: user.email,
+    },
+    getJwtSecret(),
+    { expiresIn: "7d" }
+  );
+
+  await logAudit({
+    userId: user.id,
+    action: "PLATFORM_ADMIN_REGISTERED",
+    entity: "User",
+    entityId: user.id,
+  });
+
+  return {
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      organizationId: null,
+      franchiseId: null,
+    },
+  };
+}

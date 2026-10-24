@@ -60,3 +60,25 @@ export async function switchProfile(req: AuthenticatedRequest, res: Response, ne
     next(error);
   }
 }
+export async function handlePlatformRegister(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { name, email, password, securityKey } = req.body;
+    if (!name || !email || !password || !securityKey) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email, password, and platform security key are required.",
+      });
+    }
+
+    const { registerPlatformAdmin } = await import("./auth.service.js");
+    const result = await registerPlatformAdmin({ name, email, password, securityKey });
+
+    return res.status(201).json({
+      success: true,
+      data: result,
+      message: "OmniPOS Platform Administrator account provisioned successfully.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}

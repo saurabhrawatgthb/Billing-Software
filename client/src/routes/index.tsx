@@ -6,6 +6,7 @@ import { ProtectedRoute, PlatformRoute } from "../components/layout/ProtectedRou
 // Lazy-loaded Pages (Code-splitting for instant startup & ultra-fast module navigation)
 const LoginPage = React.lazy(() => import("../pages/auth/LoginPage.js").then((m) => ({ default: m.LoginPage })));
 const PlatformLoginPage = React.lazy(() => import("../pages/platform/PlatformLoginPage.js").then((m) => ({ default: m.PlatformLoginPage })));
+const PlatformSignupPage = React.lazy(() => import("../pages/platform/PlatformSignupPage.js").then((m) => ({ default: m.PlatformSignupPage })));
 const PlatformDashboardPage = React.lazy(() => import("../pages/platform/PlatformDashboardPage.js").then((m) => ({ default: m.PlatformDashboardPage })));
 const DashboardPage = React.lazy(() => import("../pages/dashboard/DashboardPage.js").then((m) => ({ default: m.DashboardPage })));
 const FranchisesPage = React.lazy(() => import("../pages/franchise/FranchisesPage.js").then((m) => ({ default: m.FranchisesPage })));
@@ -70,6 +71,8 @@ export const AppRoutes: React.FC = () => {
 
         {/* OmniPOS Platform Owner / Commercial Control Tower */}
         <Route path="/platform-login" element={<PlatformLoginPage />} />
+        <Route path="/platform-signup" element={<PlatformSignupPage />} />
+        <Route path="/pos-owner-signup" element={<PlatformSignupPage />} />
         <Route
           path="/platform"
           element={

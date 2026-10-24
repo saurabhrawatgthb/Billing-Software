@@ -763,7 +763,7 @@ export const POSPage: React.FC = () => {
             if (selectedTable) {
               setOrderMode("DINE_IN");
             } else {
-              navigate("/");
+              navigate("/dashboard");
             }
             return;
           }
@@ -800,7 +800,7 @@ export const POSPage: React.FC = () => {
             if (selectedTable) {
               setOrderMode("DINE_IN");
             } else {
-              navigate("/");
+              navigate("/dashboard");
             }
             return;
           }
@@ -1247,7 +1247,7 @@ export const POSPage: React.FC = () => {
       <div className="fixed inset-0 z-50 w-screen h-screen flex items-center justify-center p-6 bg-slate-100 text-gray-900 select-none">
         <button
           type="button"
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/dashboard")}
           className="absolute top-6 right-6 p-2 rounded-xl bg-white hover:bg-gray-100 text-gray-600 hover:text-gray-900 border border-gray-200 shadow-sm transition-colors cursor-pointer"
           title="Exit to Dashboard"
         >
@@ -1503,7 +1503,7 @@ export const POSPage: React.FC = () => {
                 if (document.fullscreenElement && document.exitFullscreen) {
                   document.exitFullscreen().catch(() => {});
                 }
-                navigate("/");
+                navigate("/dashboard");
               }}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-rose-50 border border-gray-200 hover:border-rose-300 text-gray-700 hover:text-rose-700 text-xs font-bold shadow-2xs transition-all cursor-pointer"
               title="Exit POS Terminal to Dashboard"
@@ -2091,7 +2091,7 @@ export const POSPage: React.FC = () => {
                 if (document.fullscreenElement && document.exitFullscreen) {
                   document.exitFullscreen().catch(() => {});
                 }
-                navigate("/");
+                navigate("/dashboard");
               }}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-rose-50 border border-gray-200 hover:border-rose-300 text-gray-700 hover:text-rose-700 text-xs font-bold shadow-2xs transition-all cursor-pointer"
               title="Exit POS Terminal to Dashboard"
