@@ -5,6 +5,8 @@ import {
   getOfflineQueue,
   dequeueOfflineOrder,
   updateQueueItem,
+  saveOnlineHeartbeat,
+  verifyOfflineBillingAllowed,
   type QueuedOfflineOrder,
 } from "../utils/offlineQueue.js";
 
@@ -100,6 +102,7 @@ export function useOfflineSync() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
+      saveOnlineHeartbeat();
       // Auto-trigger sync as soon as connection is back!
       syncQueueNow();
     };
@@ -134,6 +137,7 @@ export function useOfflineSync() {
 
     const interval = setInterval(() => {
       if (!isSyncingRef.current && navigator.onLine) {
+        saveOnlineHeartbeat();
         syncQueueNow();
       }
     }, 20000);
@@ -148,5 +152,6 @@ export function useOfflineSync() {
     isSyncing,
     syncStatusMsg,
     syncQueueNow,
+    verifyOfflineBillingAllowed,
   };
 }

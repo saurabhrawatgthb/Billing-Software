@@ -1050,9 +1050,9 @@ export const POSPage: React.FC = () => {
         instructions: partyNameSnapshot ? `Party: ${partyNameSnapshot}` : undefined,
       };
 
-      // 6. Build Bill parameters (Madrasi Dosa branding, item prices, subtotal, tax, total, payments)
+      // 6. Build Bill parameters (Dynamic restaurant branding, item prices, subtotal, tax, total, payments)
       const billParams: BuildReceiptParams = {
-        brandName: brandSettings?.businessName || "MADRASI DOSA",
+        brandName: brandSettings?.businessName || currFranchise?.name || "RESTAURANT",
         franchiseName: currFranchise?.name,
         franchiseAddress: (currFranchise as any)?.address || brandSettings?.address || undefined,
         franchisePhone: (currFranchise as any)?.phone || brandSettings?.phone || undefined,
@@ -1069,7 +1069,7 @@ export const POSPage: React.FC = () => {
         tax: taxSnapshot,
         total: totalSnapshot,
         payments: paymentRecords,
-        instagramId: "madrasidosaoffical",
+        instagramId: (brandSettings as any)?.whatsappSupportNumber ? undefined : undefined,
         footerMessage: "Thank You! Please Visit Again",
       };
 
@@ -1344,7 +1344,9 @@ export const POSPage: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-lg font-black tracking-tight text-gray-950">MADRASI DOSA POS</h1>
+                <h1 className="text-lg font-black tracking-tight text-gray-950">
+                  {brandSettings?.businessName?.toUpperCase() || "RESTAURANT"} POS
+                </h1>
                 <span className="text-[10px] uppercase font-black tracking-widest bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200">
                   Ready
                 </span>
@@ -3168,7 +3170,7 @@ export const POSPage: React.FC = () => {
                 type="button"
                 onClick={() => {
                   const testBill = `================================
-          MADRASI DOSA
+          ${(brandSettings?.businessName || "RESTAURANT").toUpperCase()}
      --- MALYANA BRANCH ---
   Shop 7, Kanha Plaza, Malyana
        Phone: 8279707880
@@ -3187,7 +3189,7 @@ TOTAL:                   ₹130.00
 PAYMENTS:
   CASH    : ₹130.00 [COMPLETED]
 --------------------------------
-Thanks For Visiting Madrasi Dosa`;
+Thanks For Visiting ${(brandSettings?.businessName || "Our Restaurant")}`;
                   printReceiptDirectly(testBill, { title: "POS Test Print", paperSize, logoUrl: brandSettings?.logoUrl });
                 }}
                 className="px-3 py-2 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
@@ -3458,7 +3460,7 @@ Thanks For Visiting Madrasi Dosa`;
         franchiseName={
           activeFranchises.find((f) => f.id === effectiveFranchiseId)?.name ||
           brandSettings?.businessName ||
-          "Madrasi Dosa"
+          "Restaurant Outlet"
         }
       />
 

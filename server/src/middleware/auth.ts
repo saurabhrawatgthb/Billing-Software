@@ -10,6 +10,7 @@ export interface AuthenticatedUser {
   id?: string;
   role: string;
   franchiseId: string | null;
+  organizationId?: string | null;
   name?: string;
   email?: string;
 }
@@ -49,6 +50,7 @@ export function authenticate(
       id: payload.userId || payload.id,
       role: payload.role,
       franchiseId: payload.franchiseId,
+      organizationId: payload.organizationId ?? null,
       name: payload.name,
       email: payload.email,
     };

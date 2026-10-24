@@ -48,8 +48,27 @@ export type NotificationType =
   | "KOT_READY"
   | "INFO";
 
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  ownerName: string;
+  ownerEmail: string;
+  ownerPhone: string;
+  city?: string | null;
+  plan: "STARTER" | "PRO" | "ENTERPRISE";
+  subscriptionStatus: "TRIAL" | "ACTIVE" | "PAST_DUE" | "EXPIRED" | "CANCELLED";
+  trialEndsAt?: string | null;
+  subscriptionEndsAt?: string | null;
+  maxOfflineHours?: number;
+  featureFlags?: any;
+  outletsCount?: number;
+  usersCount?: number;
+}
+
 export interface Franchise {
   id: string;
+  organizationId?: string | null;
   name: string;
   code: string;
   address?: string | null;
@@ -73,8 +92,10 @@ export interface User {
   email: string;
   role: UserRole;
   franchiseId: string | null;
+  organizationId?: string | null;
   isActive: boolean;
   createdAt: string;
+  organization?: Partial<Organization> | null;
   franchise?: {
     id: string;
     name: string;

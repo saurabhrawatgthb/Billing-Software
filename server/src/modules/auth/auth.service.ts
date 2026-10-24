@@ -15,6 +15,7 @@ export async function loginUser(email: string, password: string, selectedAccount
     },
     include: {
       franchise: true,
+      organization: true,
     },
   });
 
@@ -45,7 +46,9 @@ export async function loginUser(email: string, password: string, selectedAccount
         email: a.email,
         role: a.role,
         franchiseId: a.franchiseId,
+        organizationId: a.organizationId,
         isActive: a.isActive,
+        organization: a.organization ? { id: a.organization.id, name: a.organization.name } : null,
         franchise: a.franchise
           ? {
               id: a.franchise.id,
@@ -71,11 +74,22 @@ export async function loginUser(email: string, password: string, selectedAccount
     throw new AppError("Your franchise is currently inactive. Please contact the administrator.", 403);
   }
 
+  // SaaS Subscription Enforcement: If tenant organization is expired or suspended, block login
+  if (user.organization && user.role !== "SUPER_ADMIN") {
+    if (user.organization.subscriptionStatus === "EXPIRED" || user.organization.subscriptionStatus === "CANCELLED") {
+      throw new AppError(
+        "Your restaurant subscription has expired. Please contact support or renew your plan.",
+        403
+      );
+    }
+  }
+
   const token = jwt.sign(
     {
       userId: user.id,
       role: user.role,
       franchiseId: user.franchiseId,
+      organizationId: user.organizationId,
       name: user.name,
       email: user.email,
     },
@@ -101,6 +115,20 @@ export async function loginUser(email: string, password: string, selectedAccount
       email: user.email,
       role: user.role,
       franchiseId: user.franchiseId,
+      organizationId: user.organizationId,
+      organization: user.organization
+        ? {
+            id: user.organization.id,
+            name: user.organization.name,
+            slug: user.organization.slug,
+            plan: user.organization.plan,
+            subscriptionStatus: user.organization.subscriptionStatus,
+            trialEndsAt: user.organization.trialEndsAt,
+            subscriptionEndsAt: user.organization.subscriptionEndsAt,
+            maxOfflineHours: user.organization.maxOfflineHours,
+            featureFlags: user.organization.featureFlags,
+          }
+        : null,
       franchise: user.franchise
         ? {
             id: user.franchise.id,

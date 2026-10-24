@@ -201,7 +201,7 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({ onUnlock }) => {
           </button>
 
           <span className="text-[10px] text-gray-400 font-mono">
-            Madrasi Dosa POS
+            OmniPOS Terminal
           </span>
         </div>
       </div>

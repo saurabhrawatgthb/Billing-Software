@@ -4,7 +4,8 @@ import { getBrandSettings, updateBrandSettings } from "./brand.service.js";
 
 export async function getSettings(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
-    const settings = await getBrandSettings();
+    const organizationId = req.user?.organizationId || (req.query.organizationId as string | undefined);
+    const settings = await getBrandSettings(organizationId);
     return res.json({
       success: true,
       data: settings,
@@ -16,7 +17,8 @@ export async function getSettings(req: AuthenticatedRequest, res: Response, next
 
 export async function updateSettings(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
-    const updated = await updateBrandSettings(req.body);
+    const organizationId = req.user?.organizationId || req.body.organizationId;
+    const updated = await updateBrandSettings(req.body, organizationId);
     return res.json({
       success: true,
       data: updated,

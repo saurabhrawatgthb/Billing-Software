@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 export async function hashPin(pin: string, userId: string): Promise<string> {
   const enc = new TextEncoder();
-  const data = enc.encode(`pin:${userId}:${pin}:madrasi_dosa_2026`);
+  const data = enc.encode(`pin:${userId}:${pin}:omnipos_secure_salt_v1`);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");

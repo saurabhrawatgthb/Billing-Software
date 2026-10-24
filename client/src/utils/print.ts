@@ -122,49 +122,24 @@ export function formatItemDisplayName(name: string, selectedSize?: string | null
   return `${cleanName} (${cleanSize})`;
 }
 
-export const MADRASI_DOSA_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 140" width="100%">
+export const DEFAULT_BRAND_LOGO_SVG = (brandName: string = "RESTAURANT") => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 100" width="100%">
   <defs>
     <style>
-      .brand-title { font-family: 'Arial Black', Impact, 'Segoe UI', system-ui, sans-serif; font-size: 26px; font-weight: 900; letter-spacing: 2.5px; fill: #000; text-anchor: middle; }
-      .brand-sub { font-family: 'Nirmala UI', 'Segoe UI', 'Courier New', Courier, monospace, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; fill: #000; text-anchor: middle; }
-      .brand-badge { font-family: Arial, sans-serif; font-size: 8.5px; font-weight: 800; letter-spacing: 1.5px; fill: #000; text-anchor: middle; }
+      .brand-title { font-family: 'Arial Black', Impact, 'Segoe UI', system-ui, sans-serif; font-size: 24px; font-weight: 900; letter-spacing: 2.5px; fill: #000; text-anchor: middle; }
+      .brand-sub { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 2px; fill: #000; text-anchor: middle; }
     </style>
   </defs>
-  <line x1="20" y1="12" x2="130" y2="12" stroke="#000" stroke-width="1.8" stroke-linecap="round"/>
-  <circle cx="145" cy="12" r="2.5" fill="#000"/>
-  <polygon points="170,7 172.5,12 178,12 173.5,15.5 175.5,21 170,17.5 164.5,21 166.5,15.5 162,12 167.5,12" fill="#000"/>
-  <circle cx="195" cy="12" r="2.5" fill="#000"/>
-  <line x1="210" y1="12" x2="320" y2="12" stroke="#000" stroke-width="1.8" stroke-linecap="round"/>
-  <g transform="translate(170, 48)">
-    <path d="M-85,14 Q-40,6 0,6 Q40,6 85,14 Q50,22 0,22 Q-50,22 -85,14 Z" fill="#000000"/>
-    <line x1="-80" y1="14" x2="80" y2="14" stroke="#ffffff" stroke-width="1" stroke-dasharray="3,2"/>
-    <ellipse cx="-60" cy="5" rx="14" ry="7" fill="#000000"/>
-    <ellipse cx="-60" cy="4" rx="12" ry="5.5" fill="#ffffff" stroke="#000000" stroke-width="1"/>
-    <circle cx="-60" cy="4" r="2" fill="#000000"/>
-    <ellipse cx="60" cy="5" rx="14" ry="7" fill="#000000"/>
-    <ellipse cx="60" cy="4" rx="12" ry="5.5" fill="#ffffff" stroke="#000000" stroke-width="1"/>
-    <circle cx="60" cy="4" r="2" fill="#000000"/>
-    <path d="M-65,3 C-65,-10 65,-10 65,3 C65,11 -65,11 -65,3 Z" fill="#000000"/>
-    <path d="M-63,2 C-63,-8 63,-8 63,2 C63,9 -63,9 -63,2 Z" fill="#ffffff" stroke="#000000" stroke-width="2.2"/>
-    <path d="M-45,-4 Q-43,3 -45,7" stroke="#000000" stroke-width="2" stroke-linecap="round"/>
-    <path d="M-25,-6 Q-23,2 -25,8" stroke="#000000" stroke-width="2.2" stroke-linecap="round"/>
-    <path d="M-5,-7 Q-3,1 -5,8" stroke="#000000" stroke-width="2.2" stroke-linecap="round"/>
-    <path d="M15,-6 Q17,2 15,8" stroke="#000000" stroke-width="2.2" stroke-linecap="round"/>
-    <path d="M35,-4 Q37,3 35,7" stroke="#000000" stroke-width="2" stroke-linecap="round"/>
-    <ellipse cx="61" cy="2.5" rx="4" ry="6" fill="#ffffff" stroke="#000000" stroke-width="1.8"/>
-    <ellipse cx="61" cy="2.5" rx="1.8" ry="3" fill="#000000"/>
-    <path d="M-20,-12 Q-17,-19 -22,-24 Q-27,-29 -22,-34" fill="none" stroke="#000000" stroke-width="1.6" stroke-linecap="round"/>
-    <path d="M0,-13 Q4,-20 -1,-26 Q-6,-32 0,-38" fill="none" stroke="#000000" stroke-width="1.8" stroke-linecap="round"/>
-    <path d="M20,-12 Q23,-19 18,-24 Q13,-29 18,-34" fill="none" stroke="#000000" stroke-width="1.6" stroke-linecap="round"/>
-  </g>
-  <text x="170" y="102" class="brand-title">MADRASI DOSA</text>
-  <text x="170" y="118" class="brand-sub">AUTHENTIC SOUTH INDIAN TASTE</text>
-  <line x1="20" y1="128" x2="135" y2="128" stroke="#000" stroke-width="1.5"/>
-  <circle cx="145" cy="128" r="2" fill="#000"/>
-  <text x="170" y="131" class="brand-badge">ESTD 2024</text>
-  <circle cx="195" cy="128" r="2" fill="#000"/>
-  <line x1="205" y1="128" x2="320" y2="128" stroke="#000" stroke-width="1.5"/>
+  <line x1="20" y1="18" x2="130" y2="18" stroke="#000" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="145" cy="18" r="2.5" fill="#000"/>
+  <polygon points="170,12 173,18 179,18 174,22 176,28 170,24 164,28 166,22 161,18 167,18" fill="#000"/>
+  <circle cx="195" cy="18" r="2.5" fill="#000"/>
+  <line x1="210" y1="18" x2="320" y2="18" stroke="#000" stroke-width="1.8" stroke-linecap="round"/>
+  <text x="170" y="60" class="brand-title">${brandName.toUpperCase()}</text>
+  <text x="170" y="78" class="brand-sub">FINE FOOD &amp; HOSPITALITY</text>
+  <line x1="20" y1="88" x2="320" y2="88" stroke="#000" stroke-width="1.2"/>
 </svg>`;
+
+export const MADRASI_DOSA_LOGO_SVG = DEFAULT_BRAND_LOGO_SVG("RESTAURANT");
 
 export interface PrintReceiptOptions {
   title?: string;
@@ -293,7 +268,7 @@ export function buildKOTReceiptText(data: BuildKOTParams, _paperSize: ThermalPap
  */
 export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: ThermalPaperSize = "80mm"): string {
   const currSym = data.currencySymbol || "₹";
-  const brandName = (data.brandName || "MADRASI DOSA").trim().toUpperCase();
+  const brandName = (data.brandName || "RESTAURANT").trim().toUpperCase();
   const franchiseName = (data.franchiseName || "").trim().toUpperCase();
   const divider = "================================";
   const thinDivider = "--------------------------------";
@@ -357,14 +332,16 @@ export function buildThermalReceiptText(data: BuildReceiptParams, _paperSize: Th
   }
   lines.push(thinDivider);
 
-  // HINDI CONTENT STRICTLY BELOW PAYMENTS:
+  // Footer Greeting
   lines.push(centerLine("धन्यवाद! पुनः पधारें", 32));
   lines.push(centerLine(data.footerMessage || "Thank You! Please Visit Again", 32));
 
-  // Instagram Handle
-  const rawInsta = (data.instagramId || "madrasidosaoffical").replace(/^@/, "");
-  lines.push(centerLine("Follow Us On Instagram:", 32));
-  lines.push(centerLine(`📸 @${rawInsta}`, 32));
+  // Instagram Handle (Only if configured)
+  if (data.instagramId && data.instagramId.trim()) {
+    const rawInsta = data.instagramId.trim().replace(/^@/, "");
+    lines.push(centerLine("Follow Us On Instagram:", 32));
+    lines.push(centerLine(`📸 @${rawInsta}`, 32));
+  }
   lines.push(divider);
 
   return lines.join("\n");
@@ -1035,14 +1012,13 @@ export function buildReceiptHtmlFromParams(
   logoUrl?: string | null
 ): string {
   const currSym = data.currencySymbol || "₹";
-  const brandName = (data.brandName || "MADRASI DOSA").trim().toUpperCase();
+  const brandName = (data.brandName || "RESTAURANT").trim().toUpperCase();
   const franchiseName = (data.franchiseName || "").trim().toUpperCase();
-  const rawInsta = (data.instagramId || "madrasidosaoffical").replace(/^@/, "");
 
   const logoMarkup = showLogo
     ? logoUrl && logoUrl.trim()
-      ? `<div class="receipt-logo-wrap"><img src="${escapeHtml(logoUrl.trim())}" alt="Madrasi Dosa Logo" /></div>`
-      : `<div class="receipt-logo-wrap">${MADRASI_DOSA_LOGO_SVG}</div>`
+      ? `<div class="receipt-logo-wrap"><img src="${escapeHtml(logoUrl.trim())}" alt="${escapeHtml(brandName)} Logo" /></div>`
+      : `<div class="receipt-logo-wrap">${DEFAULT_BRAND_LOGO_SVG(brandName)}</div>`
     : "";
 
   const itemsHtml = data.items
@@ -1150,8 +1126,10 @@ export function buildReceiptHtmlFromParams(
       <div class="receipt-footer-block">
         <div class="receipt-hindi-blessing">धन्यवाद! पुनः पधारें</div>
         <div class="receipt-footer-msg">${escapeHtml(data.footerMessage || "Thank You! Please Visit Again")}</div>
+        ${data.instagramId && data.instagramId.trim() ? `
         <div class="receipt-insta-label">Follow Us On Instagram:</div>
-        <div class="receipt-insta-handle">📸 @${escapeHtml(rawInsta)}</div>
+        <div class="receipt-insta-handle">📸 @${escapeHtml(data.instagramId.replace(/^@/, "").trim())}</div>
+        ` : ""}
       </div>
 
       <div class="receipt-solid-divider"></div>
@@ -1173,13 +1151,13 @@ function buildBillHtml(
 
   const logoMarkup = showLogo
     ? logoUrl && logoUrl.trim()
-      ? `<div class="receipt-logo-wrap"><img src="${escapeHtml(logoUrl.trim())}" alt="Madrasi Dosa Logo" /></div>`
-      : `<div class="receipt-logo-wrap">${MADRASI_DOSA_LOGO_SVG}</div>`
+      ? `<div class="receipt-logo-wrap"><img src="${escapeHtml(logoUrl.trim())}" alt="Restaurant Logo" /></div>`
+      : `<div class="receipt-logo-wrap">${DEFAULT_BRAND_LOGO_SVG(parsed.headerLines?.[0] || "RESTAURANT")}</div>`
     : "";
 
   let innerContentHtml = "";
   if (parsed.hasStructure && parsed.headerLines) {
-    const brandLine = parsed.headerLines[0] || "MADRASI DOSA";
+    const brandLine = parsed.headerLines[0] || "RESTAURANT";
     const branchLine = parsed.headerLines.find((l) => l.startsWith("---") && l.endsWith("---"));
     const otherHeaderLines = parsed.headerLines.filter((l) => l !== brandLine && l !== branchLine);
 
@@ -1226,13 +1204,13 @@ function buildBillHtml(
  */
 export function printReceiptDirectly(
   rawTextOrParams: string | BuildReceiptParams,
-  titleOrOptions: string | PrintReceiptOptions = "Madrasi Dosa Bill Receipt",
+  titleOrOptions: string | PrintReceiptOptions = "Restaurant Bill Receipt",
   paperSizeOverride?: ThermalPaperSize,
   customLogoUrl?: string | null
 ): void {
   if (typeof window === "undefined" || !rawTextOrParams) return;
 
-  let title = "Madrasi Dosa Bill Receipt";
+  let title = "Restaurant Bill Receipt";
   let paperSize: ThermalPaperSize = getSavedPaperSize();
   let logoUrl: string | null = null;
   let showLogo = true;

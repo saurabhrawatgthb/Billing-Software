@@ -1,11 +1,12 @@
 import React, { Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "../components/layout/AppLayout.js";
-import { ProtectedRoute, getDefaultRoleHome } from "../components/layout/ProtectedRoute.js";
-import { useAuthStore } from "../store/authStore.js";
+import { ProtectedRoute, PlatformRoute } from "../components/layout/ProtectedRoute.js";
 
 // Lazy-loaded Pages (Code-splitting for instant startup & ultra-fast module navigation)
 const LoginPage = React.lazy(() => import("../pages/auth/LoginPage.js").then((m) => ({ default: m.LoginPage })));
+const PlatformLoginPage = React.lazy(() => import("../pages/platform/PlatformLoginPage.js").then((m) => ({ default: m.PlatformLoginPage })));
+const PlatformDashboardPage = React.lazy(() => import("../pages/platform/PlatformDashboardPage.js").then((m) => ({ default: m.PlatformDashboardPage })));
 const DashboardPage = React.lazy(() => import("../pages/dashboard/DashboardPage.js").then((m) => ({ default: m.DashboardPage })));
 const FranchisesPage = React.lazy(() => import("../pages/franchise/FranchisesPage.js").then((m) => ({ default: m.FranchisesPage })));
 const UsersPage = React.lazy(() => import("../pages/users/UsersPage.js").then((m) => ({ default: m.UsersPage })));
@@ -28,6 +29,9 @@ const ExpensesPage = React.lazy(() => import("../pages/expenses/ExpensesPage.js"
 const AdvancesPage = React.lazy(() => import("../pages/advances/AdvancesPage.js").then((m) => ({ default: m.AdvancesPage })));
 const CRMPage = React.lazy(() => import("../pages/crm/CRMPage.js").then((m) => ({ default: m.CRMPage })));
 const BrandSettingsPage = React.lazy(() => import("../pages/settings/BrandSettingsPage.js").then((m) => ({ default: m.BrandSettingsPage })));
+const LandingPage = React.lazy(() => import("../pages/public/LandingPage.js").then((m) => ({ default: m.LandingPage })));
+const SignupPage = React.lazy(() => import("../pages/public/SignupPage.js").then((m) => ({ default: m.SignupPage })));
+const SaaSAdminPage = React.lazy(() => import("../pages/saas/SaaSAdminPage.js").then((m) => ({ default: m.SaaSAdminPage })));
 
 const ModuleLoadingFallback: React.FC = () => (
   <div className="flex-1 flex flex-col items-center justify-center p-12 min-h-[350px]">
@@ -36,13 +40,6 @@ const ModuleLoadingFallback: React.FC = () => (
   </div>
 );
 
-function RootRedirect() {
-  const { user, isAuthenticated } = useAuthStore();
-  if (!isAuthenticated || !user) {
-    return <Navigate to="/login" replace />;
-  }
-  return <Navigate to={getDefaultRoleHome(user.role)} replace />;
-}
 
 // Preload the most-frequently-used restaurant operation modules in background idle time
 const preloadOperationalModules = () => {
@@ -65,8 +62,22 @@ export const AppRoutes: React.FC = () => {
   return (
     <Suspense fallback={<ModuleLoadingFallback />}>
       <Routes>
+        {/* Public SaaS commercial portal routes */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/pricing" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<RootRedirect />} />
+
+        {/* OmniPOS Platform Owner / Commercial Control Tower */}
+        <Route path="/platform-login" element={<PlatformLoginPage />} />
+        <Route
+          path="/platform"
+          element={
+            <PlatformRoute>
+              <PlatformDashboardPage />
+            </PlatformRoute>
+          }
+        />
 
         {/* Protected Routes enclosed in AppLayout */}
         <Route
@@ -273,9 +284,18 @@ export const AppRoutes: React.FC = () => {
               </ProtectedRoute>
             }
           />
+
+          <Route
+            path="/saas-admin"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN"]}>
+                <SaaSAdminPage />
+              </ProtectedRoute>
+            }
+          />
         </Route>
 
-        <Route path="*" element={<RootRedirect />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
   );

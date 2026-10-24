@@ -198,3 +198,73 @@ export function getCachedBrandSettings(): BrandSettings | null {
     return null;
   }
 }
+
+// ============================================================================
+// OFFLINE LICENSE LEASE & ANTI-CRACK SECURITY
+// ============================================================================
+
+const LEASE_KEY = "pos_offline_license_lease_v1";
+const LAST_MONOTONIC_TIME_KEY = "pos_last_bill_monotonic_time_v1";
+
+export interface OfflineLicenseLease {
+  organizationId: string;
+  outletId: string;
+  plan: string;
+  issuedAt: number;
+  maxOfflineHours: number;
+}
+
+export function saveOnlineHeartbeat(orgId?: string, outletId?: string, plan?: string, maxHours: number = 72) {
+  if (typeof window === "undefined") return;
+  const now = Date.now();
+  localStorage.setItem(LAST_MONOTONIC_TIME_KEY, now.toString());
+  if (orgId) {
+    const lease: OfflineLicenseLease = {
+      organizationId: orgId,
+      outletId: outletId || "",
+      plan: plan || "PRO",
+      issuedAt: now,
+      maxOfflineHours: maxHours || 72,
+    };
+    try {
+      localStorage.setItem(LEASE_KEY, JSON.stringify(lease));
+    } catch {
+      // quota or private mode
+    }
+  }
+}
+
+export function verifyOfflineBillingAllowed(): { allowed: boolean; reason?: string } {
+  if (typeof window === "undefined") return { allowed: true };
+  const now = Date.now();
+
+  // 1. Anti-Clock Tampering Check: Detect if user rolled back system clock
+  const lastMonotonic = Number(localStorage.getItem(LAST_MONOTONIC_TIME_KEY) || 0);
+  if (lastMonotonic && now < lastMonotonic - 60000) {
+    return {
+      allowed: false,
+      reason: "Security Alert: System clock anomaly detected. Your device clock is set earlier than recorded transactions. Please restore accurate network time to continue.",
+    };
+  }
+  localStorage.setItem(LAST_MONOTONIC_TIME_KEY, now.toString());
+
+  // 2. Offline Heartbeat Window Check: Maximum 72 hours without cloud verification
+  const rawLease = localStorage.getItem(LEASE_KEY);
+  if (rawLease) {
+    try {
+      const lease: OfflineLicenseLease = JSON.parse(rawLease);
+      const maxMs = (lease.maxOfflineHours || 72) * 60 * 60 * 1000;
+      const elapsed = now - lease.issuedAt;
+      if (elapsed > maxMs) {
+        return {
+          allowed: false,
+          reason: `Offline grace period (${lease.maxOfflineHours}h) expired. Connect to the internet for 30 seconds to sync bills and refresh your license.`,
+        };
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  return { allowed: true };
+}

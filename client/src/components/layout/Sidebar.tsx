@@ -35,6 +35,12 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   {
+    name: "SaaS Control Tower",
+    to: "/saas-admin",
+    icon: <Store className="w-5 h-5 text-indigo-400" />,
+    roles: ["SUPER_ADMIN"],
+  },
+  {
     name: "Brand & Business",
     to: "/settings",
     icon: <Settings className="w-5 h-5" />,

@@ -23,13 +23,23 @@ export interface UpdateBrandSettingsInput {
   whatsappSupportNumber?: string | null;
 }
 
-export async function getBrandSettings() {
-  let settings = await prisma.brandSettings.findFirst();
+export async function getBrandSettings(organizationId?: string | null) {
+  let settings = organizationId
+    ? await prisma.brandSettings.findFirst({ where: { organizationId } })
+    : await prisma.brandSettings.findFirst();
 
   if (!settings) {
+    // If organization exists, use its name as default brand name
+    let defaultName = "My Restaurant Brand";
+    if (organizationId) {
+      const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+      if (org?.name) defaultName = org.name;
+    }
+
     settings = await prisma.brandSettings.create({
       data: {
-        businessName: "Madrasi Dosa",
+        organizationId: organizationId || undefined,
+        businessName: defaultName,
         tagline: null,
         currencySymbol: "₹",
         currencyCode: "INR",
@@ -38,15 +48,6 @@ export async function getBrandSettings() {
         loyalDiscountPercent: 15.0,
         regularDiscountPercent: 10.0,
       },
-    });
-  } else if (
-    settings.businessName === "Restaurant POS" ||
-    settings.businessName === "My Restaurant Brand" ||
-    !settings.businessName
-  ) {
-    settings = await prisma.brandSettings.update({
-      where: { id: settings.id },
-      data: { businessName: "Madrasi Dosa" },
     });
   }
 
@@ -59,8 +60,10 @@ export async function getBrandSettings() {
   };
 }
 
-export async function updateBrandSettings(data: UpdateBrandSettingsInput) {
-  let settings = await prisma.brandSettings.findFirst();
+export async function updateBrandSettings(data: UpdateBrandSettingsInput, organizationId?: string | null) {
+  let settings = organizationId
+    ? await prisma.brandSettings.findFirst({ where: { organizationId } })
+    : await prisma.brandSettings.findFirst();
 
   const updateData: Prisma.BrandSettingsUpdateInput = {
     businessName: data.businessName?.trim() || undefined,
@@ -89,6 +92,7 @@ export async function updateBrandSettings(data: UpdateBrandSettingsInput) {
   if (!settings) {
     settings = await prisma.brandSettings.create({
       data: {
+        organizationId: organizationId || undefined,
         businessName: data.businessName?.trim() || "My Restaurant Brand",
         ...updateData,
       } as Prisma.BrandSettingsCreateInput,

@@ -175,18 +175,60 @@ enum CommunicationStatus {
   CANCELLED
 }
 
+enum SubscriptionPlan {
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  EXPIRED
+  CANCELLED
+}
+
 // =========================
-// FRANCHISE
+// ORGANIZATION / TENANT (RESTAURANT BRAND)
+// =========================
+
+model Organization {
+  id                 String             @id @default(auto()) @map("_id") @db.ObjectId
+  name               String             // e.g. "Burger Queen", "Madrasi Dosa"
+  slug               String             @unique // e.g. "burger-queen"
+  ownerName          String
+  ownerEmail         String             @unique
+  ownerPhone         String
+  city               String?
+  plan               SubscriptionPlan   @default(STARTER)
+  subscriptionStatus SubscriptionStatus @default(TRIAL)
+  trialEndsAt        DateTime?
+  subscriptionEndsAt DateTime?
+  maxOfflineHours    Int                @default(72)
+  featureFlags       Json?
+
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  brandSettings      BrandSettings?
+  franchises         Franchise[]
+  users              User[]
+}
+
+// =========================
+// FRANCHISE (OUTLET / BRANCH)
 // =========================
 
 model Franchise {
-  id       String  @id @default(auto()) @map("_id") @db.ObjectId
-  name     String
-  code     String  @unique
-  address  String?
-  phone    String?
-  email    String?
-  isActive Boolean @default(true)
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String?       @db.ObjectId
+  name           String
+  code           String        @unique
+  address        String?
+  phone          String?
+  email          String?
+  isActive       Boolean       @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -219,6 +261,10 @@ model Franchise {
   aggregatorIntegrations AggregatorIntegration[]
   registers             DailyRegister[]
   rolePermissions       RolePermission[]
+
+  organization          Organization?          @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
 }
 
 // =========================
@@ -226,8 +272,9 @@ model Franchise {
 // =========================
 
 model User {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  franchiseId String?  @db.ObjectId
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String?  @db.ObjectId
+  franchiseId    String?  @db.ObjectId
 
   name         String
   email        String
@@ -238,7 +285,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  franchise Franchise? @relation(fields: [franchiseId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  franchise    Franchise?    @relation(fields: [franchiseId], references: [id])
 
   auditLogs       AuditLog[]
   notifications   Notification[]
@@ -246,6 +294,7 @@ model User {
   registersClosed DailyRegister[] @relation("RegisterClosedBy")
 
   @@index([email])
+  @@index([organizationId])
   @@index([franchiseId])
 }
 
@@ -1099,25 +1148,28 @@ model CommunicationLog {
 // =========================
 
 model BrandSettings {
-  id                     String   @id @default(auto()) @map("_id") @db.ObjectId
-  businessName           String   @default("My Restaurant Brand")
+  id                     String        @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId         String?       @unique @db.ObjectId
+  businessName           String        @default("My Restaurant Brand")
   tagline                String?
   logoUrl                String?
   email                  String?
   phone                  String?
   address                String?
-  taxNumber              String?  // GSTIN / Tax ID
-  fssaiNumber            String?  // FSSAI Food License
-  currencySymbol         String   @default("₹")
-  currencyCode           String   @default("INR")
-  defaultGstRate         Float    @default(5.0)
-  vipDiscountPercent     Float    @default(20.0)
-  loyalDiscountPercent   Float    @default(15.0)
-  regularDiscountPercent Float    @default(10.0)
+  taxNumber              String?       // GSTIN / Tax ID
+  fssaiNumber            String?       // FSSAI Food License
+  currencySymbol         String        @default("₹")
+  currencyCode           String        @default("INR")
+  defaultGstRate         Float         @default(5.0)
+  vipDiscountPercent     Float         @default(20.0)
+  loyalDiscountPercent   Float         @default(15.0)
+  regularDiscountPercent Float         @default(10.0)
   whatsappSupportNumber  String?
 
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  organization           Organization? @relation(fields: [organizationId], references: [id])
 }
 
 // ==========================================================
@@ -1219,4 +1271,24 @@ model RolePermission {
   @@unique([franchiseId, role])
   @@index([role])
 }
+
+// ==========================================================
+// PUBLIC SAAS LEAD & DEMO REQUESTS
+// ==========================================================
+
+model DemoRequest {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  restaurantName String
+  ownerName      String
+  phone          String
+  email          String
+  city           String
+  outletType     String?  // QSR, FINE_DINE, CAFE, CLOUD_KITCHEN
+  outletCount    Int      @default(1)
+  status         String   @default("NEW") // "NEW", "CONTACTED", "DEMO_SCHEDULED", "CONVERTED"
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 
