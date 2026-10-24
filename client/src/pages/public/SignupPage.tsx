@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   UtensilsCrossed,
@@ -6,6 +6,10 @@ import {
   Building,
   User,
   Sparkles,
+  Tag,
+  CheckCircle2,
+  AlertCircle,
+  Gift,
 } from "lucide-react";
 import { api } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
@@ -13,7 +17,8 @@ import { useAuthStore } from "../../store/authStore.js";
 export const SignupPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const defaultPlan = (searchParams.get("plan") as any) || "PRO";
+  const defaultPlan = (searchParams.get("plan") as any) || "STARTER";
+  const initialCoupon = searchParams.get("coupon") || "";
 
   const [formData, setFormData] = useState({
     brandName: "",
@@ -26,8 +31,38 @@ export const SignupPage: React.FC = () => {
     plan: defaultPlan as "STARTER" | "PRO" | "ENTERPRISE",
   });
 
+  const [couponCode, setCouponCode] = useState(initialCoupon);
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const validateCode = async (codeToTest: string) => {
+    if (!codeToTest.trim()) return;
+    setValidatingCoupon(true);
+    setCouponError(null);
+    try {
+      const res = await api.post("/public/coupons/validate", {
+        code: codeToTest.trim(),
+        planSlug: formData.plan.toLowerCase(),
+        billingInterval: "ANNUAL",
+      });
+      setAppliedCoupon(res.data.data);
+    } catch (err: any) {
+      setAppliedCoupon(null);
+      setCouponError(err.response?.data?.message || "Invalid or expired coupon code.");
+    } finally {
+      setValidatingCoupon(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialCoupon) {
+      validateCode(initialCoupon);
+    }
+  }, [initialCoupon]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +70,20 @@ export const SignupPage: React.FC = () => {
     setError(null);
 
     try {
-      const res = await api.post("/public/register", formData);
+      const payload = {
+        brandName: formData.brandName,
+        ownerName: formData.ownerName,
+        ownerEmail: formData.ownerEmail,
+        ownerPhone: formData.ownerPhone,
+        password: formData.password,
+        city: formData.city,
+        outletType: formData.outletType,
+        planSlug: formData.plan.toLowerCase(),
+        billingInterval: "ANNUAL",
+        couponCode: appliedCoupon ? couponCode.trim().toUpperCase() : undefined,
+      };
+
+      const res = await api.post("/public/checkout", payload);
       const { token, user } = res.data.data;
 
       // Save token and initialize session in store
@@ -74,18 +122,19 @@ export const SignupPage: React.FC = () => {
           <span className="text-2xl font-black tracking-tight text-white">OmniPOS</span>
         </Link>
         <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-          Start Your 14-Day Free Trial
+          Create Your Restaurant Account
         </h2>
         <p className="text-xs text-slate-400">
-          Set up your restaurant brand workspace in 60 seconds. No credit card required.
+          Launch your cloud billing terminal in 60 seconds. Full hardware printing & offline sync ready.
         </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-xl">
         <div className="bg-slate-900/90 border border-slate-800 py-8 px-6 sm:px-10 shadow-2xl rounded-3xl backdrop-blur-md space-y-6">
           {error && (
-            <div className="p-4 rounded-xl bg-red-950/70 border border-red-500/50 text-red-200 text-xs font-medium">
-              {error}
+            <div className="p-4 rounded-xl bg-red-950/70 border border-red-500/50 text-red-200 text-xs font-medium flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+              <span>{error}</span>
             </div>
           )}
 
@@ -98,25 +147,25 @@ export const SignupPage: React.FC = () => {
 
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">
-                  Restaurant / Brand Name *
+                  Brand / Restaurant Name *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. The Belgian Waffle Co, Chaat Junction"
+                  placeholder="e.g. Madrasi Dosa, Burger Hub"
                   value={formData.brandName}
                   onChange={(e) => setFormData({ ...formData, brandName: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-xs focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Outlet City *</label>
+                  <label className="block text-slate-300 font-semibold mb-1">City / Location *</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Bangalore, Mumbai"
+                    placeholder="e.g. Mumbai, New Delhi"
                     value={formData.city}
                     onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-xs focus:outline-none focus:border-indigo-500 transition-colors"
@@ -124,17 +173,16 @@ export const SignupPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Outlet Type</label>
+                  <label className="block text-slate-300 font-semibold mb-1">Outlet Format</label>
                   <select
                     value={formData.outletType}
                     onChange={(e) => setFormData({ ...formData, outletType: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-xs focus:outline-none focus:border-indigo-500 transition-colors"
                   >
-                    <option value="CAFE">Cafe / Coffee House</option>
-                    <option value="QSR">Fast Food / QSR Counter</option>
-                    <option value="DINE_IN">Full-Service Restaurant</option>
+                    <option value="CAFE">Cafe / Bakery</option>
+                    <option value="QSR">Fast Food / QSR</option>
+                    <option value="FINE_DINE">Full-Service Restaurant</option>
                     <option value="CLOUD_KITCHEN">Cloud Kitchen</option>
-                    <option value="BAKERY">Bakery &amp; Confectionery</option>
                   </select>
                 </div>
               </div>
@@ -143,7 +191,7 @@ export const SignupPage: React.FC = () => {
             {/* Step 2: Owner Contact */}
             <div className="space-y-3 pt-2 border-t border-slate-800/80">
               <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5" /> 2. Owner Account &amp; Access
+                <User className="w-3.5 h-3.5" /> 2. Owner Administrator Account
               </span>
 
               <div>
@@ -151,16 +199,16 @@ export const SignupPage: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Rajesh Kumar"
+                  placeholder="e.g. Ramesh Sharma"
                   value={formData.ownerName}
                   onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-xs focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Email Address *</label>
+                  <label className="block text-slate-300 font-semibold mb-1">Business Email *</label>
                   <input
                     type="email"
                     required
@@ -203,14 +251,14 @@ export const SignupPage: React.FC = () => {
             {/* Step 3: Plan Selection */}
             <div className="space-y-3 pt-2 border-t border-slate-800/80">
               <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" /> 3. Select Initial Plan (Free for 14 Days)
+                <Sparkles className="w-3.5 h-3.5" /> 3. Select Initial Plan
               </span>
 
               <div className="grid grid-cols-3 gap-2.5">
                 {[
                   { id: "STARTER", name: "Starter", price: "₹7,999/yr", desc: "QSR & Counter" },
-                  { id: "PRO", name: "Pro", price: "₹12,999/yr", desc: "Tables + KDS" },
-                  { id: "ENTERPRISE", name: "Enterprise", price: "₹24,999/yr", desc: "Multi-branch" },
+                  { id: "PRO", name: "Growth", price: "₹12,999/yr", desc: "Tables + KDS" },
+                  { id: "ENTERPRISE", name: "Pro Chain", price: "₹24,999/yr", desc: "Multi-branch" },
                 ].map((p) => {
                   const isSelected = formData.plan === p.id;
                   return (
@@ -234,12 +282,74 @@ export const SignupPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Step 4: Promotional Coupon & Founding 10 Offer */}
+            <div className="space-y-2.5 pt-2 border-t border-slate-800/80">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5" /> 4. Promotional Coupon / Founding Code
+                </span>
+                <span className="text-[10px] text-slate-400">Try code: FOUNDING10</span>
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Enter coupon code (e.g. FOUNDING10)"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white font-mono text-xs uppercase focus:outline-none focus:border-amber-500 transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => validateCode(couponCode)}
+                  disabled={validatingCoupon || !couponCode.trim()}
+                  className="px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 text-amber-300 font-bold text-xs cursor-pointer disabled:opacity-50 transition-all"
+                >
+                  {validatingCoupon ? "Checking..." : "Apply"}
+                </button>
+              </div>
+
+              {couponError && (
+                <p className="text-[11px] text-red-400 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" /> {couponError}
+                </p>
+              )}
+
+              {appliedCoupon && (
+                <div className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-500/40 text-emerald-200 text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-emerald-300">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Coupon Applied: {appliedCoupon.coupon.code}</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-300/80">{appliedCoupon.coupon.description}</p>
+                  
+                  {appliedCoupon.coupon.isFreeYear ? (
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/20 text-emerald-300 font-black text-xs">
+                      <Gift className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>FOUNDING PARTNER REWARD: 100% OFF for 12 Months (₹0 Due Today)</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center text-xs font-semibold pt-1 border-t border-emerald-500/20">
+                      <span>Discount: -₹{appliedCoupon.pricing.discountAmount}</span>
+                      <span className="text-white font-bold">Total: ₹{appliedCoupon.pricing.finalPayable}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <button
               type="submit"
               disabled={loading}
               className="w-full py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-sm shadow-xl shadow-indigo-600/30 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 mt-4"
             >
-              <span>{loading ? "Provisioning Restaurant Workspace..." : "Create Account & Launch POS"}</span>
+              <span>
+                {loading
+                  ? "Provisioning Restaurant Workspace..."
+                  : appliedCoupon?.coupon?.isFreeYear
+                  ? "Claim 1-Year Free & Launch POS"
+                  : "Create Account & Launch POS"}
+              </span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>

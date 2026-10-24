@@ -1,9 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 
-function getJwtSecret() {
-  return process.env.JWT_SECRET ?? "development-secret";
-}
+// Centralized secure JWT secret imported
+import { getJwtSecret } from "../config/auth.config.js";
 
 export interface AuthenticatedUser {
   userId: string;

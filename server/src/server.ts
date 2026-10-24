@@ -34,9 +34,11 @@ import permissionRoutes from "./modules/permission/permission.routes.js";
 import registerRoutes from "./modules/register/register.routes.js";
 import publicRoutes from "./modules/public/public.routes.js";
 import saasRoutes from "./modules/saas/saas.routes.js";
+import templateRoutes from "./modules/template/template.routes.js";
 
 import { initSocket } from "./lib/socket.js";
 import { errorHandler } from "./middleware/error.js";
+import { corsMiddleware, helmetMiddleware, authLimiter, publicLimiter } from "./middleware/security.js";
 import prisma from "./lib/prisma.js";
 
 dotenv.config();
@@ -47,14 +49,8 @@ const server = http.createServer(app);
 // Initialize Socket.IO
 initSocket(server);
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      callback(null, true);
-    },
-    credentials: true,
-  })
-);
+app.use(helmetMiddleware);
+app.use(corsMiddleware);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -86,7 +82,7 @@ app.get("/api/db-test", async (_req: Request, res: Response) => {
 });
 
 // Register all API Modules
-app.use("/api/auth", authRoutes);
+app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/franchises", franchiseRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/employees", employeeRoutes);
@@ -112,8 +108,9 @@ app.use("/api/brand-settings", brandRoutes);
 app.use("/api/aggregators", aggregatorRoutes);
 app.use("/api/permissions", permissionRoutes);
 app.use("/api/registers", registerRoutes);
-app.use("/api/public", publicRoutes);
+app.use("/api/public", publicLimiter, publicRoutes);
 app.use("/api/saas", saasRoutes);
+app.use("/api/templates", templateRoutes);
 
 // SPA Static Asset Serving & Wildcard Fallback Route
 const clientDist = fs.existsSync(path.resolve(process.cwd(), "../client/dist"))

@@ -1,3 +1,4 @@
+import { idbSaveOrder, idbRemoveOrder } from "./idbStorage.js";
 import type { MenuItem, RestaurantTable, Category, BrandSettings } from "../types/index.js";
 
 export interface QueuedOfflineOrder {
@@ -51,6 +52,7 @@ export function enqueueOfflineOrder(
   };
 
   current.push(newQueueItem);
+  idbSaveOrder(newQueueItem).catch(() => {});
   try {
     localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(current));
   } catch (err) {
@@ -71,6 +73,7 @@ export function enqueueOfflineOrder(
 export function dequeueOfflineOrder(id: string): void {
   const current = getOfflineQueue();
   const filtered = current.filter((item) => item.id !== id);
+  idbRemoveOrder(id).catch(() => {});
   try {
     localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(filtered));
   } catch (err) {

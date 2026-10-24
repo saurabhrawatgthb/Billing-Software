@@ -1,12 +1,11 @@
+import { getJwtSecret } from "../../config/auth.config.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../../lib/prisma.js";
 import { AppError } from "../../middleware/error.js";
 import { logAudit } from "../../lib/audit.js";
 
-function getJwtSecret() {
-  return process.env.JWT_SECRET ?? "development-secret";
-}
+// Centralized secure JWT secret imported
 
 export async function loginUser(email: string, password: string, selectedAccountId?: string) {
   const users = await prisma.user.findMany({

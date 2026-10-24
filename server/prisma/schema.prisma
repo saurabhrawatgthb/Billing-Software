@@ -214,6 +214,13 @@ model Organization {
   brandSettings      BrandSettings?
   franchises         Franchise[]
   users              User[]
+  commercialPlanId   String?            @db.ObjectId
+  commercialPlan     CommercialPlan?    @relation(fields: [commercialPlanId], references: [id])
+  subscriptions      SubscriptionRecord[]
+  invoices           SubscriptionInvoice[]
+  couponRedemptions  CouponRedemption[]
+  billTemplates      BillTemplate[]
+  supportTickets     SupportTicket[]
 }
 
 // =========================
@@ -1292,3 +1299,267 @@ model DemoRequest {
 }
 
 
+
+// ==========================================================
+// COMMERCIAL SAAS PLANS & FEATURE ENTITLEMENTS
+// ==========================================================
+
+model CommercialPlan {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  slug            String   @unique // e.g. "starter", "growth", "pro", "enterprise"
+  name            String   // e.g. "Starter Single Outlet", "Growth Pro", "Enterprise Chain"
+  description     String
+  monthlyPrice    Float    // Price in INR
+  annualPrice     Float    // Annual discounted price
+  currency        String   @default("INR")
+  includedOutlets Int      @default(1)
+  includedUsers   Int      @default(5)
+  extraOutletPrice Float   @default(2999)
+  supportTier     String   @default("Standard Email & Chat")
+  trialDays       Int      @default(14)
+  isPublic        Boolean  @default(true)
+  isPopular       Boolean  @default(false)
+  displayOrder    Int      @default(0)
+  
+  // Feature flags enabled for this plan
+  features        String[] // ["pos.billing", "pos.table_management", "inventory.management", ...]
+  limits          Json?    // e.g. { maxDailyBills: 500, maxMenuItems: 200 }
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organizations   Organization[]
+  subscriptions   SubscriptionRecord[]
+}
+
+// ==========================================================
+// SAAS SUBSCRIPTIONS & LIFECYCLE
+// ==========================================================
+
+enum SaaSStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  GRACE_PERIOD
+  EXPIRED
+  CANCELLED
+  SUSPENDED
+}
+
+enum BillingInterval {
+  MONTHLY
+  ANNUAL
+}
+
+model SubscriptionRecord {
+  id                 String          @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId     String          @db.ObjectId
+  planId             String          @db.ObjectId
+  status             SaaSStatus      @default(TRIAL)
+  billingInterval    BillingInterval @default(ANNUAL)
+  currentPeriodStart DateTime        @default(now())
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean         @default(false)
+  isPromotionalFree  Boolean         @default(false)
+  promotionalMonths  Int             @default(0)
+  outletsSubscribed  Int             @default(1)
+  amountPaid         Float           @default(0)
+
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  organization       Organization    @relation(fields: [organizationId], references: [id])
+  plan               CommercialPlan  @relation(fields: [planId], references: [id])
+  invoices           SubscriptionInvoice[]
+
+  @@index([organizationId])
+  @@index([planId])
+  @@index([status])
+}
+
+// ==========================================================
+// COUPON ENGINE & PROMOTIONAL CAMPAIGNS
+// ==========================================================
+
+enum CouponDiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_MONTHS
+  FREE_YEAR
+}
+
+model Coupon {
+  id                 String             @id @default(auto()) @map("_id") @db.ObjectId
+  code               String             @unique // Stored UPPERCASE
+  campaignTag        String             @default("GENERAL") // e.g. "FOUNDING_10", "LAUNCH2026"
+  description        String
+  discountType       CouponDiscountType @default(PERCENTAGE)
+  discountValue      Float              // e.g. 100 for 100%, 5000 for ₹5000 off, 12 for 12 months
+  maxRedemptions     Int                @default(100)
+  currentRedemptions Int                @default(0)
+  eligiblePlans      String[]           // Empty means all plans, or ["starter", "growth", "pro"]
+  onePerOrganization Boolean            @default(true)
+  minOrderAmount     Float              @default(0)
+  maxDiscountAmount  Float?
+  validFrom          DateTime           @default(now())
+  validUntil         DateTime?
+  isActive           Boolean            @default(true)
+
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  redemptions        CouponRedemption[]
+
+  @@index([campaignTag])
+  }
+
+model CouponRedemption {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  couponId       String       @db.ObjectId
+  organizationId String       @db.ObjectId
+  ownerEmail     String
+  campaignTag    String
+  discountAmount Float
+  redeemedAt     DateTime     @default(now())
+
+  coupon         Coupon       @relation(fields: [couponId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([couponId, organizationId])
+  @@index([couponId])
+  @@index([organizationId])
+  @@index([campaignTag])
+}
+
+// ==========================================================
+// SAAS BILLING, INVOICES & PAYMENTS
+// ==========================================================
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+  OVERDUE
+}
+
+model SubscriptionInvoice {
+  id                 String             @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId     String             @db.ObjectId
+  subscriptionId     String?            @db.ObjectId
+  invoiceNumber      String             @unique // e.g. INV-2026-0001
+  billingName        String
+  billingEmail       String
+  billingAddress     String?
+  gstin              String?
+  subtotal           Float
+  discountAmount     Float              @default(0)
+  couponCode         String?
+  taxAmount          Float              @default(0)
+  totalAmount        Float
+  amountPaid         Float              @default(0)
+  status             InvoiceStatus      @default(ISSUED)
+  periodStart        DateTime
+  periodEnd          DateTime
+  notes              String?
+  pdfUrl             String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  organization       Organization        @relation(fields: [organizationId], references: [id])
+  subscription       SubscriptionRecord? @relation(fields: [subscriptionId], references: [id])
+  payments           SubscriptionPayment[]
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+model SubscriptionPayment {
+  id                 String              @id @default(auto()) @map("_id") @db.ObjectId
+  invoiceId          String              @db.ObjectId
+  amount             Float
+  currency           String              @default("INR")
+  status             String              // "SUCCESS", "FAILED", "PENDING"
+  paymentMethod      String              // "RAZORPAY", "MANUAL", "PROMOTIONAL_CREDIT"
+  gatewayPaymentId   String?
+  gatewayOrderId     String?
+  createdAt          DateTime            @default(now())
+
+  invoice            SubscriptionInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+}
+
+// ==========================================================
+// CUSTOM BILL & RECEIPT TEMPLATE DESIGNER
+// ==========================================================
+
+model BillTemplate {
+  id                 String       @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId     String       @db.ObjectId
+  franchiseId        String?      @db.ObjectId
+  name               String       // e.g. "Standard 80mm GST Thermal", "58mm Compact"
+  paperSize          String       @default("80mm") // "58mm", "80mm", "A4"
+  showLogo           Boolean      @default(true)
+  logoUrl            String?
+  headerText         String?
+  footerText         String?
+  showGstin          Boolean      @default(true)
+  gstinNumber        String?
+  showFssai          Boolean      @default(true)
+  fssaiNumber        String?
+  showCustomerInfo   Boolean      @default(true)
+  showCashierName    Boolean      @default(true)
+  showTableNumber    Boolean      @default(true)
+  showItemCode       Boolean      @default(false)
+  showBarcode        Boolean      @default(false)
+  showUpiQrCode      Boolean      @default(true)
+  upiVpa             String?
+  upiPayeeName       String?
+  fontScale          String       @default("normal") // "compact", "normal", "large"
+  isDefault          Boolean      @default(false)
+
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  organization       Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+// ==========================================================
+// CUSTOMER SUPPORT TICKETS
+// ==========================================================
+
+model SupportTicket {
+  id                 String       @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId     String       @db.ObjectId
+  ticketNumber       String       @unique // e.g. TIK-1001
+  subject            String
+  description        String
+  category           String       @default("GENERAL") // "BILLING", "HARDWARE", "POS_ISSUE", "ACCOUNT"
+  priority           String       @default("NORMAL")  // "LOW", "NORMAL", "HIGH", "URGENT"
+  status             String       @default("OPEN")    // "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"
+  messages           Json?        // Array of { sender: string, role: string, message: string, timestamp: string }
+  resolvedAt         DateTime?
+
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  organization       Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+// ==========================================================
+// PLATFORM CONFIGURATION & SETTINGS
+// ==========================================================
+
+model PlatformSetting {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  key         String   @unique // e.g. "FOUNDING_PROMOTION_ACTIVE", "MAX_OFFLINE_DAYS"
+  value       String   // JSON string or raw setting
+  description String?
+  updatedAt   DateTime @updatedAt
+}

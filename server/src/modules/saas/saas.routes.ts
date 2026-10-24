@@ -2,19 +2,32 @@ import { Router } from "express";
 import { authenticate, authorizeRole } from "../../middleware/auth.js";
 import {
   listOrganizations,
-  updateOrg,
+  patchOrganization,
   listDemoRequests,
-  updateLeadStatus,
+  patchDemoRequest,
+  getOverviewStats,
+  listCoupons,
+  handleCreateCoupon,
 } from "./saas.controller.js";
 
 const router = Router();
 
-// Only Super Admin can access SaaS control tower
-router.use(authenticate, authorizeRole("SUPER_ADMIN"));
+// Platform control tower is restricted to SUPER_ADMIN role
+router.use(authenticate);
+router.use(authorizeRole("SUPER_ADMIN"));
 
+router.get("/overview", getOverviewStats);
 router.get("/organizations", listOrganizations);
-router.patch("/organizations/:id", updateOrg);
+router.patch("/organizations/:id", patchOrganization);
+
+router.get("/coupons", listCoupons);
+router.post("/coupons", handleCreateCoupon);
+
+router.get("/leads", listDemoRequests);
+router.patch("/leads/:id", patchDemoRequest);
+
+// Aliases for frontend compatibility
 router.get("/demo-requests", listDemoRequests);
-router.patch("/demo-requests/:id", updateLeadStatus);
+router.patch("/demo-requests/:id", patchDemoRequest);
 
 export default router;

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ShieldCheck,
@@ -29,8 +29,6 @@ import {
   Calendar,
   MapPin,
   Mail,
-  Wifi,
-  Badge,
 } from "lucide-react";
 import { api } from "../../services/api.js";
 import { useAuthStore } from "../../store/authStore.js";
@@ -358,10 +356,10 @@ export const PlatformDashboardPage: React.FC = () => {
         {/* ── TAB BAR ─────────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-1 p-1 rounded-2xl w-fit" style={{ background: "rgba(15,23,42,0.8)", border: "1px solid rgba(99,102,241,0.12)" }}>
           {([
-            { id: "tenants",   label: "Restaurants",  icon: <UtensilsCrossed className="w-3.5 h-3.5" />, badge: orgs.length },
-            { id: "leads",     label: "Demo Leads",   icon: <MessageCircle className="w-3.5 h-3.5" />,  badge: pendingLeads || undefined },
-            { id: "analytics", label: "Analytics",    icon: <BarChart3 className="w-3.5 h-3.5" /> },
-          ] as const).map((t) => (
+            { id: "tenants" as const,   label: "Restaurants",  icon: <UtensilsCrossed className="w-3.5 h-3.5" />, badge: orgs.length },
+            { id: "leads" as const,     label: "Demo Leads",   icon: <MessageCircle className="w-3.5 h-3.5" />,  badge: pendingLeads || undefined },
+            { id: "analytics" as const, label: "Analytics",    icon: <BarChart3 className="w-3.5 h-3.5" />,      badge: undefined },
+          ]).map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}

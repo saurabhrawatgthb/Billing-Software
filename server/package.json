@@ -7,7 +7,9 @@
     "build": "prisma generate && tsc",
     "start": "node dist/server.js",
     "clear-demo": "tsx prisma/clear-demo-data.ts",
-    "purge-orders": "tsx src/scripts/purge-orders-and-bills.ts"
+    "purge-orders": "tsx src/scripts/purge-orders-and-bills.ts",
+    "test:saas": "tsx src/test-saas-e2e.ts",
+    "seed:saas": "tsx prisma/seed-saas-plans.ts"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +26,8 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.1",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "prisma": "^6.19.3",
     "socket.io": "^4.8.3",

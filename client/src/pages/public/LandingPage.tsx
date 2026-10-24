@@ -643,6 +643,22 @@ export const LandingPage: React.FC = () => {
                 </span>
               </span>
             </div>
+
+            {/* Founding Partner 100% Free Banner */}
+            <div className="mt-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/20 to-amber-500/10 border border-amber-500/40 text-amber-200 text-xs font-semibold flex flex-col sm:flex-row items-center justify-between gap-3 max-w-2xl mx-auto shadow-lg shadow-amber-500/10">
+              <div className="flex items-center gap-2.5">
+                <Sparkles className="w-5 h-5 text-amber-400 shrink-0 animate-pulse" />
+                <span className="text-left">
+                  <strong className="text-amber-300 font-black">🔥 FOUNDING PARTNER PROMOTION:</strong> First 10 restaurants get 1 Full Year 100% Free!
+                </span>
+              </div>
+              <Link
+                to="/signup?coupon=FOUNDING10"
+                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shrink-0 transition-all shadow-md shadow-amber-500/30"
+              >
+                Claim Free Year (Code: FOUNDING10) →
+              </Link>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
